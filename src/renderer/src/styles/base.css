@@ -1,0 +1,15 @@
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+.shell { display: flex; height: 100%; }
+.left-panel, .right-panel { height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+.left-panel { flex: 1 1 50%; border-right: 1px solid var(--hairline); }
+.right-panel { flex: 1 1 50%; background: var(--surface); }
+.panel-empty { margin: auto; color: var(--ink-muted); }

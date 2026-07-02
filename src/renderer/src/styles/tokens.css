@@ -1,0 +1,23 @@
+/* SeniorDev palette — raccourier scheme (warm charcoal + teal/amber/tan accents).
+   Source hexes: teal #6cb49c, amber #e49c54, tan #b49c84, charcoal #545454, cream #fcfcfc. */
+:root {
+  --bg:        oklch(0.21 0.012 165);
+  --surface:   oklch(0.255 0.014 165);
+  --surface-2: oklch(0.305 0.016 165);
+  --hairline:  oklch(1 0 0 / 0.08);
+  --hairline-strong: oklch(1 0 0 / 0.14);
+
+  --ink:       oklch(0.95 0.008 95);
+  --ink-soft:  oklch(0.82 0.012 120);
+  --ink-muted: oklch(0.70 0.014 140);
+
+  --teal:  oklch(0.78 0.085 168);
+  --green: oklch(0.79 0.11 155);
+  --amber: oklch(0.80 0.115 68);
+  --tan:   oklch(0.77 0.045 78);
+  --rust:  oklch(0.68 0.15 38);
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
