@@ -6,11 +6,15 @@ beforeEach(() => {
   ;(window as unknown as { api: unknown }).api = {
     spawnTerminal: vi.fn(async () => ({ ok: true })),
     writeTerminal: vi.fn(), resizeTerminal: vi.fn(), killTerminal: vi.fn(),
-    onTerminalData: vi.fn(() => () => {}), onTerminalExit: vi.fn(() => () => {})
+    onTerminalData: vi.fn(() => () => {}), onTerminalExit: vi.fn(() => () => {}),
+    listPrompts: vi.fn(async () => [])
   }
 })
 
-const stubs = { TerminalView: { props: ['id', 'ticketKey'], template: '<div class="tv" :data-id="id" />' } }
+const stubs = {
+  TerminalView: { props: ['id', 'ticketKey', 'prompt'], template: '<div class="tv" :data-id="id" />' },
+  NewSessionMenu: { template: '<button class="new-session" @click="$emit(\'start\', {})" />' }
+}
 
 describe('RightPanel', () => {
   it('starts with no terminals and an empty state', () => {
@@ -33,5 +37,14 @@ describe('RightPanel', () => {
     expect(w.findAll('.term-tab')).toHaveLength(2)
     await w.findAll('.term-tab__close')[0].trigger('click')
     expect(w.findAll('.term-tab')).toHaveLength(1)
+  })
+
+  it('titles a prompt session by the prompt name', async () => {
+    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs: {
+      TerminalView: stubs.TerminalView,
+      NewSessionMenu: { template: '<button class="np" @click="$emit(\'start\', { prompt: { name: \'fix-bug\' } })" />' }
+    } } })
+    await w.find('.np').trigger('click')
+    expect(w.text()).toContain('fix-bug')
   })
 })
