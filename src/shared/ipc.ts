@@ -33,3 +33,15 @@ export const PROMPTS = { list: 'prompts:list' } as const
 
 export interface TerminalPrEvent { id: string; url: string; term: string }
 export const SHELL = { openExternal: 'shell:openExternal' } as const
+
+export interface StartupSession {
+  mode: 'interactive' | 'yolo'
+  promptName?: string
+  promptText?: string
+  tool?: string
+}
+export interface StartupOptions {
+  tickets: string[]
+  session?: StartupSession
+}
+export const STARTUP = { get: 'startup:get' } as const
