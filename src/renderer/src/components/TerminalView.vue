@@ -27,14 +27,17 @@ onMounted(async () => {
   offPr = window.api.onTerminalPr((e) => { if (e.id === props.id) pr.value = { url: e.url, term: e.term } })
 
   try {
+    // Build a plain, structured-cloneable payload. props.prompt is a Vue
+    // reactive Proxy, which contextBridge/ipcRenderer.invoke cannot clone
+    // ("An object could not be cloned") — so unwrap it to a plain object.
     const res = await window.api.spawnTerminal({
       id: props.id,
       ticketKey: props.ticketKey ?? undefined,
       cols: term.cols,
       rows: term.rows,
-      prompt: props.prompt,
-      yolo: props.yolo,
-      tool: props.tool
+      prompt: props.prompt ? { name: props.prompt.name, text: props.prompt.text } : undefined,
+      yolo: props.yolo ?? undefined,
+      tool: props.tool ?? undefined
     })
     if (!res.ok) term.write(`\r\n[failed to start: ${res.error}]\r\n`)
   } catch (err) {
