@@ -26,7 +26,7 @@ function createWindow(): void {
     width: 1400,
     height: 900,
     show: false,
-    webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false }
+    webPreferences: { preload: join(__dirname, '../preload/index.mjs'), sandbox: false }
   })
   win.on('ready-to-show', () => win.show())
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
