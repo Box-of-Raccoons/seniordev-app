@@ -1,9 +1,10 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, type GetTicketResult } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, type GetTicketResult, type PromptSummary } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
 
 const api = {
   getTicket: (key: string): Promise<GetTicketResult> => ipcRenderer.invoke(IPC.getTicket, key),
+  listPrompts: (): Promise<PromptSummary[]> => ipcRenderer.invoke(PROMPTS.list),
 
   spawnTerminal: (req: SpawnTerminalRequest): Promise<SpawnResult> => ipcRenderer.invoke(TERM.spawn, req),
   writeTerminal: (id: string, data: string): void => ipcRenderer.send(TERM.write, id, data),

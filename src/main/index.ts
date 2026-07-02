@@ -1,15 +1,22 @@
 import { app, BrowserWindow, session } from 'electron'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { loadConfig } from './config/load'
 import { JiraClient } from './jira/client'
 import { registerIpc } from './ipc/handlers'
 import { registerTerminalIpc } from './ipc/terminal-handlers'
+import { registerPromptsIpc } from './ipc/prompts-handlers'
+import { loadPrompts } from './prompts/library'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
 import type { Config } from './config/schema'
 import type { TerminalManager } from './terminal/manager'
 
 function resolveConfigPath(): string {
   return process.env.SENIORDEV_CONFIG ?? join(app.getPath('userData'), 'config.yaml')
+}
+
+function resolvePromptsDir(cfg: Config): string {
+  return cfg.promptsDir ?? join(homedir(), '.config', 'SeniorDev', 'prompts')
 }
 
 let loadedConfig: Config | null = null
@@ -60,10 +67,15 @@ app.whenReady().then(() => {
 
   registerIpc(buildGetTicket())
   if (loadedConfig) {
+    const cfg = loadedConfig
+    const client = new JiraClient(cfg.jira)
+    const prompts = loadPrompts(resolvePromptsDir(cfg))
+    registerPromptsIpc(prompts)
     terminals = registerTerminalIpc(
-      loadedConfig,
+      cfg,
       () => BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents,
-      nodePtySpawner
+      nodePtySpawner,
+      { getTicket: (key) => client.fetchIssue(key), prompts }
     )
   }
 
