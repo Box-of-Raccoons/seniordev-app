@@ -1,0 +1,15 @@
+# Copy to your OS config dir (e.g. %APPDATA%/SeniorDev/config.yaml) and fill in.
+jira:
+  baseUrl: https://yoursite.atlassian.net
+  email: you@company.com
+  apiToken: paste-token-from-id.atlassian.net
+
+# Everything below is optional; presets for claude/codex + github/gitlab apply automatically.
+# ticketContext: both        # inject | key-only | both
+# defaultTool: claude
+# defaultForge: github
+# repos:
+#   - key: PROJ
+#     path: C:/Users/you/code/backend
+#     branchPrefix: feature/
+#     forge: github
