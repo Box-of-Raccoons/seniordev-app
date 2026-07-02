@@ -10,14 +10,14 @@ export interface Launch {
 
 export function buildInteractiveLaunch(
   config: Config,
-  opts: { tool?: string; ticketKey?: string; cwdOverride?: string },
+  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; yolo?: boolean },
   expandedPrompt?: string
 ): Launch {
   const toolName = opts.tool ?? config.defaultTool
   const tool = config.cliTools[toolName]
   if (!tool) throw new Error(`Unknown CLI tool: ${toolName}`)
   const cwd = resolveCwd(config, opts.ticketKey, opts.cwdOverride)
-  const args = [...tool.interactiveArgs]
+  const args = [...(opts.yolo ? tool.yoloArgs : tool.interactiveArgs)]
 
   if (expandedPrompt && tool.promptDelivery === 'arg') {
     const template = tool.promptArg ?? '{{prompt}}'

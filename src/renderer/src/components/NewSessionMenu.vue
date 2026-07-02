@@ -2,12 +2,13 @@
 import { onMounted, ref } from 'vue'
 import type { PromptSummary } from '../../../shared/ipc'
 
-const emit = defineEmits<{ (e: 'start', payload: { prompt?: { name?: string; text?: string } }): void }>()
+const emit = defineEmits<{ (e: 'start', payload: { prompt?: { name?: string; text?: string }; yolo: boolean }): void }>()
 
 const open = ref(false)
 const prompts = ref<PromptSummary[]>([])
 const customOpen = ref(false)
 const customText = ref('')
+const mode = ref<'interactive' | 'yolo'>('interactive')
 
 onMounted(async () => {
   try { prompts.value = await window.api.listPrompts() } catch { prompts.value = [] }
@@ -16,8 +17,9 @@ onMounted(async () => {
 function choose(payload: { prompt?: { name?: string; text?: string } }): void {
   open.value = false
   customOpen.value = false
+  const yolo = mode.value === 'yolo'
   customText.value = ''
-  emit('start', payload)
+  emit('start', { ...payload, yolo })
 }
 </script>
 
@@ -25,7 +27,11 @@ function choose(payload: { prompt?: { name?: string; text?: string } }): void {
   <div class="menu-wrap">
     <button class="new-session" @click="open = !open">+ New session ▾</button>
     <div v-if="open" class="menu">
-      <button class="menu-item" @click="choose({})">Interactive (no prompt)</button>
+      <div class="mode-toggle" role="group" aria-label="Session mode">
+        <button type="button" :class="{ 'mode--on': mode === 'interactive' }" @click="mode = 'interactive'">Interactive</button>
+        <button type="button" :class="{ 'mode--on': mode === 'yolo' }" @click="mode = 'yolo'">YOLO ⚡</button>
+      </div>
+      <button v-if="mode === 'interactive'" class="menu-item" @click="choose({})">Interactive (no prompt)</button>
       <button
         v-for="p in prompts"
         :key="p.name"
@@ -77,4 +83,11 @@ function choose(payload: { prompt?: { name?: string; text?: string } }): void {
   border-radius: var(--radius-sm); padding: 5px 12px; cursor: pointer; font-weight: 600;
 }
 .custom__go:disabled { opacity: 0.5; cursor: default; }
+.mode-toggle { display: flex; gap: 2px; padding: 2px; margin-bottom: 4px; background: var(--surface); border-radius: var(--radius-sm); }
+.mode-toggle button {
+  flex: 1; background: transparent; color: var(--ink-muted); border: 0;
+  border-radius: var(--radius-sm); padding: 5px 8px; cursor: pointer; font-weight: 600; font-size: 12px;
+}
+.mode-toggle button.mode--on { background: var(--surface-2); color: var(--ink); }
+.mode-toggle button:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
 </style>

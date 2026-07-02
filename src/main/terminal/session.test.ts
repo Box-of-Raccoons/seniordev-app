@@ -40,4 +40,9 @@ describe('buildInteractiveLaunch', () => {
     const l = buildInteractiveLaunch(cfg, { tool: 'codex' }, 'cost $$5 and $& more')
     expect(l.args).toEqual(['--foo', 'cost $$5 and $& more'])
   })
+  it('uses yoloArgs when yolo is set', () => {
+    const l = buildInteractiveLaunch(cfg, { tool: 'claude', yolo: true }, 'GO')
+    expect(l.args).toEqual(['--permission-mode', 'bypassPermissions'])
+    expect(l.stdinPrompt).toBe('GO')
+  })
 })
