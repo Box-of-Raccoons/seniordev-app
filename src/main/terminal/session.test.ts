@@ -36,4 +36,8 @@ describe('buildInteractiveLaunch', () => {
     expect(l.args).toEqual([])
     expect(l.stdinPrompt).toBe('DO THIS')
   })
+  it('preserves $-sequences in an arg-delivery prompt (no regex-replace mangling)', () => {
+    const l = buildInteractiveLaunch(cfg, { tool: 'codex' }, 'cost $$5 and $& more')
+    expect(l.args).toEqual(['--foo', 'cost $$5 and $& more'])
+  })
 })

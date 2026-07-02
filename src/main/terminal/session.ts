@@ -21,7 +21,9 @@ export function buildInteractiveLaunch(
 
   if (expandedPrompt && tool.promptDelivery === 'arg') {
     const template = tool.promptArg ?? '{{prompt}}'
-    args.push(template.replace('{{prompt}}', expandedPrompt))
+    // Function replacer: avoids $&/$$/etc. being treated as special patterns
+    // when the prompt content contains a literal '$'.
+    args.push(template.replace('{{prompt}}', () => expandedPrompt))
     return { file: tool.command, args, cwd }
   }
   return {

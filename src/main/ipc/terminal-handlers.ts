@@ -29,15 +29,10 @@ async function resolveExpandedPrompt(
   }
   if (body === undefined) return undefined
 
-  const mode = config.ticketContext
-  let ticketCtx = buildPromptTicket(
-    { key: req.ticketKey ?? '', type: '', status: '', summary: '', descriptionAdf: null, acceptanceCriteria: null, comments: [], url: '' },
-    mode
-  )
-  if (req.ticketKey) {
-    const ticket = await deps.getTicket(req.ticketKey)
-    ticketCtx = buildPromptTicket(ticket, mode)
-  }
+  const ticket = req.ticketKey
+    ? await deps.getTicket(req.ticketKey)
+    : { key: '', type: '', status: '', summary: '', descriptionAdf: null, acceptanceCriteria: null, comments: [], url: '' }
+  const ticketCtx = buildPromptTicket(ticket, config.ticketContext)
   const forge = resolveForge(config, req.ticketKey)
   return expandPrompt(body, { ticket: ticketCtx, forge })
 }
