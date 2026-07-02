@@ -4,7 +4,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
-const props = defineProps<{ id: string; ticketKey: string | null; prompt?: { name?: string; text?: string }; yolo?: boolean }>()
+const props = defineProps<{ id: string; ticketKey: string | null; prompt?: { name?: string; text?: string }; yolo?: boolean; tool?: string }>()
 const host = ref<HTMLDivElement | null>(null)
 const pr = ref<{ url: string; term: string } | null>(null)
 let term: Terminal | null = null
@@ -33,7 +33,8 @@ onMounted(async () => {
       cols: term.cols,
       rows: term.rows,
       prompt: props.prompt,
-      yolo: props.yolo
+      yolo: props.yolo,
+      tool: props.tool
     })
     if (!res.ok) term.write(`\r\n[failed to start: ${res.error}]\r\n`)
   } catch (err) {

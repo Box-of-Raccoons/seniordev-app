@@ -9,7 +9,8 @@ beforeEach(() => {
     onTerminalData: vi.fn(() => () => {}), onTerminalExit: vi.fn(() => () => {}),
     openExternal: vi.fn(async () => ({ ok: true })),
     onTerminalPr: vi.fn(() => () => {}),
-    listPrompts: vi.fn(async () => [])
+    listPrompts: vi.fn(async () => []),
+    getStartup: vi.fn(async () => ({ tickets: [] }))
   }
 })
 
@@ -57,5 +58,12 @@ describe('RightPanel', () => {
     } } })
     await w.find('.np').trigger('click')
     expect(w.text()).toContain('fix')
+  })
+
+  it('starts a session from startStartupSession', async () => {
+    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs } })
+    ;(w.vm as unknown as { startStartupSession: (s: unknown) => void }).startStartupSession({ mode: 'yolo', promptName: 'ship-it' })
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('ship-it')
   })
 })

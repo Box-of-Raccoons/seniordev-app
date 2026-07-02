@@ -10,25 +10,29 @@ const emit = defineEmits<{ (e: 'active-ticket', key: string | null): void }>()
 watch(activeKey, (k) => emit('active-ticket', k))
 const error = ref<string | null>(null)
 
-async function openTicket(): Promise<void> {
-  const key = keyInput.value.trim().toUpperCase()
+async function openKey(rawKey: string): Promise<void> {
+  const key = rawKey.trim().toUpperCase()
   error.value = null
   if (!key) return
   const existing = tabs.value.find((t) => t.key === key)
-  if (existing) {
-    activeKey.value = existing.key
-    keyInput.value = ''
-    return
-  }
+  if (existing) { activeKey.value = existing.key; return }
   const res = await window.api.getTicket(key)
-  if (res.ok) {
-    tabs.value.push(res.ticket)
-    activeKey.value = res.ticket.key
-    keyInput.value = ''
-  } else {
-    error.value = res.error
-  }
+  if (res.ok) { tabs.value.push(res.ticket); activeKey.value = res.ticket.key }
+  else { error.value = res.error }
 }
+
+async function openTicket(): Promise<void> {
+  const key = keyInput.value
+  await openKey(key)
+  keyInput.value = ''
+}
+
+async function openTickets(keys: string[]): Promise<void> {
+  for (const k of keys) await openKey(k)
+  if (keys.length) activeKey.value = keys[0].toUpperCase()
+}
+
+defineExpose({ openTickets })
 
 function closeTab(key: string): void {
   const i = tabs.value.findIndex((t) => t.key === key)

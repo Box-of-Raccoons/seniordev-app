@@ -5,18 +5,25 @@ import NewSessionMenu from './NewSessionMenu.vue'
 
 defineProps<{ activeTicketKey: string | null }>()
 
-interface Term { id: string; title: string; prompt?: { name?: string; text?: string }; yolo?: boolean }
+interface Term { id: string; title: string; prompt?: { name?: string; text?: string }; yolo?: boolean; tool?: string }
 const terms = ref<Term[]>([])
 const activeId = ref<string | null>(null)
 let counter = 0
 
-function startSession(payload: { prompt?: { name?: string; text?: string }; yolo?: boolean }): void {
+function startSession(payload: { prompt?: { name?: string; text?: string }; yolo?: boolean; tool?: string }): void {
   counter += 1
   const id = `t${counter}-${Date.now()}`
   const base = payload.prompt?.name ?? (payload.yolo ? 'yolo' : 'Session')
-  terms.value.push({ id, title: `${base} ${counter}`, prompt: payload.prompt, yolo: payload.yolo })
+  terms.value.push({ id, title: `${base} ${counter}`, prompt: payload.prompt, yolo: payload.yolo, tool: payload.tool })
   activeId.value = id
 }
+
+function startStartupSession(s: { mode: 'interactive' | 'yolo'; promptName?: string; promptText?: string; tool?: string }): void {
+  const prompt = s.promptName ? { name: s.promptName } : s.promptText ? { text: s.promptText } : undefined
+  startSession({ prompt, yolo: s.mode === 'yolo', tool: s.tool })
+}
+
+defineExpose({ startStartupSession })
 
 function closeTerm(id: string): void {
   const i = terms.value.findIndex((t) => t.id === id)
@@ -52,7 +59,7 @@ function closeTerm(id: string): void {
         :key="t.id"
         class="term-slot"
       >
-        <TerminalView :id="t.id" :ticket-key="activeTicketKey" :prompt="t.prompt" :yolo="t.yolo" />
+        <TerminalView :id="t.id" :ticket-key="activeTicketKey" :prompt="t.prompt" :yolo="t.yolo" :tool="t.tool" />
       </div>
     </div>
   </section>

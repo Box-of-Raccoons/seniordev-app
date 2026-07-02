@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, type GetTicketResult, type PromptSummary } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, STARTUP, type GetTicketResult, type PromptSummary } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent, TerminalPrEvent } from '../shared/ipc'
 
 const api = {
@@ -21,6 +21,7 @@ const api = {
     return () => ipcRenderer.off(TERM.exit, listener)
   },
   openExternal: (url: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(SHELL.openExternal, url),
+  getStartup: (): Promise<import('../shared/ipc').StartupOptions> => ipcRenderer.invoke(STARTUP.get),
   onTerminalPr: (cb: (e: TerminalPrEvent) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: TerminalPrEvent): void => cb(payload)
     ipcRenderer.on(TERM.pr, listener)

@@ -1,6 +1,9 @@
 import { app, BrowserWindow, session } from 'electron'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { readFileSync } from 'node:fs'
+import { parseStartupArgs } from './cli/parse-args'
+import { registerStartupIpc } from './ipc/startup-handlers'
 import { loadConfig } from './config/load'
 import { JiraClient } from './jira/client'
 import { registerIpc } from './ipc/handlers'
@@ -68,6 +71,7 @@ app.whenReady().then(() => {
 
   registerIpc(buildGetTicket())
   registerShellIpc()
+  registerStartupIpc(parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8')))
   if (loadedConfig) {
     const cfg = loadedConfig
     const client = new JiraClient(cfg.jira)
