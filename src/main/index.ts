@@ -1,5 +1,25 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
+import { loadConfig } from './config/load'
+import { JiraClient } from './jira/client'
+import { registerIpc } from './ipc/handlers'
+
+function resolveConfigPath(): string {
+  return process.env.SENIORDEV_CONFIG ?? join(app.getPath('userData'), 'config.yaml')
+}
+
+function buildGetTicket(): (key: string) => Promise<import('../shared/types').Ticket> {
+  try {
+    const cfg = loadConfig(resolveConfigPath())
+    const client = new JiraClient(cfg.jira)
+    return (key) => client.fetchIssue(key)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return async () => {
+      throw new Error(`Config not loaded (${resolveConfigPath()}): ${msg}`)
+    }
+  }
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -14,6 +34,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  registerIpc(buildGetTicket())
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
