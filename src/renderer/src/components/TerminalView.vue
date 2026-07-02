@@ -23,13 +23,17 @@ onMounted(async () => {
   offData = window.api.onTerminalData((e) => { if (e.id === props.id) term?.write(e.data) })
   offExit = window.api.onTerminalExit((e) => { if (e.id === props.id) term?.write(`\r\n[process exited: ${e.exitCode}]\r\n`) })
 
-  const res = await window.api.spawnTerminal({
-    id: props.id,
-    ticketKey: props.ticketKey ?? undefined,
-    cols: term.cols,
-    rows: term.rows
-  })
-  if (!res.ok) term.write(`\r\n[failed to start: ${res.error}]\r\n`)
+  try {
+    const res = await window.api.spawnTerminal({
+      id: props.id,
+      ticketKey: props.ticketKey ?? undefined,
+      cols: term.cols,
+      rows: term.rows
+    })
+    if (!res.ok) term.write(`\r\n[failed to start: ${res.error}]\r\n`)
+  } catch (err) {
+    term.write(`\r\n[failed to start: ${err instanceof Error ? err.message : String(err)}]\r\n`)
+  }
 
   ro = new ResizeObserver(() => {
     fit?.fit()

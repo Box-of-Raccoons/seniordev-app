@@ -23,4 +23,19 @@ describe('resolveCwd', () => {
   it('falls back to homedir when no ticket is given', () => {
     expect(resolveCwd(cfg)).toBe(homedir())
   })
+  it('does not over-match a repo key that is only a string prefix', () => {
+    const c = { repos: [{ key: 'AB', path: 'C:/ab', branchPrefix: '' }] } as unknown as Config
+    // 'ABC-1' project segment is 'ABC', not 'AB' -> no match -> homedir
+    expect(resolveCwd(c, 'ABC-1')).toBe(homedir())
+  })
+  it('matches the exact project segment regardless of repo order', () => {
+    const c = {
+      repos: [
+        { key: 'PR', path: 'C:/pr', branchPrefix: '' },
+        { key: 'PROJ', path: 'C:/proj', branchPrefix: '' }
+      ]
+    } as unknown as Config
+    expect(resolveCwd(c, 'PROJ-1')).toBe('C:/proj')
+    expect(resolveCwd(c, 'PR-9')).toBe('C:/pr')
+  })
 })
