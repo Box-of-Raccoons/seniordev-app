@@ -8,6 +8,13 @@ function esc(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
+// Only allow web/mail schemes in emitted hrefs. Neutralize javascript:, data:,
+// vbscript:, etc. to '#' so a hostile ticket can't run script via v-html.
+function safeUrl(raw: unknown): string {
+  const url = String(raw ?? '').trim()
+  return /^(https?:|mailto:)/i.test(url) ? esc(url) : '#'
+}
+
 function renderMarks(text: string, marks: AdfNode['marks']): string {
   let html = esc(text)
   for (const m of marks ?? []) {
@@ -18,7 +25,7 @@ function renderMarks(text: string, marks: AdfNode['marks']): string {
       case 'strike': html = `<s>${html}</s>`; break
       case 'underline': html = `<u>${html}</u>`; break
       case 'link': {
-        const href = esc(String(m.attrs?.href ?? '#'))
+        const href = safeUrl(m.attrs?.href)
         html = `<a href="${href}" target="_blank" rel="noreferrer noopener">${html}</a>`
         break
       }
@@ -38,7 +45,8 @@ function renderNode(node: AdfNode): string {
     case 'text': return renderMarks(node.text ?? '', node.marks)
     case 'hardBreak': return '<br>'
     case 'heading': {
-      const level = Math.min(Math.max(Number(node.attrs?.level ?? 1), 1), 6)
+      const lvl = Number(node.attrs?.level)
+      const level = Number.isFinite(lvl) ? Math.min(Math.max(lvl, 1), 6) : 1
       return `<h${level}>${renderNodes(node.content)}</h${level}>`
     }
     case 'bulletList': return `<ul>${renderNodes(node.content)}</ul>`
@@ -60,8 +68,9 @@ function renderNode(node: AdfNode): string {
     case 'emoji':
       return esc(String(node.attrs?.text ?? node.attrs?.shortName ?? ''))
     case 'inlineCard': {
-      const url = esc(String(node.attrs?.url ?? '#'))
-      return `<a href="${url}" target="_blank" rel="noreferrer noopener">${url}</a>`
+      const raw = String(node.attrs?.url ?? '')
+      const href = safeUrl(raw)
+      return `<a href="${href}" target="_blank" rel="noreferrer noopener">${esc(raw || '#')}</a>`
     }
     case 'mediaSingle':
     case 'mediaGroup':

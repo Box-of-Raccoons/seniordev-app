@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { Ticket } from '../../../shared/types'
 import TicketView from './TicketView.vue'
 
@@ -35,9 +35,9 @@ function closeTab(key: string): void {
   if (activeKey.value === key) activeKey.value = tabs.value.at(-1)?.key ?? null
 }
 
-function activeTicket(): Ticket | undefined {
-  return tabs.value.find((t) => t.key === activeKey.value)
-}
+const activeTicket = computed<Ticket | undefined>(() =>
+  tabs.value.find((t) => t.key === activeKey.value)
+)
 </script>
 
 <template>
@@ -66,7 +66,7 @@ function activeTicket(): Ticket | undefined {
     </nav>
 
     <div class="left-body">
-      <TicketView v-if="activeTicket()" :ticket="activeTicket()!" />
+      <TicketView v-if="activeTicket" :ticket="activeTicket!" />
       <div v-else class="panel-empty">Open a ticket to start</div>
     </div>
   </section>

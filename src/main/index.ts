@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, session } from 'electron'
 import { join } from 'node:path'
 import { loadConfig } from './config/load'
 import { JiraClient } from './jira/client'
@@ -26,6 +26,8 @@ function createWindow(): void {
     width: 1400,
     height: 900,
     show: false,
+    // sandbox:false is required for the ESM (.mjs) preload — sandboxed preloads
+    // must be CJS. Don't "fix" this to true without also converting the preload.
     webPreferences: { preload: join(__dirname, '../preload/index.mjs'), sandbox: false }
   })
   win.on('ready-to-show', () => win.show())
@@ -34,6 +36,20 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Defense-in-depth CSP for the packaged app. Skipped in dev, where the Vite
+  // renderer server needs inline scripts / eval / a websocket for HMR.
+  if (!process.env.ELECTRON_RENDERER_URL) {
+    session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
+      cb({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'"
+          ]
+        }
+      })
+    })
+  }
   registerIpc(buildGetTicket())
   createWindow()
   app.on('activate', () => {

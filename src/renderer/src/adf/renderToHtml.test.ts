@@ -53,6 +53,35 @@ describe('renderAdfToHtml', () => {
     expect(html).toContain('adf-panel--warning')
   })
 
+  it('neutralizes javascript: and data: schemes in link hrefs', () => {
+    const html = renderAdfToHtml(
+      doc([
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'x', marks: [{ type: 'link', attrs: { href: 'javascript:alert(1)' } }] }
+          ]
+        }
+      ])
+    )
+    expect(html).not.toContain('javascript:')
+    expect(html).toContain('<a href="#"')
+  })
+
+  it('neutralizes an unsafe inlineCard url but still shows the text', () => {
+    const html = renderAdfToHtml(doc([{ type: 'inlineCard', attrs: { url: 'data:text/html,<script>' } }]))
+    expect(html).toContain('href="#"')
+    expect(html).not.toContain('href="data:')
+  })
+
+  it('renders a malformed heading level as h1', () => {
+    const html = renderAdfToHtml(
+      doc([{ type: 'heading', attrs: { level: 'x' }, content: [{ type: 'text', text: 'T' }] }])
+    )
+    expect(html).toContain('<h1>T</h1>')
+    expect(html).not.toContain('hNaN')
+  })
+
   it('falls back to rendering children for unknown node types', () => {
     const html = renderAdfToHtml(
       doc([{ type: 'someFutureNode', content: [{ type: 'text', text: 'still shown' }] }])

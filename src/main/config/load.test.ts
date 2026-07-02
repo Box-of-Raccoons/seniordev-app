@@ -38,6 +38,16 @@ describe('loadConfig', () => {
     expect(cfg.cliTools.codex.command).toBe('codex')
   })
 
+  it('preserves preset fields when a user overrides only one field', () => {
+    // Overriding claude.command must NOT drop the preset's yoloArgs (a
+    // safety-relevant permission-bypass flag used by YOLO mode later).
+    const cfg = loadConfig(
+      tmpConfig(MINIMAL + '\ncliTools:\n  claude:\n    command: my-claude\n')
+    )
+    expect(cfg.cliTools.claude.command).toBe('my-claude')
+    expect(cfg.cliTools.claude.yoloArgs).toEqual(['--permission-mode', 'bypassPermissions'])
+  })
+
   it('throws on invalid jira email', () => {
     expect(() =>
       loadConfig(tmpConfig(`
