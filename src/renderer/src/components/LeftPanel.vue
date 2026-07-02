@@ -78,6 +78,8 @@ function activeTicket(): Ticket | undefined {
   flex: 1; background: var(--surface); color: var(--ink);
   border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); padding: 6px 10px;
 }
+.opener input::placeholder { color: var(--ink-muted); }
+.opener input:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; border-color: transparent; }
 .opener button {
   background: var(--teal); color: var(--bg); border: 0;
   border-radius: var(--radius-sm); padding: 6px 14px; cursor: pointer; font-weight: 600;
