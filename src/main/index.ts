@@ -6,6 +6,7 @@ import { JiraClient } from './jira/client'
 import { registerIpc } from './ipc/handlers'
 import { registerTerminalIpc } from './ipc/terminal-handlers'
 import { registerPromptsIpc } from './ipc/prompts-handlers'
+import { registerShellIpc } from './ipc/shell-handlers'
 import { loadPrompts } from './prompts/library'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
 import type { Config } from './config/schema'
@@ -66,6 +67,7 @@ app.whenReady().then(() => {
   }
 
   registerIpc(buildGetTicket())
+  registerShellIpc()
   if (loadedConfig) {
     const cfg = loadedConfig
     const client = new JiraClient(cfg.jira)

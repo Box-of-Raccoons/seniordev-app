@@ -76,4 +76,14 @@ describe('registerTerminalIpc', () => {
     expect(pty.write).toHaveBeenCalledWith('Do PROJ-1\r')
     vi.useRealTimers()
   })
+
+  it('emits pty:pr when a yolo session prints a PR url', async () => {
+    const pty = fakePty()
+    const send = vi.fn()
+    const yoloCfg = { ...cfg, forges: { github: { prCommand: 'gh pr create', term: 'PR', urlPattern: 'https://github\\.com/[^/\\s]+/[^/\\s]+/pull/\\d+' } } } as unknown as Config
+    registerTerminalIpc(yoloCfg, () => ({ send } as unknown as Electron.WebContents), () => pty as unknown as PtyProcess, deps)
+    await handleMap.get('pty:spawn')!({}, { id: 'y', yolo: true, cols: 80, rows: 24 })
+    pty.emitData('opened https://github.com/o/r/pull/5\n')
+    expect(send).toHaveBeenCalledWith('pty:pr', { id: 'y', url: 'https://github.com/o/r/pull/5', term: 'PR' })
+  })
 })

@@ -6,6 +6,7 @@ import { buildInteractiveLaunch } from '../terminal/session'
 import { TERM, type SpawnTerminalRequest, type SpawnResult } from '../../shared/ipc'
 import { type PromptTemplate, findPrompt } from '../prompts/library'
 import { buildPromptTicket, expandPrompt, resolveForge } from '../prompts/expand'
+import { PrDetector, buildForgePatterns } from '../terminal/pr-detector'
 
 export interface TerminalDeps {
   getTicket: (key: string) => Promise<Ticket>
@@ -43,9 +44,21 @@ export function registerTerminalIpc(
   spawner: PtySpawner,
   deps: TerminalDeps
 ): TerminalManager {
+  const detectors = new Map<string, PrDetector>()
+
   const manager = new TerminalManager(spawner, {
-    onData: (id, data) => getSender()?.send(TERM.data, { id, data }),
-    onExit: (id, exitCode) => getSender()?.send(TERM.exit, { id, exitCode })
+    onData: (id, data) => {
+      getSender()?.send(TERM.data, { id, data })
+      const det = detectors.get(id)
+      if (det) {
+        const hit = det.feed(data)
+        if (hit) getSender()?.send(TERM.pr, { id, url: hit.url, term: hit.term })
+      }
+    },
+    onExit: (id, exitCode) => {
+      getSender()?.send(TERM.exit, { id, exitCode })
+      detectors.delete(id)
+    }
   })
 
   ipcMain.handle(TERM.spawn, async (_e, req: SpawnTerminalRequest): Promise<SpawnResult> => {
@@ -53,6 +66,7 @@ export function registerTerminalIpc(
       const expanded = await resolveExpandedPrompt(config, deps, req)
       const launch = buildInteractiveLaunch(config, req, expanded)
       manager.spawn(req.id, { file: launch.file, args: launch.args, cwd: launch.cwd, cols: req.cols, rows: req.rows })
+      if (req.yolo) detectors.set(req.id, new PrDetector(buildForgePatterns(config)))
       if (launch.stdinPrompt) {
         const prompt = launch.stdinPrompt
         setTimeout(() => manager.write(req.id, prompt + '\r'), STDIN_PROMPT_DELAY_MS)
