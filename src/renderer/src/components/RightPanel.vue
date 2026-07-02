@@ -5,16 +5,16 @@ import NewSessionMenu from './NewSessionMenu.vue'
 
 defineProps<{ activeTicketKey: string | null }>()
 
-interface Term { id: string; title: string; prompt?: { name?: string; text?: string } }
+interface Term { id: string; title: string; prompt?: { name?: string; text?: string }; yolo?: boolean }
 const terms = ref<Term[]>([])
 const activeId = ref<string | null>(null)
 let counter = 0
 
-function startSession(payload: { prompt?: { name?: string; text?: string } }): void {
+function startSession(payload: { prompt?: { name?: string; text?: string }; yolo?: boolean }): void {
   counter += 1
   const id = `t${counter}-${Date.now()}`
-  const title = payload.prompt?.name ? `${payload.prompt.name} ${counter}` : `Session ${counter}`
-  terms.value.push({ id, title, prompt: payload.prompt })
+  const base = payload.prompt?.name ?? (payload.yolo ? 'yolo' : 'Session')
+  terms.value.push({ id, title: `${base} ${counter}`, prompt: payload.prompt, yolo: payload.yolo })
   activeId.value = id
 }
 
@@ -52,7 +52,7 @@ function closeTerm(id: string): void {
         :key="t.id"
         class="term-slot"
       >
-        <TerminalView :id="t.id" :ticket-key="activeTicketKey" :prompt="t.prompt" />
+        <TerminalView :id="t.id" :ticket-key="activeTicketKey" :prompt="t.prompt" :yolo="t.yolo" />
       </div>
     </div>
   </section>

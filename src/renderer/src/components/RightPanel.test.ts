@@ -7,13 +7,15 @@ beforeEach(() => {
     spawnTerminal: vi.fn(async () => ({ ok: true })),
     writeTerminal: vi.fn(), resizeTerminal: vi.fn(), killTerminal: vi.fn(),
     onTerminalData: vi.fn(() => () => {}), onTerminalExit: vi.fn(() => () => {}),
+    openExternal: vi.fn(async () => ({ ok: true })),
+    onTerminalPr: vi.fn(() => () => {}),
     listPrompts: vi.fn(async () => [])
   }
 })
 
 const stubs = {
-  TerminalView: { props: ['id', 'ticketKey', 'prompt'], template: '<div class="tv" :data-id="id" />' },
-  NewSessionMenu: { template: '<button class="new-session" @click="$emit(\'start\', {})" />' }
+  TerminalView: { props: ['id', 'ticketKey', 'prompt', 'yolo'], template: '<div class="tv" :data-id="id" />' },
+  NewSessionMenu: { template: '<button class="new-session" @click="$emit(\'start\', { yolo: false })" />' }
 }
 
 describe('RightPanel', () => {
@@ -46,5 +48,14 @@ describe('RightPanel', () => {
     } } })
     await w.find('.np').trigger('click')
     expect(w.text()).toContain('fix-bug')
+  })
+
+  it('marks a yolo session title', async () => {
+    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs: {
+      TerminalView: { props: ['id', 'ticketKey', 'prompt', 'yolo'], template: '<div class="tv" />' },
+      NewSessionMenu: { template: '<button class="np" @click="$emit(\'start\', { prompt: { name: \'fix\' }, yolo: true })" />' }
+    } } })
+    await w.find('.np').trigger('click')
+    expect(w.text()).toContain('fix')
   })
 })
