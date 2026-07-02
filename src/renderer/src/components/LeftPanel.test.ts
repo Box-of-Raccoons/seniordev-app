@@ -45,4 +45,11 @@ describe('LeftPanel', () => {
     await open(w, 'PROJ-1')
     expect(w.findAll('.tab')).toHaveLength(1)
   })
+
+  it('opens a list of tickets via the exposed openTickets', async () => {
+    const w = mount(LeftPanel)
+    await (w.vm as unknown as { openTickets: (k: string[]) => Promise<void> }).openTickets(['PROJ-1', 'PROJ-2'])
+    await flushPromises()
+    expect(w.findAll('.tab')).toHaveLength(2)
+  })
 })
