@@ -1,8 +1,24 @@
-import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type GetTicketResult } from '../shared/ipc'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { IPC, TERM, type GetTicketResult } from '../shared/ipc'
+import type { SpawnTerminalRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
 
 const api = {
-  getTicket: (key: string): Promise<GetTicketResult> => ipcRenderer.invoke(IPC.getTicket, key)
+  getTicket: (key: string): Promise<GetTicketResult> => ipcRenderer.invoke(IPC.getTicket, key),
+
+  spawnTerminal: (req: SpawnTerminalRequest): Promise<SpawnResult> => ipcRenderer.invoke(TERM.spawn, req),
+  writeTerminal: (id: string, data: string): void => ipcRenderer.send(TERM.write, id, data),
+  resizeTerminal: (id: string, cols: number, rows: number): void => ipcRenderer.send(TERM.resize, id, cols, rows),
+  killTerminal: (id: string): void => ipcRenderer.send(TERM.kill, id),
+  onTerminalData: (cb: (e: TerminalDataEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: TerminalDataEvent): void => cb(payload)
+    ipcRenderer.on(TERM.data, listener)
+    return () => ipcRenderer.off(TERM.data, listener)
+  },
+  onTerminalExit: (cb: (e: TerminalExitEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: TerminalExitEvent): void => cb(payload)
+    ipcRenderer.on(TERM.exit, listener)
+    return () => ipcRenderer.off(TERM.exit, listener)
+  }
 }
 
 contextBridge.exposeInMainWorld('api', api)
