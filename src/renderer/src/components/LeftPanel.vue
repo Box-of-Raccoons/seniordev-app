@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { Ticket } from '../../../shared/types'
 import TicketView from './TicketView.vue'
 
 const keyInput = ref('')
 const tabs = ref<Ticket[]>([])
 const activeKey = ref<string | null>(null)
+const emit = defineEmits<{ (e: 'active-ticket', key: string | null): void }>()
+watch(activeKey, (k) => emit('active-ticket', k))
 const error = ref<string | null>(null)
 
 async function openTicket(): Promise<void> {

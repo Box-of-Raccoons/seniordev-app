@@ -3,14 +3,21 @@ import { join } from 'node:path'
 import { loadConfig } from './config/load'
 import { JiraClient } from './jira/client'
 import { registerIpc } from './ipc/handlers'
+import { registerTerminalIpc } from './ipc/terminal-handlers'
+import { nodePtySpawner } from './terminal/node-pty-spawner'
+import type { Config } from './config/schema'
+import type { TerminalManager } from './terminal/manager'
 
 function resolveConfigPath(): string {
   return process.env.SENIORDEV_CONFIG ?? join(app.getPath('userData'), 'config.yaml')
 }
 
+let loadedConfig: Config | null = null
+
 function buildGetTicket(): (key: string) => Promise<import('../shared/types').Ticket> {
   try {
     const cfg = loadConfig(resolveConfigPath())
+    loadedConfig = cfg
     const client = new JiraClient(cfg.jira)
     return (key) => client.fetchIssue(key)
   } catch (err) {
@@ -35,9 +42,9 @@ function createWindow(): void {
   else win.loadFile(join(__dirname, '../renderer/index.html'))
 }
 
+let terminals: TerminalManager | null = null
+
 app.whenReady().then(() => {
-  // Defense-in-depth CSP for the packaged app. Skipped in dev, where the Vite
-  // renderer server needs inline scripts / eval / a websocket for HMR.
   if (!process.env.ELECTRON_RENDERER_URL) {
     session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
       cb({
@@ -50,12 +57,24 @@ app.whenReady().then(() => {
       })
     })
   }
+
   registerIpc(buildGetTicket())
+  if (loadedConfig) {
+    terminals = registerTerminalIpc(
+      loadedConfig,
+      () => BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents,
+      nodePtySpawner
+    )
+  }
+
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+app.on('before-quit', () => terminals?.killAll())
 app.on('window-all-closed', () => {
+  terminals?.killAll()
   if (process.platform !== 'darwin') app.quit()
 })
