@@ -12,10 +12,16 @@ vi.mock('electron', () => ({
 import { registerTerminalIpc } from './terminal-handlers'
 import type { PtyProcess, PtySpawner } from '../terminal/manager'
 import type { Config } from '../config/schema'
+import type { Ticket } from '../../shared/types'
+const ticket: Ticket = { key: 'PROJ-1', type: 'Bug', status: 'Open', summary: 's', descriptionAdf: null, acceptanceCriteria: null, comments: [], url: 'u' }
+const deps = { getTicket: async () => ticket, prompts: [{ name: 'p', description: '', body: 'Do {{ticket.key}}' }] }
 
 const cfg = {
   defaultTool: 'claude',
+  ticketContext: 'inject',
   cliTools: { claude: { command: 'claude', interactiveArgs: [], yoloArgs: [], promptDelivery: 'stdin' } },
+  defaultForge: 'github',
+  forges: { github: { prCommand: 'gh pr create', term: 'PR', urlPattern: 'x' } },
   repos: []
 } as unknown as Config
 
@@ -38,7 +44,7 @@ describe('registerTerminalIpc', () => {
     const pty = fakePty()
     const spawner: PtySpawner = () => pty as unknown as PtyProcess
     const send = vi.fn()
-    registerTerminalIpc(cfg, () => ({ send } as unknown as Electron.WebContents), spawner)
+    registerTerminalIpc(cfg, () => ({ send } as unknown as Electron.WebContents), spawner, deps)
 
     const res = await handleMap.get('pty:spawn')!({}, { id: 'a', cols: 80, rows: 24 })
     expect(res).toEqual({ ok: true })
@@ -47,16 +53,27 @@ describe('registerTerminalIpc', () => {
   })
 
   it('returns {ok:false} when the launch cannot be built', async () => {
-    registerTerminalIpc(cfg, () => undefined, (() => fakePty() as unknown as PtyProcess))
+    registerTerminalIpc(cfg, () => undefined, (() => fakePty() as unknown as PtyProcess), deps)
     const res = await handleMap.get('pty:spawn')!({}, { id: 'b', tool: 'ghost', cols: 80, rows: 24 })
     expect(res).toEqual({ ok: false, error: expect.stringMatching(/unknown cli tool/i) })
   })
 
   it('routes pty:write to the manager', async () => {
     const pty = fakePty()
-    registerTerminalIpc(cfg, () => undefined, () => pty as unknown as PtyProcess)
+    registerTerminalIpc(cfg, () => undefined, () => pty as unknown as PtyProcess, deps)
     await handleMap.get('pty:spawn')!({}, { id: 'a', cols: 80, rows: 24 })
     onMap.get('pty:write')!({}, 'a', 'typed')
     expect(pty.write).toHaveBeenCalledWith('typed')
+  })
+
+  it('expands a named prompt and writes it to stdin after the boot delay', async () => {
+    vi.useFakeTimers()
+    const pty = fakePty()
+    registerTerminalIpc(cfg, () => undefined, () => pty as unknown as PtyProcess, deps)
+    const res = await handleMap.get('pty:spawn')!({}, { id: 'a', ticketKey: 'PROJ-1', prompt: { name: 'p' }, cols: 80, rows: 24 })
+    expect(res).toEqual({ ok: true })
+    await vi.runAllTimersAsync()
+    expect(pty.write).toHaveBeenCalledWith('Do PROJ-1\r')
+    vi.useRealTimers()
   })
 })

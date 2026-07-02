@@ -11,6 +11,7 @@ export interface SpawnTerminalRequest {
   cwdOverride?: string
   cols: number
   rows: number
+  prompt?: { name?: string; text?: string }
 }
 export interface TerminalDataEvent { id: string; data: string }
 export interface TerminalExitEvent { id: string; exitCode: number }
@@ -24,3 +25,6 @@ export const TERM = {
   data: 'pty:data',
   exit: 'pty:exit'
 } as const
+
+export interface PromptSummary { name: string; description: string }
+export const PROMPTS = { list: 'prompts:list' } as const

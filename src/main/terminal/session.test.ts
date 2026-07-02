@@ -26,4 +26,18 @@ describe('buildInteractiveLaunch', () => {
   it('throws on an unknown tool', () => {
     expect(() => buildInteractiveLaunch(cfg, { tool: 'nope' })).toThrow(/unknown cli tool/i)
   })
+  it('appends an arg-delivery prompt to args', () => {
+    const l = buildInteractiveLaunch(cfg, { tool: 'codex' }, 'DO THIS')
+    expect(l.args).toEqual(['--foo', 'DO THIS'])
+    expect(l.stdinPrompt).toBeUndefined()
+  })
+  it('sets stdinPrompt for a stdin-delivery tool', () => {
+    const l = buildInteractiveLaunch(cfg, { tool: 'claude' }, 'DO THIS')
+    expect(l.args).toEqual([])
+    expect(l.stdinPrompt).toBe('DO THIS')
+  })
+  it('preserves $-sequences in an arg-delivery prompt (no regex-replace mangling)', () => {
+    const l = buildInteractiveLaunch(cfg, { tool: 'codex' }, 'cost $$5 and $& more')
+    expect(l.args).toEqual(['--foo', 'cost $$5 and $& more'])
+  })
 })

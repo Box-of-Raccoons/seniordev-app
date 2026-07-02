@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import TerminalView from './TerminalView.vue'
+import NewSessionMenu from './NewSessionMenu.vue'
 
 defineProps<{ activeTicketKey: string | null }>()
 
-interface Term { id: string; title: string }
+interface Term { id: string; title: string; prompt?: { name?: string; text?: string } }
 const terms = ref<Term[]>([])
 const activeId = ref<string | null>(null)
 let counter = 0
 
-function newSession(): void {
+function startSession(payload: { prompt?: { name?: string; text?: string } }): void {
   counter += 1
   const id = `t${counter}-${Date.now()}`
-  terms.value.push({ id, title: `Session ${counter}` })
+  const title = payload.prompt?.name ? `${payload.prompt.name} ${counter}` : `Session ${counter}`
+  terms.value.push({ id, title, prompt: payload.prompt })
   activeId.value = id
 }
 
@@ -39,7 +41,7 @@ function closeTerm(id: string): void {
           <span class="term-tab__close" @click.stop="closeTerm(t.id)">×</span>
         </button>
       </nav>
-      <button class="new-session" @click="newSession">+ New session</button>
+      <NewSessionMenu @start="startSession" />
     </div>
 
     <div class="term-body">
@@ -50,7 +52,7 @@ function closeTerm(id: string): void {
         :key="t.id"
         class="term-slot"
       >
-        <TerminalView :id="t.id" :ticket-key="activeTicketKey" />
+        <TerminalView :id="t.id" :ticket-key="activeTicketKey" :prompt="t.prompt" />
       </div>
     </div>
   </section>
@@ -66,11 +68,6 @@ function closeTerm(id: string): void {
 }
 .term-tab--active { background: var(--surface-2); color: var(--ink); }
 .term-tab__close { margin-left: 6px; color: var(--ink-muted); }
-.new-session {
-  background: var(--teal); color: var(--bg); border: 0;
-  border-radius: var(--radius-sm); padding: 6px 12px; cursor: pointer; font-weight: 600; white-space: nowrap;
-}
-.new-session:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .term-body { flex: 1; position: relative; overflow: hidden; }
 .term-slot { position: absolute; inset: 0; padding: 6px; }
 </style>
