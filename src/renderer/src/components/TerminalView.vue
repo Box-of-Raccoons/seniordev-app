@@ -48,7 +48,7 @@ onMounted(async () => {
 })
 
 function openPr(): void {
-  if (pr.value) window.api.openExternal(pr.value.url)
+  if (pr.value) void window.api.openExternal(pr.value.url).catch(() => {})
 }
 
 onBeforeUnmount(() => {
