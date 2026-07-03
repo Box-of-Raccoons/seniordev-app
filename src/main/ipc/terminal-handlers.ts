@@ -17,6 +17,8 @@ export interface TerminalDeps {
 
 // Interactive CLIs need a moment to boot before they accept typed input.
 const STDIN_PROMPT_DELAY_MS = 800
+// Gap between pasting the prompt and pressing Enter, so submit is its own event.
+const SUBMIT_DELAY_MS = 200
 
 async function resolveExpandedPrompt(
   config: Config,
@@ -80,12 +82,14 @@ export function registerTerminalIpc(
         const prompt = launch.stdinPrompt
         // Modern CLI TUIs enable bracketed paste; framing the (often multi-line)
         // prompt with \x1b[200~ … \x1b[201~ stops each embedded newline from
-        // registering as Enter and submitting a fragment. The trailing CR then
-        // submits the whole prompt once.
-        setTimeout(
-          () => manager.write(req.id, '\x1b[200~' + prompt + '\x1b[201~\r'),
-          STDIN_PROMPT_DELAY_MS
-        )
+        // registering as Enter and submitting a fragment.
+        setTimeout(() => {
+          manager.write(req.id, '\x1b[200~' + prompt + '\x1b[201~')
+          // Enter must be a SEPARATE keystroke, a beat after the paste — bundled
+          // into the same write the TUI swallows it as part of the paste and the
+          // prompt just sits in the input unsent.
+          setTimeout(() => manager.write(req.id, '\r'), SUBMIT_DELAY_MS)
+        }, STDIN_PROMPT_DELAY_MS)
       }
       return { ok: true }
     } catch (err) {
