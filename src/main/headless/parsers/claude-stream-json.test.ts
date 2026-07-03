@@ -46,4 +46,12 @@ describe('ClaudeStreamJsonParser', () => {
     expect(p.feed(half)).toEqual([])
     expect(p.feed(TEXT.slice(40) + '\n')).toEqual([{ kind: 'log', text: 'Opening a PR now.' }])
   })
+  it('treats valid-JSON primitives and arrays as raw log, not events', () => {
+    const p = new ClaudeStreamJsonParser()
+    expect(p.feed('null\n[1,2,3]\n"str"\n')).toEqual([
+      { kind: 'log', text: 'null' },
+      { kind: 'log', text: '[1,2,3]' },
+      { kind: 'log', text: '"str"' }
+    ])
+  })
 })

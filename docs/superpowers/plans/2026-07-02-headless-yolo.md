@@ -499,6 +499,13 @@ describe('CodexJsonlParser', () => {
     const p = new CodexJsonlParser()
     expect(p.feed('warning: something\n')).toEqual([{ kind: 'log', text: 'warning: something' }])
   })
+  it('treats valid-JSON primitives and arrays as raw log, not events', () => {
+    const p = new CodexJsonlParser()
+    expect(p.feed('null\n[1,2,3]\n')).toEqual([
+      { kind: 'log', text: 'null' },
+      { kind: 'log', text: '[1,2,3]' }
+    ])
+  })
 })
 ```
 
@@ -548,6 +555,11 @@ export class CodexJsonlParser implements StreamParser {
     try {
       ev = JSON.parse(l) as Record<string, unknown>
     } catch {
+      return [{ kind: 'log', text: l }]
+    }
+    // JSON.parse also accepts primitives and arrays ('null', '[1]', '"x"') —
+    // not events; treat them as noise too instead of throwing on .type access.
+    if (typeof ev !== 'object' || ev === null || Array.isArray(ev)) {
       return [{ kind: 'log', text: l }]
     }
     const item = ev.item as { type?: string; command?: string; text?: string } | undefined

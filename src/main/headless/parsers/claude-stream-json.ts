@@ -27,6 +27,11 @@ export class ClaudeStreamJsonParser implements StreamParser {
     } catch {
       return [{ kind: 'log', text: l }] // stdout noise — never lose it
     }
+    // JSON.parse also accepts primitives and arrays ('null', '[1]', '"x"') —
+    // not events; treat them as noise too instead of throwing on .type access.
+    if (typeof ev !== 'object' || ev === null || Array.isArray(ev)) {
+      return [{ kind: 'log', text: l }]
+    }
     if (ev.type === 'system' && ev.subtype === 'init' && typeof ev.session_id === 'string') {
       return [
         { kind: 'session', id: ev.session_id },
