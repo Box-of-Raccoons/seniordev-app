@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, STARTUP, YOLO, MENU, APP, type GetTicketResult, type PromptSummary } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, STARTUP, YOLO, MENU, APP, CONFIG, type GetTicketResult, type PromptSummary } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
-import type { MenuAction, AppInfo } from '../shared/ipc'
+import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo } from '../shared/ipc'
 
 const api = {
   getTicket: (key: string): Promise<GetTicketResult> => ipcRenderer.invoke(IPC.getTicket, key),
@@ -47,7 +47,16 @@ const api = {
     ipcRenderer.on(MENU.action, listener)
     return () => ipcRenderer.off(MENU.action, listener)
   },
-  getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(APP.info)
+  getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(APP.info),
+  readConfig: (): Promise<ConfigReadResult> => ipcRenderer.invoke(CONFIG.read),
+  saveConfig: (text: string): Promise<SaveResult> => ipcRenderer.invoke(CONFIG.save, text),
+  onConfigChanged: (cb: () => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent): void => cb()
+    ipcRenderer.on(CONFIG.changed, listener)
+    return () => ipcRenderer.off(CONFIG.changed, listener)
+  },
+  readRecap: (): Promise<RecapInfo> => ipcRenderer.invoke(CONFIG.readRecap),
+  saveRecap: (text: string): Promise<SaveResult> => ipcRenderer.invoke(CONFIG.saveRecap, text)
 }
 
 contextBridge.exposeInMainWorld('api', api)

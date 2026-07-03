@@ -11,6 +11,7 @@ import { registerYoloIpc } from './ipc/yolo-handlers'
 import { registerPromptsIpc } from './ipc/prompts-handlers'
 import { registerShellIpc } from './ipc/shell-handlers'
 import { registerAppIpc } from './ipc/app-handlers'
+import { registerConfigIpc } from './ipc/config-handlers'
 import { installMenu } from './menu'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
 import { nodeHeadlessSpawner } from './headless/node-spawner'
@@ -69,6 +70,7 @@ app.whenReady().then(() => {
   terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand })
   yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand })
   registerAppIpc()
+  registerConfigIpc(store, getSender)
   installMenu(getSender)
 
   createWindow()

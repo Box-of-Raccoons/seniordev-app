@@ -69,3 +69,11 @@ export const MENU = { action: 'menu:action' } as const
 
 export interface AppInfo { name: string; version: string }
 export const APP = { info: 'app:info' } as const
+
+export type ConfigReadResult = { ok: true; text: string; path: string; isTemplate?: boolean } | { ok: false; error: string }
+export type SaveResult = { ok: true } | { ok: false; error: string }
+export interface RecapInfo { text: string; isDefault: boolean }
+export const CONFIG = {
+  read: 'config:read', save: 'config:save', changed: 'config:changed',
+  readRecap: 'config:readRecap', saveRecap: 'config:saveRecap'
+} as const
