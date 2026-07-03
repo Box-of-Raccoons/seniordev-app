@@ -6,10 +6,26 @@ import type { ResolvedCommand } from './resolve-command'
 const cfg = {
   defaultTool: 'claude',
   cliTools: {
-    claude: { command: 'claude', interactiveArgs: [], yoloArgs: ['--permission-mode', 'bypassPermissions'], promptDelivery: 'stdin' },
-    codex: { command: 'codex', interactiveArgs: ['--foo'], yoloArgs: ['--yolo'], promptDelivery: 'arg', promptArg: '{{prompt}}' }
+    claude: { command: 'claude', interactiveArgs: [], promptDelivery: 'stdin' },
+    codex: { command: 'codex', interactiveArgs: ['--foo'], promptDelivery: 'arg', promptArg: '{{prompt}}' }
   },
   repos: [{ key: 'PROJ', path: 'C:/code/backend', branchPrefix: '' }]
+} as unknown as Config
+
+const resumeCfg = {
+  defaultTool: 'claude',
+  cliTools: {
+    claude: { command: 'claude', interactiveArgs: ['--ide'], resumeArgs: ['--resume', '{{sessionId}}'], promptDelivery: 'stdin' }
+  },
+  repos: []
+} as unknown as Config
+
+const noResumeArgsCfg = {
+  defaultTool: 'claude',
+  cliTools: {
+    claude: { command: 'claude', interactiveArgs: [], promptDelivery: 'stdin' }
+  },
+  repos: []
 } as unknown as Config
 
 describe('buildInteractiveLaunch', () => {
@@ -41,10 +57,17 @@ describe('buildInteractiveLaunch', () => {
     const l = buildInteractiveLaunch(cfg, { tool: 'codex' }, 'cost $$5 and $& more')
     expect(l.args).toEqual(['--foo', 'cost $$5 and $& more'])
   })
-  it('uses yoloArgs when yolo is set', () => {
-    const l = buildInteractiveLaunch(cfg, { tool: 'claude', yolo: true }, 'GO')
-    expect(l.args).toEqual(['--permission-mode', 'bypassPermissions'])
-    expect(l.stdinPrompt).toBe('GO')
+  it('appends expanded resumeArgs after interactiveArgs', () => {
+    const launch = buildInteractiveLaunch(resumeCfg, { resume: { sessionId: 'abc-123' } })
+    expect(launch.args).toEqual(['--ide', '--resume', 'abc-123'])
+  })
+  it('ignores resume when the tool has no resumeArgs', () => {
+    const launch = buildInteractiveLaunch(noResumeArgsCfg, { resume: { sessionId: 'abc' } })
+    expect(launch.args).toEqual([])
+  })
+  it('preserves a literal $ in a resumed session id', () => {
+    const launch = buildInteractiveLaunch(resumeCfg, { resume: { sessionId: 'a$&b' } })
+    expect(launch.args).toEqual(['--ide', '--resume', 'a$&b'])
   })
 
   it('downgrades arg-delivery to stdin when the command is a shell shim', () => {

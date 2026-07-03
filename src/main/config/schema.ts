@@ -9,7 +9,6 @@ export const HeadlessSchema = z.object({
 export const CliToolSchema = z.object({
   command: z.string().min(1),
   interactiveArgs: z.array(z.string()).default([]),
-  yoloArgs: z.array(z.string()).default([]),
   promptDelivery: z.enum(['stdin', 'arg']).default('stdin'),
   promptArg: z.string().optional(),
   headless: HeadlessSchema.optional(),

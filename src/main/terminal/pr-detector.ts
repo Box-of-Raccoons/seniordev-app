@@ -17,29 +17,6 @@ export function buildForgePatterns(config: Config): ForgePattern[] {
   return out
 }
 
-export class PrDetector {
-  private buffer = ''
-  private found = false
-
-  constructor(
-    private readonly patterns: ForgePattern[],
-    private readonly maxBuffer = 8192
-  ) {}
-
-  feed(chunk: string): { url: string; term: string } | null {
-    if (this.found) return null
-    this.buffer = (this.buffer + chunk).slice(-this.maxBuffer)
-    for (const p of this.patterns) {
-      const m = this.buffer.match(p.regex)
-      if (m) {
-        this.found = true
-        return { url: m[0], term: p.term }
-      }
-    }
-    return null
-  }
-}
-
 // Collect-all variant for headless YOLO: every distinct PR/MR URL, in first-seen
 // order, across the whole run (a monorepo run can open several).
 export class PrCollector {

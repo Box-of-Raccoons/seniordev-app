@@ -12,7 +12,7 @@ export interface Launch {
 
 export function buildInteractiveLaunch(
   config: Config,
-  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; yolo?: boolean },
+  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; resume?: { sessionId: string } },
   expandedPrompt?: string,
   resolveCommand?: (command: string) => ResolvedCommand | undefined
 ): Launch {
@@ -20,7 +20,12 @@ export function buildInteractiveLaunch(
   const tool = config.cliTools[toolName]
   if (!tool) throw new Error(`Unknown CLI tool: ${toolName}`)
   const cwd = resolveCwd(config, opts.ticketKey, opts.cwdOverride)
-  const args = [...(opts.yolo ? tool.yoloArgs : tool.interactiveArgs)]
+  // Function replacer: a literal '$' in a session id must not trigger $&-style patterns.
+  const resumeArgs =
+    opts.resume && tool.resumeArgs
+      ? tool.resumeArgs.map((a) => a.replace('{{sessionId}}', () => opts.resume!.sessionId))
+      : []
+  const args = [...tool.interactiveArgs, ...resumeArgs]
   const resolved = resolveCommand?.(tool.command)
 
   // Deliver the prompt as a launch arg ONLY when it can't be re-parsed by cmd.exe.

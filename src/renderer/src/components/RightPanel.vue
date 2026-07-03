@@ -64,7 +64,7 @@ function markExited(id: string): void {
         :key="t.id"
         class="term-slot"
       >
-        <TerminalView :id="t.id" :ticket-key="activeTicketKey" :prompt="t.prompt" :yolo="t.yolo" :tool="t.tool" @exited="markExited(t.id)" />
+        <TerminalView :id="t.id" :ticket-key="activeTicketKey" :prompt="t.prompt" :tool="t.tool" @exited="markExited(t.id)" />
       </div>
     </div>
   </section>

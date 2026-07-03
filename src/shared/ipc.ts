@@ -12,7 +12,7 @@ export interface SpawnTerminalRequest {
   cols: number
   rows: number
   prompt?: { name?: string; text?: string }
-  yolo?: boolean
+  resume?: { sessionId: string }
 }
 export interface TerminalDataEvent { id: string; data: string }
 export interface TerminalExitEvent { id: string; exitCode: number }
@@ -24,14 +24,12 @@ export const TERM = {
   resize: 'pty:resize',
   kill: 'pty:kill',
   data: 'pty:data',
-  exit: 'pty:exit',
-  pr: 'pty:pr'
+  exit: 'pty:exit'
 } as const
 
 export interface PromptSummary { name: string; description: string }
 export const PROMPTS = { list: 'prompts:list' } as const
 
-export interface TerminalPrEvent { id: string; url: string; term: string }
 export const SHELL = { openExternal: 'shell:openExternal' } as const
 
 export interface StartupSession {

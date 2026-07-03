@@ -6,7 +6,6 @@ import { buildInteractiveLaunch } from '../terminal/session'
 import type { ResolvedCommand } from '../terminal/resolve-command'
 import { TERM, type SpawnTerminalRequest, type SpawnResult } from '../../shared/ipc'
 import type { PromptTemplate } from '../prompts/library'
-import { PrDetector, buildForgePatterns } from '../terminal/pr-detector'
 import { resolveExpandedPrompt } from './resolve-prompt'
 
 export interface TerminalDeps {
@@ -35,7 +34,6 @@ export function registerTerminalIpc(
   spawner: PtySpawner,
   deps: TerminalDeps
 ): TerminalManager {
-  const detectors = new Map<string, PrDetector>()
   // Per-session prompt-delivery state: output activity + the live timer handle.
   const pendingPrompts = new Map<string, { sawData: boolean; lastData: number }>()
   const promptTimers = new Map<string, NodeJS.Timeout>()
@@ -52,15 +50,9 @@ export function registerTerminalIpc(
       getSender()?.send(TERM.data, { id, data })
       const pend = pendingPrompts.get(id)
       if (pend) { pend.sawData = true; pend.lastData = Date.now() }
-      const det = detectors.get(id)
-      if (det) {
-        const hit = det.feed(data)
-        if (hit) getSender()?.send(TERM.pr, { id, url: hit.url, term: hit.term })
-      }
     },
     onExit: (id, exitCode) => {
       getSender()?.send(TERM.exit, { id, exitCode })
-      detectors.delete(id)
       cancelPendingPrompt(id)
     }
   })
@@ -96,7 +88,6 @@ export function registerTerminalIpc(
         rows: req.rows,
         resolved: launch.resolved
       })
-      if (req.yolo) detectors.set(req.id, new PrDetector(buildForgePatterns(config)))
       // NOTE: no bracketed-paste framing here — the raw ESC of \x1b[200~ registers
       // as the Escape key in these TUIs (clears the composer / exits dialogs).
       if (launch.stdinPrompt) deliverPromptWhenReady(req.id, launch.stdinPrompt)

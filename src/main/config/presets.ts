@@ -2,8 +2,6 @@ export const CLI_PRESETS = {
   claude: {
     command: 'claude',
     interactiveArgs: [],
-    // Legacy PTY-YOLO args — removed in the headless-YOLO cleanup task.
-    yoloArgs: ['--permission-mode', 'auto'],
     promptDelivery: 'stdin',
     headless: {
       // Verified against claude 2.1.191: stdin prompt + stream-json output;
@@ -16,7 +14,6 @@ export const CLI_PRESETS = {
   codex: {
     command: 'codex',
     interactiveArgs: [],
-    yoloArgs: ['--yolo'],
     promptDelivery: 'arg',
     promptArg: '{{prompt}}',
     headless: {
