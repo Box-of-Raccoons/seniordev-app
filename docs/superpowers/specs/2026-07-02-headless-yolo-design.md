@@ -92,7 +92,9 @@ A new module beside `terminal/`, fully separate from the PTY path.
   the configured parser.
 - **`parsers/`** — one interface, three implementations:
   `feed(chunk) → ParsedEvent[]` where an event is
-  `{kind: 'log', text}` | `{kind: 'session', id}` | `{kind: 'result', text}`.
+  `{kind: 'log', text}` | `{kind: 'session', id}`.
+  `result`-kind events were dropped during implementation — the final assistant
+  text already carries the recap; the runner needs only `log` and `session`.
   - `claude-stream-json.ts` — splits JSONL; assistant text verbatim, tool calls
     as one-liners (e.g. `▸ Edit src/foo.ts`); session id from the init event.
   - `codex-jsonl.ts` — equivalent mapping for `codex exec --json` events.
@@ -110,12 +112,16 @@ YOLO.start  (invoke)  { id, tool?, ticketKey?, cwdOverride?, prompt: {name?|text
                       → { ok: true } | { ok: false, error }
 YOLO.log    (event)   { id, text }                       — streamed log lines
 YOLO.pr     (event)   { id, url, term }                  — each PR as detected
-YOLO.exit   (event)   { id, exitCode, sessionId?, cwd, prUrls: [] }
+YOLO.exit   (event)   { id, exitCode, sessionId?, cwd, tool, canResume, prUrls[] }
 YOLO.kill   (send)    { id }                             — close tab mid-run (tree-kill)
 ```
 
-`YOLO.exit` carries everything resume needs: the captured session id and the
-**cwd the run actually used** (the resume tab must spawn in the same repo).
+`YOLO.exit` carries everything resume needs: the captured session id, the
+**cwd the run actually used** (the resume tab must spawn in the same repo),
+`tool` (the tool name used for the run), and `canResume` (pre-computed boolean:
+`true` when a session id was captured and the tool's `resumeArgs` is configured).
+The renderer uses `tool` and `canResume` directly to render the Resume button
+without needing to consult the tool registry.
 
 `SpawnTerminalRequest` gains one optional field, `resume?: { sessionId: string }`;
 `buildInteractiveLaunch` appends the tool's expanded `resumeArgs` to
