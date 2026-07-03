@@ -10,9 +10,10 @@ beforeEach(() => {
 })
 
 describe('AboutModal', () => {
-  it('shows name, version, and the credit line', async () => {
+  it('shows the mascot, name, version, and the credit line', async () => {
     const w = mount(AboutModal)
     await flushPromises()
+    expect(w.get('img.about__mascot').attributes('src')).toBeTruthy()
     expect(w.text()).toContain('SeniorDev')
     expect(w.text()).toContain('v1.2.3')
     expect(w.text()).toContain('By Box of Raccoons LLC, 2026')
