@@ -8,10 +8,23 @@ export function parseStartupArgs(argv: string[], readFile: (p: string) => string
   let promptName: string | undefined
   let promptText: string | undefined
   let tool: string | undefined
+  let orchestrate: string | undefined
+  let minimized = false
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
-    if (a === '--interactive') mode = mode ?? 'interactive'
+    if (a === '--minimized') minimized = true
+    else if (a === '--orchestrate') {
+      // Run the Jira Orchestrator on the next arg (a ticket key), no confirm gate.
+      const next = argv[i + 1]
+      if (next !== undefined && !next.startsWith('-') && isTicketKey(next)) {
+        orchestrate = next.toUpperCase()
+        i++
+      } else {
+        warnings.push('--orchestrate requires a ticket key (e.g. --orchestrate SD-6)')
+      }
+    }
+    else if (a === '--interactive') mode = mode ?? 'interactive'
     else if (a === '--yolo') {
       mode = 'yolo'
       // Only consume the next token as a prompt name if it is not a flag and does not
@@ -45,5 +58,11 @@ export function parseStartupArgs(argv: string[], readFile: (p: string) => string
   const hasSession =
     mode !== undefined || promptName !== undefined || promptText !== undefined || tool !== undefined
   const session = hasSession ? { mode: mode ?? 'interactive', promptName, promptText, tool } : undefined
-  return { tickets, session, ...(warnings.length ? { warnings } : {}) }
+  return {
+    tickets,
+    session,
+    ...(orchestrate ? { orchestrate } : {}),
+    ...(minimized ? { minimized } : {}),
+    ...(warnings.length ? { warnings } : {})
+  }
 }

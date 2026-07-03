@@ -5,6 +5,7 @@ import type { DeepLink, MenuAction } from '../../shared/ipc'
 
 let menuCb: (a: MenuAction) => void
 let deepLinkCb: (l: DeepLink) => void
+let orchestrateCb: (ticket: string) => void
 
 // Shared spies for the panel stubs; App holds template refs to these and drives
 // them via defineExpose-equivalent Options API methods (exposed by default).
@@ -62,6 +63,10 @@ beforeEach(() => {
       return () => {}
     }),
     deepLinkReady: vi.fn(),
+    onOrchestrate: vi.fn((cb) => {
+      orchestrateCb = cb
+      return () => {}
+    }),
     getTicket: vi.fn().mockResolvedValue({ ok: true, ticket: { key: 'SD-6', summary: 'Fix the thing' } }),
     getAppInfo: vi.fn().mockResolvedValue({ name: 'SeniorDev', version: '1.0.0' })
   }
@@ -205,5 +210,26 @@ describe('App deep link flow', () => {
     expect(w.findComponent({ name: 'ConfirmDialog' }).exists()).toBe(true)
     await w.find('.confirm-yes').trigger('click')
     expect(rightStartOrchestrator).toHaveBeenCalledWith('SD-6')
+  })
+
+  it('a cold-start startup.orchestrate runs the orchestrator with NO confirm gate', async () => {
+    ;(window.api.getStartup as ReturnType<typeof vi.fn>).mockResolvedValue({
+      tickets: [],
+      orchestrate: 'SD-6'
+    })
+    const w = mountApp()
+    await flushPromises()
+    expect(leftOpenTickets).toHaveBeenCalledWith(['SD-6'])
+    expect(rightStartOrchestrator).toHaveBeenCalledWith('SD-6')
+    expect(w.findComponent({ name: 'ConfirmDialog' }).exists()).toBe(false)
+  })
+
+  it('a warm ORCHESTRATOR.run runs the orchestrator with no gate', async () => {
+    const w = mountApp()
+    await flushPromises()
+    orchestrateCb('SD-7')
+    await flushPromises()
+    expect(rightStartOrchestrator).toHaveBeenCalledWith('SD-7')
+    expect(w.findComponent({ name: 'ConfirmDialog' }).exists()).toBe(false)
   })
 })

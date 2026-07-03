@@ -21,7 +21,7 @@ import { nodeHeadlessSpawner } from './headless/node-spawner'
 import { systemResolveCommand } from './terminal/resolve-command'
 import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './deeplink/parse'
 import { DeepLinkDelivery } from './deeplink/delivery'
-import { DEEPLINK } from '../shared/ipc'
+import { DEEPLINK, ORCHESTRATOR } from '../shared/ipc'
 import type { TerminalManager } from './terminal/manager'
 import type { YoloRunner } from './headless/runner'
 
@@ -53,7 +53,7 @@ const deepLinks = new DeepLinkDelivery({
   }
 })
 
-function createWindow(): void {
+function createWindow(minimized = false): void {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -63,7 +63,12 @@ function createWindow(): void {
     webPreferences: { preload: join(__dirname, '../preload/index.mjs'), sandbox: false }
   })
   mainWindow = win
-  win.on('ready-to-show', () => win.show())
+  // A watcher-launched run starts minimized (visible in the taskbar, not stealing
+  // focus); a normal launch shows and focuses.
+  win.on('ready-to-show', () => {
+    if (minimized) { win.showInactive(); win.minimize() }
+    else win.show()
+  })
   win.on('closed', () => {
     mainWindow = null
     deepLinks.windowClosed()
@@ -99,6 +104,14 @@ if (!gotLock) {
   // (`seniordev PROJ-123` while running) are forwarded as open links — before
   // the single-instance lock they opened in their own instance.
   app.on('second-instance', (_e, argv) => {
+    // A warm `--orchestrate <ticket>` (from SeniorDevWatch): run it in a new tab
+    // with no confirm gate. CLI-only, so it's not a web-reachable bypass.
+    const opts = parseStartupArgs(argv.slice(1), () => '')
+    if (opts.orchestrate) {
+      if (!opts.minimized) focusMainWindow()
+      mainWindow?.webContents.send(ORCHESTRATOR.run, opts.orchestrate)
+      return
+    }
     focusMainWindow()
     for (const link of linksFromArgv(argv)) deepLinks.deliver(link)
   })
@@ -169,7 +182,7 @@ if (!gotLock) {
     registerPromptConfigIpc(store, getSender)
     installMenu(getSender)
 
-    createWindow()
+    createWindow(startup.minimized)
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
