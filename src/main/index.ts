@@ -4,18 +4,15 @@ import { readFileSync } from 'node:fs'
 import { defaultConfigDir } from './config/paths'
 import { parseStartupArgs } from './cli/parse-args'
 import { registerStartupIpc } from './ipc/startup-handlers'
-import { loadConfig } from './config/load'
-import { JiraClient } from './jira/client'
+import { ConfigStore } from './config/store'
 import { registerIpc } from './ipc/handlers'
 import { registerTerminalIpc } from './ipc/terminal-handlers'
 import { registerYoloIpc } from './ipc/yolo-handlers'
 import { registerPromptsIpc } from './ipc/prompts-handlers'
 import { registerShellIpc } from './ipc/shell-handlers'
-import { loadPrompts } from './prompts/library'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
 import { nodeHeadlessSpawner } from './headless/node-spawner'
 import { systemResolveCommand } from './terminal/resolve-command'
-import type { Config } from './config/schema'
 import type { TerminalManager } from './terminal/manager'
 import type { YoloRunner } from './headless/runner'
 
@@ -23,25 +20,7 @@ function resolveConfigPath(): string {
   return process.env.SENIORDEV_CONFIG ?? join(defaultConfigDir(), 'config.yaml')
 }
 
-function resolvePromptsDir(cfg: Config): string {
-  return cfg.promptsDir ?? join(defaultConfigDir(), 'prompts')
-}
-
-let loadedConfig: Config | null = null
-
-function buildGetTicket(): (key: string) => Promise<import('../shared/types').Ticket> {
-  try {
-    const cfg = loadConfig(resolveConfigPath())
-    loadedConfig = cfg
-    const client = new JiraClient(cfg.jira)
-    return (key) => client.fetchIssue(key)
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    return async () => {
-      throw new Error(`Config not loaded (${resolveConfigPath()}): ${msg}`)
-    }
-  }
-}
+const store = new ConfigStore(resolveConfigPath())
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -74,29 +53,19 @@ app.whenReady().then(() => {
     })
   }
 
-  registerIpc(buildGetTicket())
+  const boot = store.reload()
+  if (!boot.ok) console.error('[config]', boot.error)
+
+  registerIpc(store.getTicket)
   registerShellIpc()
   const startup = parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8'))
   for (const w of startup.warnings ?? []) console.error('[startup]', w)
   registerStartupIpc(startup)
-  if (loadedConfig) {
-    const cfg = loadedConfig
-    const client = new JiraClient(cfg.jira)
-    const prompts = loadPrompts(resolvePromptsDir(cfg))
-    registerPromptsIpc(prompts)
-    terminals = registerTerminalIpc(
-      cfg,
-      () => BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents,
-      nodePtySpawner,
-      { getTicket: (key) => client.fetchIssue(key), prompts, resolveCommand: systemResolveCommand }
-    )
-    yolo = registerYoloIpc(
-      cfg,
-      () => BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents,
-      nodeHeadlessSpawner,
-      { getTicket: (key) => client.fetchIssue(key), prompts, resolveCommand: systemResolveCommand }
-    )
-  }
+  registerPromptsIpc(store.prompts)
+  const getSender = (): Electron.WebContents | undefined =>
+    BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents
+  terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand })
+  yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand })
 
   createWindow()
   app.on('activate', () => {

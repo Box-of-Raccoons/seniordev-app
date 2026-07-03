@@ -40,7 +40,6 @@ function fakeChild(): HeadlessChild & {
 }
 
 const ticket: Ticket = { key: 'PROJ-1', type: 'Bug', status: 'Open', summary: 's', descriptionAdf: null, acceptanceCriteria: null, comments: [], url: 'u' }
-const deps = { getTicket: async () => ticket, prompts: [] }
 
 const config = ConfigSchema.parse({
   jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' },
@@ -56,13 +55,15 @@ const config = ConfigSchema.parse({
   repos: [{ key: 'PROJ', path: 'C:/repos/proj' }]
 })
 
+const source = { config, loadError: null, prompts: [], getTicket: async () => ticket }
+
 beforeEach(() => { handleMap.clear(); onMap.clear() })
 
 describe('yolo handlers', () => {
   it('start: expands prompt, spawns headless, streams log/pr, exit carries resume payload', async () => {
     const child = fakeChild()
     const send = vi.fn()
-    registerYoloIpc(config, () => ({ send } as unknown as Electron.WebContents), () => child, deps)
+    registerYoloIpc(() => ({ send } as unknown as Electron.WebContents), () => child, { source })
 
     const res = (await handleMap.get(YOLO.start)!({}, { id: 'y1', ticketKey: 'PROJ-1', prompt: { text: 'work {{ticket.key}}' } })) as SpawnResult
     expect(res).toEqual({ ok: true })
@@ -89,20 +90,29 @@ describe('yolo handlers', () => {
 
   it('start without a prompt returns ok:false', async () => {
     const child = fakeChild()
-    registerYoloIpc(config, () => undefined, () => child, deps)
+    registerYoloIpc(() => undefined, () => child, { source })
     const res = (await handleMap.get(YOLO.start)!({}, { id: 'y2' })) as SpawnResult
     expect(res).toEqual({ ok: false, error: expect.stringMatching(/requires a prompt/) })
   })
 
   it('caps reflects whether the default tool has a headless block', () => {
     const child = fakeChild()
-    registerYoloIpc(config, () => undefined, () => child, deps)
+    registerYoloIpc(() => undefined, () => child, { source })
     expect(handleMap.get(YOLO.caps)!({})).toEqual({ available: true })
+  })
+
+  it('caps reports unavailable and start errors cleanly when config is not loaded', async () => {
+    const child = fakeChild()
+    const nullSource = { config: null, loadError: 'boom', prompts: [], getTicket: vi.fn() }
+    registerYoloIpc(() => undefined, () => child, { source: nullSource })
+    expect(handleMap.get(YOLO.caps)!({})).toEqual({ available: false })
+    const res = (await handleMap.get(YOLO.start)!({}, { id: 'yn', prompt: { text: 'go' } })) as SpawnResult
+    expect(res).toEqual({ ok: false, error: expect.stringMatching(/Config not loaded/) })
   })
 
   it('kill forwards to the runner', async () => {
     const child = fakeChild()
-    registerYoloIpc(config, () => undefined, () => child, deps)
+    registerYoloIpc(() => undefined, () => child, { source })
     await handleMap.get(YOLO.start)!({}, { id: 'y1', ticketKey: 'PROJ-1', prompt: { text: 'go' } })
     onMap.get(YOLO.kill)!({}, 'y1')
     expect(child.killed).toBe(true)

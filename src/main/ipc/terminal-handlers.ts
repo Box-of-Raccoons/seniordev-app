@@ -1,16 +1,13 @@
 import { ipcMain } from 'electron'
-import type { Config } from '../config/schema'
-import type { Ticket } from '../../shared/types'
+import { requireConfig, type ConfigSource } from '../config/store'
 import { TerminalManager, type PtySpawner } from '../terminal/manager'
 import { buildInteractiveLaunch } from '../terminal/session'
 import type { ResolvedCommand } from '../terminal/resolve-command'
 import { TERM, type SpawnTerminalRequest, type SpawnResult } from '../../shared/ipc'
-import type { PromptTemplate } from '../prompts/library'
 import { resolveExpandedPrompt } from './resolve-prompt'
 
 export interface TerminalDeps {
-  getTicket: (key: string) => Promise<Ticket>
-  prompts: PromptTemplate[]
+  source: ConfigSource
   resolveCommand?: (command: string) => ResolvedCommand | undefined
 }
 
@@ -29,7 +26,6 @@ const SUBMIT_DELAY_MS = 300
 const MAX_WAIT_MS = 15000
 
 export function registerTerminalIpc(
-  config: Config,
   getSender: () => Electron.WebContents | undefined,
   spawner: PtySpawner,
   deps: TerminalDeps
@@ -78,7 +74,8 @@ export function registerTerminalIpc(
 
   ipcMain.handle(TERM.spawn, async (_e, req: SpawnTerminalRequest): Promise<SpawnResult> => {
     try {
-      const expanded = await resolveExpandedPrompt(config, deps, req)
+      const config = requireConfig(deps.source)
+      const expanded = await resolveExpandedPrompt(config, deps.source, req)
       const launch = buildInteractiveLaunch(config, req, expanded, deps.resolveCommand)
       manager.spawn(req.id, {
         file: launch.file,
