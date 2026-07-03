@@ -63,3 +63,9 @@ export const YOLO = {
   start: 'yolo:start', log: 'yolo:log', pr: 'yolo:pr',
   exit: 'yolo:exit', kill: 'yolo:kill', caps: 'yolo:caps'
 } as const
+
+export type MenuAction = 'new-session' | 'app-config' | 'prompt-config' | 'about'
+export const MENU = { action: 'menu:action' } as const
+
+export interface AppInfo { name: string; version: string }
+export const APP = { info: 'app:info' } as const

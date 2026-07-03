@@ -10,6 +10,8 @@ import { registerTerminalIpc } from './ipc/terminal-handlers'
 import { registerYoloIpc } from './ipc/yolo-handlers'
 import { registerPromptsIpc } from './ipc/prompts-handlers'
 import { registerShellIpc } from './ipc/shell-handlers'
+import { registerAppIpc } from './ipc/app-handlers'
+import { installMenu } from './menu'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
 import { nodeHeadlessSpawner } from './headless/node-spawner'
 import { systemResolveCommand } from './terminal/resolve-command'
@@ -66,6 +68,8 @@ app.whenReady().then(() => {
     BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents
   terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand })
   yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand })
+  registerAppIpc()
+  installMenu(getSender)
 
   createWindow()
   app.on('activate', () => {
