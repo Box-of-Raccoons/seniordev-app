@@ -182,6 +182,7 @@ Either way, when a run is committed the ticket is transitioned to `In Progress` 
 
 - **No matching repo** — a ticket whose project key has no entry in `repos` is skipped with a "no repo configured" notification. It is never run in the wrong place.
 - **Failed classification** — if the classifier can't route a ticket (non-zero exit, malformed output, an unknown or null playbook), the failure is recorded in `watch-state.json` so the ticket isn't re-classified every tick. To retry it, remove that ticket's key from `watch-state.json` (and fix whatever caused the failure).
+- **Long-running / hung runs** — runs are sequential, so one stuck classify or run would otherwise block the queue. Set `watch.runWarnSeconds` (0 = off) and, when a phase exceeds it, you get a notification you can click to kill that run — freeing the queue. The killed run reports as a normal failure/non-zero exit.
 
 ## Develop
 

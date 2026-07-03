@@ -20,8 +20,12 @@ function configPath(): string {
 function statePath(): string {
   return join(defaultConfigDir(), 'watch-state.json')
 }
-function iconsDir(): string {
-  return app.isPackaged ? join(process.resourcesPath, 'assets') : join(app.getAppPath(), 'assets')
+// The built tray entry is out/main/watch.js, so repo assets/ sits two levels up
+// in dev; packaged builds ship assets/ under resourcesPath (electron-builder).
+function assetPath(file: string): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'assets', file)
+    : join(__dirname, '..', '..', 'assets', file)
 }
 
 // Single instance: a second tray launch just exits.
@@ -37,9 +41,10 @@ if (!app.requestSingleInstanceLock()) {
     const boot = store.reload()
     const state = new WatchState(statePath())
 
-    const idleIcon = nativeImage.createFromPath(join(iconsDir(), 'raccoon-asleep.png'))
-    const busyIcon = nativeImage.createFromPath(join(iconsDir(), 'raccoon-hardhat.png'))
-    const tray = new Tray(idleIcon)
+    // Tray icons must be small (~16px); the source mascot.png is 1024² and shows
+    // blank in the tray unless resized.
+    const trayIcon = nativeImage.createFromPath(assetPath('mascot.png')).resize({ width: 16, height: 16 })
+    const tray = new Tray(trayIcon)
 
     let paused = false
     let lastPoll = 'never'
@@ -103,6 +108,11 @@ if (!app.requestSingleInstanceLock()) {
           }
         })
       },
+      kill: (key: string) => {
+        // Only one of these is live at a time; killing a stale id is a no-op.
+        classifyEngine.kill(`watch-classify:${key}`)
+        yolo.kill(`watch-run:${key}`)
+      },
       state,
       notify,
       isAuto,
@@ -110,7 +120,9 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     const refreshMenu = (): void => {
-      tray.setImage(dispatcher.inFlightCount > 0 ? busyIcon : idleIcon)
+      tray.setToolTip(
+        dispatcher.inFlightCount > 0 ? `SeniorDevWatch — ${dispatcher.inFlightCount} running` : 'SeniorDevWatch — idle'
+      )
       const menu = Menu.buildFromTemplate([
         { label: `SeniorDevWatch — last poll ${lastPoll}`, enabled: false },
         { label: `${dispatcher.inFlightCount} running · ${dispatcher.pendingCount} awaiting approval`, enabled: false },

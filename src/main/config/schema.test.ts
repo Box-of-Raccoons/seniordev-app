@@ -35,7 +35,8 @@ describe('WatchSchema', () => {
       label: 'SeniorDev',
       triggerStatusCategory: 'To Do',
       transitionOnDispatch: 'In Progress',
-      autoMode: false
+      autoMode: false,
+      runWarnSeconds: 0
     })
   })
 

@@ -23,6 +23,7 @@ function makeDeps(over: Partial<DispatcherDeps> = {}): { deps: DispatcherDeps; n
     transition: vi.fn(async () => {}),
     classify: vi.fn(async () => ({ ok: true as const, prompt: 'fix-bug' })),
     spawn: vi.fn(async () => ({ exitCode: 0, prUrls: ['https://github.com/o/r/pull/1'] })),
+    kill: vi.fn(),
     state: new WatchState(path),
     notify: (n) => notes.push(n),
     isAuto: () => true,
@@ -132,5 +133,28 @@ describe('WatchDispatcher', () => {
     await settle()
     expect(notes.some((n) => n.body.includes('network down'))).toBe(true)
     expect(deps.spawn).not.toHaveBeenCalled()
+  })
+
+  it('warns with a click-to-kill option when a run exceeds runWarnSeconds', async () => {
+    vi.useFakeTimers()
+    try {
+      const cfg = ConfigSchema.parse({
+        jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' },
+        repos: [{ key: 'SD', path: 'C:/repos/sd' }],
+        watch: { enabled: true, transitionOnDispatch: 'In Progress', runWarnSeconds: 60 }
+      })
+      const gate = new Promise<{ exitCode: number; prUrls: string[] }>(() => {}) // never settles
+      const { deps, notes } = makeDeps({ config: () => cfg, spawn: vi.fn(() => gate) })
+      const d = new WatchDispatcher(deps)
+      void d.poll()
+      await vi.advanceTimersByTimeAsync(0)       // flush poll → classify → spawn start
+      await vi.advanceTimersByTimeAsync(60_000)  // trip the watchdog during spawn
+      const warn = notes.find((n) => n.title.includes('still running') && n.onClick)
+      expect(warn).toBeTruthy()
+      warn!.onClick!()
+      expect(deps.kill).toHaveBeenCalledWith('SD-1')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
