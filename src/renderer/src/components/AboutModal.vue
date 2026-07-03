@@ -14,10 +14,12 @@ onMounted(async () => {
 <template>
   <ModalShell title="About SeniorDev" @close="emit('close')">
     <div class="about">
+      <div class="about__text">
+        <p class="about__name">{{ info?.name ?? '…' }}</p>
+        <p class="about__version">v{{ info?.version ?? '…' }}</p>
+        <p class="about__credit">By Box of Raccoons LLC, 2026</p>
+      </div>
       <img class="about__mascot" :src="mascotUrl" alt="Box of Raccoons mascot" />
-      <p class="about__name">{{ info?.name ?? '…' }}</p>
-      <p class="about__version">v{{ info?.version ?? '…' }}</p>
-      <p class="about__credit">By Box of Raccoons LLC, 2026</p>
     </div>
     <template #footer>
       <button class="about-ok" @click="emit('close')">OK</button>
@@ -26,8 +28,9 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.about { text-align: center; padding: 8px 24px; }
-.about__mascot { width: 160px; height: auto; margin: 0 auto 10px; display: block; border-radius: var(--radius-sm); }
+.about { display: flex; align-items: center; gap: 20px; text-align: left; padding: 8px 24px; }
+.about__text { flex: 1; }
+.about__mascot { width: 160px; height: auto; display: block; border-radius: var(--radius-sm); }
 .about__name { font-size: 18px; font-weight: 700; margin: 0 0 4px; }
 .about__version { color: var(--ink-soft); margin: 0 0 12px; }
 .about__credit { color: var(--ink-muted); font-size: 12px; margin: 0; }
