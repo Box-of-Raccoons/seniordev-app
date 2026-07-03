@@ -47,6 +47,9 @@ export function registerConfigIpc(
     parseConfig(text) // throws with YAML line numbers or Zod paths
     writeFileAtomic(store.configPath, text)
     const res = store.reload()
+    // Near-unreachable (reload re-parses what we just validated): disk already
+    // holds the new VALID text, so a reload failure here is soft — the store
+    // keeps last-good and the next read/save self-heals. No broadcast.
     if (!res.ok) return res
     getSender()?.send(CONFIG.changed)
     return { ok: true }

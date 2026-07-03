@@ -78,8 +78,16 @@ describe('config handlers', () => {
     expect(sender.send).toHaveBeenCalledWith(CONFIG.changed)
   })
 
+  it('saveRecap refuses when no config file exists yet', async () => {
+    const { sender } = setup() // file absent
+    const result = (await handleMap.get(CONFIG.saveRecap)!({}, 'anything')) as { ok: boolean; error?: string }
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/save App Config first/i)
+    expect(sender.send).not.toHaveBeenCalled()
+  })
+
   it('readRecap reports the built-in default until config overrides it', async () => {
-    const { } = setup(MINIMAL) // load MINIMAL — no yoloRecap key
+    setup(MINIMAL) // load MINIMAL — no yoloRecap key
     const r1 = (await handleMap.get(CONFIG.readRecap)!({})) as { text: string; isDefault: boolean }
     expect(r1.text).toBe(DEFAULT_YOLO_RECAP)
     expect(r1.isDefault).toBe(true)
