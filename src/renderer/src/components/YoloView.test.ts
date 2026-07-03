@@ -67,6 +67,27 @@ describe('YoloView', () => {
     expect(w.text()).toContain('failed to start: boom')
     expect(w.emitted('exited')).toBeTruthy()
   })
+  it('stop button kills the run but keeps the tab, log, and resume path', async () => {
+    const w = mount(YoloView, { props: { id: 'y1', ticketKey: null, prompt: { text: 'p' } } })
+    await flushPromises()
+    logCb({ id: 'y1', text: 'going rogue…' })
+    await flushPromises()
+    const stopBtn = w.get('button.yolo-stop')
+    await stopBtn.trigger('click')
+    expect(window.api.killYolo).toHaveBeenCalledWith('y1')
+    expect((w.get('button.yolo-stop').element as HTMLButtonElement).disabled).toBe(true)
+    // The killed child's exit still arrives; footer replaces the stop control.
+    exitCb(exitEvent({ exitCode: 1 }))
+    await flushPromises()
+    expect(w.find('button.yolo-stop').exists()).toBe(false)
+    expect(w.text()).toContain('exited with code 1')
+    expect(w.text()).toContain('going rogue…') // log survives the stop
+    expect(w.find('button.yolo-resume').exists()).toBe(true) // session id was captured pre-kill
+    // Unmount after the exit must not kill again.
+    ;(window.api.killYolo as ReturnType<typeof vi.fn>).mockClear()
+    w.unmount()
+    expect(window.api.killYolo).not.toHaveBeenCalled()
+  })
   it('kills the run on unmount only while still running', async () => {
     const w = mount(YoloView, { props: { id: 'y1', ticketKey: null, prompt: { text: 'p' } } })
     await flushPromises()

@@ -73,6 +73,16 @@ function resume(): void {
   emit('resume', { sessionId: exit.value.sessionId, cwd: exit.value.cwd, tool: exit.value.tool })
 }
 
+// Stop keeps the tab: the tree-killed child's exit still flows through
+// YOLO.exit, so the log, PR cards, and (if a session id was captured) the
+// resume button all survive — unlike closing the tab, which discards them.
+const stopping = ref(false)
+function stop(): void {
+  if (exit.value || stopping.value) return
+  stopping.value = true
+  window.api.killYolo(props.id)
+}
+
 onBeforeUnmount(() => {
   offLog?.()
   offPr?.()
@@ -89,7 +99,13 @@ onBeforeUnmount(() => {
       class="yolo-log"
       :style="{ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE + 'px' }"
     >{{ lines.join('\n') }}</pre>
-    <div v-if="exit" class="yolo-footer">
+    <div v-if="!exit" class="yolo-footer">
+      <span class="yolo-muted">running…</span>
+      <button class="yolo-stop" :disabled="stopping" @click="stop">
+        {{ stopping ? 'Stopping…' : '■ Stop' }}
+      </button>
+    </div>
+    <div v-else class="yolo-footer">
       <span :class="exit.exitCode === 0 ? 'yolo-status--ok' : 'yolo-status--bad'">
         {{ exit.exitCode === 0 ? '✔ finished' : `✘ exited with code ${exit.exitCode}` }}
       </span>
@@ -120,5 +136,13 @@ onBeforeUnmount(() => {
 }
 .yolo-resume:disabled { opacity: 0.5; cursor: default; }
 .yolo-resume:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.yolo-stop {
+  background: transparent; color: var(--ink-soft);
+  border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm);
+  padding: 6px 14px; cursor: pointer; font-weight: 600;
+}
+.yolo-stop:hover { color: var(--ink); }
+.yolo-stop:disabled { opacity: 0.5; cursor: default; }
+.yolo-stop:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .yolo-muted { color: var(--ink-muted); font-size: 12px; }
 </style>

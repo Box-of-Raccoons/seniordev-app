@@ -61,7 +61,9 @@ Selecting a prompt from the YOLO menu (or running `seniordev PROJ-123 --yolo fix
 
 3. **Recap** — the built-in `yoloRecap` instruction appended to each prompt asks the agent to end with `## Changes made` and `## Pull requests` sections, so the structured summary is always the last visible output.
 
-4. **Resume button** — after the run exits (success or failure), a **"Resume YOLO Session?"** button appears at the bottom of the tab if a session id was captured. Clicking it opens a new interactive terminal tab in the same repo cwd running `claude --resume <id>` (or `codex resume <id>`), so you can inspect diffs, answer follow-up questions, or iterate on the result without starting over. The YOLO tab stays open with the full log and PR links.
+4. **Stop button** — while the run is live, a **Stop** button at the bottom of the tab tree-kills the session (the agent and any git/gh processes it spawned) but keeps the tab open — log, PR cards, and the resume path all survive. Closing the tab also kills the session, but discards the log with it.
+
+5. **Resume button** — after the run exits (finished, failed, or stopped), a **"Resume YOLO Session?"** button appears at the bottom of the tab if a session id was captured. Clicking it opens a new interactive terminal tab in the same repo cwd running `claude --resume <id>` (or `codex resume <id>`), so you can inspect diffs, answer follow-up questions, or iterate on the result without starting over. The YOLO tab stays open with the full log and PR links.
 
 ## Develop
 
