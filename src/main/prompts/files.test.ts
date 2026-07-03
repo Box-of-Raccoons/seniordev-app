@@ -39,6 +39,21 @@ describe('prompt files', () => {
     deletePromptFile(dir, 'gone')
     expect(existsSync(join(dir, 'gone.md'))).toBe(false)
   })
+  it('self-skip is case-insensitive: writing fix-bug over Fix-Bug.md is not a collision', () => {
+    createPromptFile(dir, 'Fix-Bug')
+    // Same file on a case-insensitive filesystem — must NOT be treated as a rival.
+    writePromptFile(dir, 'fix-bug', '---\nname: Fix-Bug\ndescription: d\n---\nupdated')
+    expect(readPromptFile(dir, 'Fix-Bug')).toContain('updated')
+  })
+  it('write into a not-yet-existing prompts dir succeeds (dir is created)', () => {
+    const fresh = join(dir, 'nested', 'prompts')
+    writePromptFile(fresh, 'first', '---\nname: first\ndescription: d\n---\nbody')
+    expect(readPromptFile(fresh, 'first')).toContain('body')
+  })
+  it('read and delete also enforce the name guard', () => {
+    expect(() => readPromptFile(dir, '../evil')).toThrow(/Invalid prompt name/)
+    expect(() => deletePromptFile(dir, '_reserved')).toThrow(/Invalid prompt name/)
+  })
   it('context read falls back to the default; write round-trips', () => {
     expect(readContextFile(dir)).toBe(DEFAULT_TICKET_CONTEXT)
     writeContextFile(dir, 'custom {{ticket.key}}')

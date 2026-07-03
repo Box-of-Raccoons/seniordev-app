@@ -43,8 +43,11 @@ export function writePromptFile(dir: string, name: string, text: string): void {
   const effective = parseFrontmatter(text, name).name
   // The effective name (frontmatter name ?? filename) must not collide with
   // any OTHER file's effective name — findPrompt() resolves by that name.
-  for (const f of readdirSync(dir)) {
-    if (!f.toLowerCase().endsWith('.md') || f.startsWith('_') || f === `${name}.md`) continue
+  // Self-skip compares case-insensitively: Windows filesystems are, so
+  // 'Fix-Bug.md' IS the file being written when name='fix-bug'.
+  const self = `${name.toLowerCase()}.md`
+  for (const f of existsSync(dir) ? readdirSync(dir) : []) {
+    if (!f.toLowerCase().endsWith('.md') || f.startsWith('_') || f.toLowerCase() === self) continue
     const other = parseFrontmatter(readFileSync(join(dir, f), 'utf8'), f.replace(/\.md$/i, ''))
     if (other.name === effective) throw new Error(`Prompt name "${effective}" collides with ${f}`)
   }
