@@ -1,18 +1,28 @@
 <!-- src/renderer/src/components/ModalShell.vue -->
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
+import { isTopModal, popModal, pushModal } from '../modal-stack'
 defineProps<{ title: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
+let stackToken: symbol | null = null
 function onKey(e: KeyboardEvent): void {
-  if (e.key === 'Escape') emit('close')
+  // Only the topmost shell answers Escape — a stacked ConfirmDialog must not
+  // drag its parent modal down with it.
+  if (e.key === 'Escape' && stackToken !== null && isTopModal(stackToken)) emit('close')
 }
-onMounted(() => document.addEventListener('keydown', onKey))
-onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
+onMounted(() => {
+  stackToken = pushModal()
+  document.addEventListener('keydown', onKey)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onKey)
+  if (stackToken !== null) popModal(stackToken)
+})
 </script>
 
 <template>
   <div class="modal-overlay" @pointerdown.self="emit('close')">
-    <div class="modal" role="dialog" :aria-label="title">
+    <div class="modal" role="dialog" aria-modal="true" :aria-label="title">
       <header class="modal__head">
         <h2>{{ title }}</h2>
         <button class="modal__x" aria-label="Close" @click="emit('close')">×</button>
