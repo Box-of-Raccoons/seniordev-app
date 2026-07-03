@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadConfig } from './load'
+import { loadConfig, parseConfig } from './load'
 
 function tmpConfig(yaml: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'sd-cfg-'))
@@ -17,6 +17,19 @@ jira:
   email: dev@acme.com
   apiToken: secret-token
 `
+
+describe('parseConfig', () => {
+  it('parses raw yaml text with presets merged', () => {
+    const cfg = parseConfig(MINIMAL)
+    expect(cfg.cliTools.claude.command).toBe('claude')
+  })
+  it('throws a Zod error naming the bad path', () => {
+    expect(() => parseConfig('jira:\n  baseUrl: not-a-url\n  email: a@b.co\n  apiToken: t\n')).toThrow(/baseUrl/)
+  })
+  it('throws on YAML syntax errors', () => {
+    expect(() => parseConfig('jira: [unclosed')).toThrow()
+  })
+})
 
 describe('loadConfig', () => {
   it('loads a minimal jira-only config and applies presets + defaults', () => {

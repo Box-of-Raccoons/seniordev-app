@@ -21,9 +21,13 @@ function mergeByKey(presets: Record<string, Dict>, user: unknown): Dict {
   return out
 }
 
-export function loadConfig(path: string): Config {
-  const raw = (parse(readFileSync(path, 'utf8')) ?? {}) as Dict
+export function parseConfig(rawText: string): Config {
+  const raw = (parse(rawText) ?? {}) as Dict
   raw.cliTools = mergeByKey(CLI_PRESETS as unknown as Record<string, Dict>, raw.cliTools)
   raw.forges = mergeByKey(FORGE_PRESETS as unknown as Record<string, Dict>, raw.forges)
   return ConfigSchema.parse(raw)
+}
+
+export function loadConfig(path: string): Config {
+  return parseConfig(readFileSync(path, 'utf8'))
 }
