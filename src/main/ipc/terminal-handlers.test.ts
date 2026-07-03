@@ -75,8 +75,9 @@ describe('registerTerminalIpc', () => {
     // Nothing written before the boot delay elapses.
     expect(pty.write).not.toHaveBeenCalled()
     await vi.runAllTimersAsync()
-    // Bracketed-paste framing: ESC[200~ … ESC[201~ then a submitting CR.
-    expect(pty.write).toHaveBeenCalledWith('\x1b[200~Do PROJ-1\x1b[201~\r')
+    // Bracketed-paste framing first, then Enter as a separate write to submit.
+    expect(pty.write).toHaveBeenNthCalledWith(1, '\x1b[200~Do PROJ-1\x1b[201~')
+    expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
     vi.useRealTimers()
   })
 
