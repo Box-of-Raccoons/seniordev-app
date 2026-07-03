@@ -36,6 +36,15 @@ cliTools:
       outputParser: codex-jsonl
     resumeArgs: [resume, '{{sessionId}}']
 
+# yoloPreamble is prepended to every YOLO prompt. Empty string disables.
+# Built-in default (from presets.ts) shown here; config value overrides it.
+yoloPreamble: |
+  This is a headless, autonomous session — no human is watching to answer
+  questions. Work the task to completion to the best of your ability. When you
+  hit ambiguity, make the most reasonable assumption, note it in your final
+  recap, and keep going. Do not stop to ask for confirmation or clarification;
+  stop only when the task is done or you are genuinely blocked.
+
 # yoloRecap is appended to every YOLO prompt. Empty string disables.
 # Built-in default (from presets.ts) shown here; config value overrides it.
 yoloRecap: |
@@ -48,6 +57,7 @@ yoloRecap: |
 - **`headless.args`** — full flag set passed to the CLI for an autonomous run. The prompt is always sent over stdin (written then closed); never an argv element.
 - **`headless.outputParser`** — selects the built-in stream parser. `claude-stream-json` and `codex-jsonl` extract structured events; `text` passes lines through (use with `sessionIdPattern` for resume support on other tools).
 - **`resumeArgs`** — template appended to `interactiveArgs` when the Resume button spawns a follow-up tab. `{{sessionId}}` is substituted. Omit to disable the Resume button for a tool.
+- **`yoloPreamble`** — prepended (with a blank line) to every YOLO prompt so the agent knows it is running headless and autonomous and shouldn't pause to ask questions. Set an empty string to disable entirely.
 - **`yoloRecap`** — appended (with a blank line) to every YOLO prompt so the agent ends its run with a structured summary. Set an empty string to disable entirely.
 - **`yoloArgs`** — no longer used. Old configs containing this key load without error; the key is silently ignored.
 
@@ -87,6 +97,7 @@ The menu bar shows **File / Edit / Config / About**.
 
 **Config → Prompt Config** manages the prompts directory. From here you can:
 - Edit the ticket-context template (`_ticket-context.md` in the prompts dir) — its content is what `{{ticket.context}}` expands to in any prompt.
+- Edit the YOLO preamble text (the autonomy instruction prepended to every YOLO prompt telling the agent it's running headless and shouldn't pause to ask questions).
 - Edit the YOLO recap text (the instruction appended to every YOLO prompt asking the agent to end with a structured summary).
 - Create, edit, or delete prebuilt prompts; changes appear in the YOLO / New Session menu immediately, no restart required.
 

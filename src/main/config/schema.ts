@@ -43,6 +43,7 @@ export const ConfigSchema = z.object({
   forges: z.record(ForgeSchema).default({}),
   repos: z.array(RepoSchema).default([]),
   promptsDir: z.string().optional(),
+  yoloPreamble: z.string().optional(),
   yoloRecap: z.string().optional()
 })
 

@@ -73,9 +73,11 @@ export const APP = { info: 'app:info' } as const
 export type ConfigReadResult = { ok: true; text: string; path: string; isTemplate?: boolean } | { ok: false; error: string }
 export type SaveResult = { ok: true } | { ok: false; error: string }
 export interface RecapInfo { text: string; isDefault: boolean }
+export interface PreambleInfo { text: string; isDefault: boolean }
 export const CONFIG = {
   read: 'config:read', save: 'config:save', changed: 'config:changed',
-  readRecap: 'config:readRecap', saveRecap: 'config:saveRecap'
+  readRecap: 'config:readRecap', saveRecap: 'config:saveRecap',
+  readPreamble: 'config:readPreamble', savePreamble: 'config:savePreamble'
 } as const
 
 export type PromptReadResult = { ok: true; text: string } | { ok: false; error: string }

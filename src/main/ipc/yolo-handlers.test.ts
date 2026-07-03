@@ -12,7 +12,7 @@ vi.mock('electron', () => ({
 import { registerYoloIpc } from './yolo-handlers'
 import { YOLO, type SpawnResult } from '../../shared/ipc'
 import { ConfigSchema } from '../config/schema'
-import { DEFAULT_YOLO_RECAP } from '../config/presets'
+import { DEFAULT_YOLO_PREAMBLE, DEFAULT_YOLO_RECAP } from '../config/presets'
 import type { HeadlessChild } from '../headless/runner'
 import type { Ticket } from '../../shared/types'
 
@@ -68,8 +68,10 @@ describe('yolo handlers', () => {
     const res = (await handleMap.get(YOLO.start)!({}, { id: 'y1', ticketKey: 'PROJ-1', prompt: { text: 'work {{ticket.key}}' } })) as SpawnResult
     expect(res).toEqual({ ok: true })
 
-    // The final stdin payload is the expanded prompt with the recap appended.
-    expect(child.stdin[0].startsWith('work PROJ-1')).toBe(true)
+    // The final stdin payload is the expanded prompt with the preamble
+    // prepended and the recap appended.
+    expect(child.stdin[0].startsWith(DEFAULT_YOLO_PREAMBLE)).toBe(true)
+    expect(child.stdin[0]).toContain('work PROJ-1')
     expect(child.stdin[0].endsWith(DEFAULT_YOLO_RECAP)).toBe(true)
 
     child.stdout('sid=abc\nhttps://github.com/a/b/pull/3\n')

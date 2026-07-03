@@ -1,7 +1,7 @@
 import type { Config } from '../config/schema'
 import type { ResolvedCommand } from '../terminal/resolve-command'
 import { resolveCwd } from '../terminal/resolve'
-import { DEFAULT_YOLO_RECAP } from '../config/presets'
+import { DEFAULT_YOLO_PREAMBLE, DEFAULT_YOLO_RECAP } from '../config/presets'
 
 export interface HeadlessLaunch {
   file: string
@@ -26,13 +26,17 @@ export function buildHeadlessLaunch(
   if (!tool) throw new Error(`Unknown CLI tool: ${toolName}`)
   if (!tool.headless) throw new Error(`Tool "${toolName}" has no headless config — YOLO unavailable`)
 
+  const preamble = (config.yoloPreamble ?? DEFAULT_YOLO_PREAMBLE).trim()
   const recap = (config.yoloRecap ?? DEFAULT_YOLO_RECAP).trim()
+  // Preamble is opening autonomy framing (prepended); recap is the closing
+  // summary instruction (appended). Each is skipped when it resolves to empty.
+  const prompt = [preamble, expandedPrompt, recap].filter(Boolean).join('\n\n')
   return {
     file: tool.command,
     args: [...tool.headless.args],
     cwd: resolveCwd(config, opts.ticketKey, opts.cwdOverride),
     // The prompt travels over stdin only (never argv) — see spawn-command.ts.
-    prompt: recap ? `${expandedPrompt}\n\n${recap}` : expandedPrompt,
+    prompt,
     outputParser: tool.headless.outputParser,
     sessionIdPattern: tool.headless.sessionIdPattern,
     toolName,

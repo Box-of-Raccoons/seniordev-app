@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildHeadlessLaunch } from './launch'
-import { DEFAULT_YOLO_RECAP } from '../config/presets'
+import { DEFAULT_YOLO_PREAMBLE, DEFAULT_YOLO_RECAP } from '../config/presets'
 import { ConfigSchema, type Config } from '../config/schema'
 
 function cfg(over: Record<string, unknown> = {}): Config {
@@ -29,13 +29,17 @@ describe('buildHeadlessLaunch', () => {
     expect(l.outputParser).toBe('claude-stream-json')
     expect(l.canResume).toBe(true)
   })
-  it('appends the default recap to the prompt', () => {
+  it('prepends the default preamble and appends the default recap, in order', () => {
     const l = buildHeadlessLaunch(cfg(), {}, 'do it')
-    expect(l.prompt).toBe(`do it\n\n${DEFAULT_YOLO_RECAP}`)
+    expect(l.prompt).toBe(`${DEFAULT_YOLO_PREAMBLE}\n\ndo it\n\n${DEFAULT_YOLO_RECAP}`)
   })
-  it('config yoloRecap overrides the default; empty string disables', () => {
-    expect(buildHeadlessLaunch(cfg({ yoloRecap: 'custom recap' }), {}, 'p').prompt).toBe('p\n\ncustom recap')
-    expect(buildHeadlessLaunch(cfg({ yoloRecap: '' }), {}, 'p').prompt).toBe('p')
+  it('config yoloRecap overrides the default; empty string disables (no trailing separator)', () => {
+    expect(buildHeadlessLaunch(cfg({ yoloPreamble: '', yoloRecap: 'custom recap' }), {}, 'p').prompt).toBe('p\n\ncustom recap')
+    expect(buildHeadlessLaunch(cfg({ yoloPreamble: '', yoloRecap: '' }), {}, 'p').prompt).toBe('p')
+  })
+  it('config yoloPreamble overrides the default; empty string disables (no leading separator)', () => {
+    expect(buildHeadlessLaunch(cfg({ yoloPreamble: 'custom pre', yoloRecap: '' }), {}, 'p').prompt).toBe('custom pre\n\np')
+    expect(buildHeadlessLaunch(cfg({ yoloPreamble: '', yoloRecap: '' }), {}, 'p').prompt).toBe('p')
   })
   it('throws for a tool without headless config', () => {
     expect(() => buildHeadlessLaunch(cfg(), { tool: 'bare' }, 'p')).toThrow(/no headless/i)

@@ -2,9 +2,9 @@ import { ipcMain } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { parseDocument } from 'yaml'
-import { CONFIG, type ConfigReadResult, type RecapInfo, type SaveResult } from '../../shared/ipc'
+import { CONFIG, type ConfigReadResult, type PreambleInfo, type RecapInfo, type SaveResult } from '../../shared/ipc'
 import { parseConfig } from '../config/load'
-import { DEFAULT_YOLO_RECAP } from '../config/presets'
+import { DEFAULT_YOLO_PREAMBLE, DEFAULT_YOLO_RECAP } from '../config/presets'
 import type { ConfigStore } from '../config/store'
 
 // Shown when no config.yaml exists yet — mirrors config.example.yaml, but lives
@@ -89,6 +89,27 @@ export function registerConfigIpc(
       const doc = parseDocument(readFileSync(store.configPath, 'utf8'))
       if (text.trim() === DEFAULT_YOLO_RECAP.trim()) doc.delete('yoloRecap')
       else doc.set('yoloRecap', text)
+      return commit(doc.toString())
+    } catch (err) {
+      return { ok: false, error: errMsg(err) }
+    }
+  })
+
+  ipcMain.handle(CONFIG.readPreamble, (): PreambleInfo => {
+    const v = store.config?.yoloPreamble
+    return { text: v ?? DEFAULT_YOLO_PREAMBLE, isDefault: v === undefined }
+  })
+
+  ipcMain.handle(CONFIG.savePreamble, (_e, text: string): SaveResult => {
+    try {
+      if (!existsSync(store.configPath)) {
+        return { ok: false, error: 'No config file yet — save App Config first' }
+      }
+      // Targeted document edit: only the yoloPreamble key changes; comments and
+      // formatting everywhere else survive byte-for-byte.
+      const doc = parseDocument(readFileSync(store.configPath, 'utf8'))
+      if (text.trim() === DEFAULT_YOLO_PREAMBLE.trim()) doc.delete('yoloPreamble')
+      else doc.set('yoloPreamble', text)
       return commit(doc.toString())
     } catch (err) {
       return { ok: false, error: errMsg(err) }
