@@ -29,4 +29,22 @@ describe('parseStartupArgs', () => {
     const o = parseStartupArgs(['PROJ-9', '--interactive', '--tool', 'codex'], noRead)
     expect(o.session).toEqual({ mode: 'interactive', promptName: undefined, promptText: undefined, tool: 'codex' })
   })
+  it('--yolo without a prompt name does not swallow the next flag', () => {
+    const o = parseStartupArgs(['--yolo', '--tool', 'codex'], noRead)
+    expect(o.session).toEqual({ mode: 'yolo', promptName: undefined, promptText: undefined, tool: 'codex' })
+  })
+  it('--yolo does not swallow a ticket key', () => {
+    const o = parseStartupArgs(['PROJ-1', '--yolo', 'PROJ-2'], noRead)
+    expect(o.tickets).toEqual(['PROJ-1', 'PROJ-2'])
+    expect(o.session?.mode).toBe('yolo')
+    expect(o.session?.promptName).toBeUndefined()
+  })
+  it('returns a session with promptText undefined and a warning when @file is missing', () => {
+    const read = vi.fn(() => { throw new Error('ENOENT: no such file') })
+    const o = parseStartupArgs(['--prompt', '@C:/missing.md'], read)
+    expect(o.session).toBeDefined()
+    expect(o.session?.promptText).toBeUndefined()
+    expect(o.warnings).toHaveLength(1)
+    expect(o.warnings![0]).toContain('C:/missing.md')
+  })
 })

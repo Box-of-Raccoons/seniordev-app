@@ -14,7 +14,7 @@ export interface PromptTicket {
 
 const EMPTY = { type: '', status: '', summary: '', descriptionMd: '', acceptanceCriteria: '', commentsMd: '' }
 
-export function buildPromptTicket(ticket: Ticket, mode: 'inject' | 'key-only' | 'both'): PromptTicket {
+export function buildPromptTicket(ticket: Ticket, mode: 'key-only' | 'both'): PromptTicket {
   if (mode === 'key-only') return { key: ticket.key, ...EMPTY }
   const commentsMd = ticket.comments
     .map((c) => `**${c.author}**: ${adfToMarkdown(c.bodyAdf)}`)

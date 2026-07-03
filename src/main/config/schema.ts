@@ -29,7 +29,7 @@ export const JiraSchema = z.object({
 
 export const ConfigSchema = z.object({
   jira: JiraSchema,
-  ticketContext: z.enum(['inject', 'key-only', 'both']).default('both'),
+  ticketContext: z.enum(['key-only', 'both']).default('both'),
   defaultTool: z.string().default('claude'),
   cliTools: z.record(CliToolSchema).default({}),
   defaultForge: z.string().default('github'),

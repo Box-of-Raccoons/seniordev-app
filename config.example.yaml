@@ -1,11 +1,14 @@
-# Copy to your OS config dir (e.g. %APPDATA%/SeniorDev/config.yaml) and fill in.
+# Copy to your OS config dir and fill in:
+#   Windows: %APPDATA%\SeniorDev\config.yaml
+#   macOS/Linux: ~/.config/SeniorDev/config.yaml
+# Override path with SENIORDEV_CONFIG env var.
 jira:
   baseUrl: https://yoursite.atlassian.net
   email: you@company.com
   apiToken: paste-token-from-id.atlassian.net
 
 # Everything below is optional; presets for claude/codex + github/gitlab apply automatically.
-# ticketContext: both        # inject | key-only | both
+# ticketContext: both        # key-only | both
 # defaultTool: claude
 # defaultForge: github
 # repos:

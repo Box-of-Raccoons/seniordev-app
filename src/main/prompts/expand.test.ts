@@ -12,8 +12,8 @@ const ticket: Ticket = {
 }
 
 describe('buildPromptTicket', () => {
-  it('fills markdown fields in inject mode', () => {
-    const pt = buildPromptTicket(ticket, 'inject')
+  it('fills markdown fields in both mode', () => {
+    const pt = buildPromptTicket(ticket, 'both')
     expect(pt.key).toBe('PROJ-1')
     expect(pt.summary).toBe('Login broken')
     expect(pt.descriptionMd).toBe('It fails.')
@@ -48,7 +48,7 @@ describe('resolveForge', () => {
 })
 
 describe('expandPrompt', () => {
-  const pt = buildPromptTicket(ticket, 'inject')
+  const pt = buildPromptTicket(ticket, 'both')
   const forge = { prCommand: 'gh pr create', term: 'PR' }
   it('substitutes ticket and forge placeholders', () => {
     const out = expandPrompt('Do {{ticket.key}}: "{{ticket.summary}}". Open a {{forge.term}} with `{{forge.prCommand}}`.', { ticket: pt, forge })
