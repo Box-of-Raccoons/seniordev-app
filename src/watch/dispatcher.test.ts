@@ -21,7 +21,7 @@ function makeDeps(over: Partial<DispatcherDeps> = {}): { deps: DispatcherDeps; n
     config: () => config,
     search: async () => [ticket('SD-1')],
     transition: vi.fn(async () => {}),
-    classify: vi.fn(async () => ({ ok: true, prompt: 'fix-bug' })),
+    classify: vi.fn(async () => ({ ok: true as const, prompt: 'fix-bug' })),
     spawn: vi.fn(async () => ({ exitCode: 0, prUrls: ['https://github.com/o/r/pull/1'] })),
     state: new WatchState(path),
     notify: (n) => notes.push(n),
@@ -57,7 +57,7 @@ describe('WatchDispatcher', () => {
   })
 
   it('classify failure: record failed, notify, NO transition, NO spawn', async () => {
-    const { deps, notes } = makeDeps({ classify: vi.fn(async () => ({ ok: false, reason: 'no fit' })) })
+    const { deps, notes } = makeDeps({ classify: vi.fn(async () => ({ ok: false as const, reason: 'no fit' })) })
     await new WatchDispatcher(deps).poll()
     await settle()
     expect(deps.spawn).not.toHaveBeenCalled()
