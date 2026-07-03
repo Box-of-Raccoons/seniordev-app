@@ -65,9 +65,9 @@ describe('buildInteractiveLaunch', () => {
     const launch = buildInteractiveLaunch(noResumeArgsCfg, { resume: { sessionId: 'abc' } })
     expect(launch.args).toEqual([])
   })
-  it('preserves a literal $ in a resumed session id', () => {
-    const launch = buildInteractiveLaunch(resumeCfg, { resume: { sessionId: 'a$&b' } })
-    expect(launch.args).toEqual(['--ide', '--resume', 'a$&b'])
+  it('rejects a session id outside the UUID charset (shim cmd/c re-parse defense)', () => {
+    expect(() => buildInteractiveLaunch(resumeCfg, { resume: { sessionId: 'a$&b' } })).toThrow(/Invalid session id/)
+    expect(() => buildInteractiveLaunch(resumeCfg, { resume: { sessionId: 'x"&calc' } })).toThrow(/Invalid session id/)
   })
 
   it('downgrades arg-delivery to stdin when the command is a shell shim', () => {

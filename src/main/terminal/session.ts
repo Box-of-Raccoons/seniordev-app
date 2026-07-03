@@ -20,6 +20,12 @@ export function buildInteractiveLaunch(
   const tool = config.cliTools[toolName]
   if (!tool) throw new Error(`Unknown CLI tool: ${toolName}`)
   const cwd = resolveCwd(config, opts.ticketKey, opts.cwdOverride)
+  // Session ids come from the CLI's own output (UUIDs), but resume args can ride
+  // through a cmd /c shim launch that RE-PARSES its line — so refuse anything
+  // outside the UUID charset rather than let it near a shell. Defense in depth.
+  if (opts.resume && !/^[0-9a-zA-Z-]+$/.test(opts.resume.sessionId)) {
+    throw new Error(`Invalid session id for resume: ${opts.resume.sessionId}`)
+  }
   // Function replacer: a literal '$' in a session id must not trigger $&-style patterns.
   const resumeArgs =
     opts.resume && tool.resumeArgs
