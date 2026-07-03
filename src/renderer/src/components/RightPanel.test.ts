@@ -66,4 +66,20 @@ describe('RightPanel', () => {
     await w.vm.$nextTick()
     expect(w.text()).toContain('ship-it')
   })
+
+  it('marks a tab as dead when TerminalView emits exited', async () => {
+    const exitStubs = {
+      TerminalView: {
+        props: ['id', 'ticketKey', 'prompt', 'yolo'],
+        emits: ['exited'],
+        template: '<div class="tv" :data-id="id"><button class="trigger-exit" @click="$emit(\'exited\', 0)">exit</button></div>'
+      },
+      NewSessionMenu: stubs.NewSessionMenu
+    }
+    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs: exitStubs } })
+    await w.find('.new-session').trigger('click')
+    await w.find('.trigger-exit').trigger('click')
+    await w.vm.$nextTick()
+    expect(w.find('.term-tab').classes()).toContain('term-tab--dead')
+  })
 })

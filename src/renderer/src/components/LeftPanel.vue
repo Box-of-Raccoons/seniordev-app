@@ -9,6 +9,7 @@ const activeKey = ref<string | null>(null)
 const emit = defineEmits<{ (e: 'active-ticket', key: string | null): void }>()
 watch(activeKey, (k) => emit('active-ticket', k))
 const error = ref<string | null>(null)
+const pending = new Set<string>()
 
 async function openKey(rawKey: string): Promise<void> {
   const key = rawKey.trim().toUpperCase()
@@ -16,9 +17,16 @@ async function openKey(rawKey: string): Promise<void> {
   if (!key) return
   const existing = tabs.value.find((t) => t.key === key)
   if (existing) { activeKey.value = existing.key; return }
-  const res = await window.api.getTicket(key)
-  if (res.ok) { tabs.value.push(res.ticket); activeKey.value = res.ticket.key }
-  else { error.value = res.error }
+  if (pending.has(key)) return
+  pending.add(key)
+  try {
+    const res = await window.api.getTicket(key)
+    if (tabs.value.find((t) => t.key === key)) { activeKey.value = key; return }
+    if (res.ok) { tabs.value.push(res.ticket); activeKey.value = res.ticket.key }
+    else { error.value = res.error }
+  } finally {
+    pending.delete(key)
+  }
 }
 
 async function openTicket(): Promise<void> {
@@ -29,7 +37,12 @@ async function openTicket(): Promise<void> {
 
 async function openTickets(keys: string[]): Promise<void> {
   for (const k of keys) await openKey(k)
-  if (keys.length) activeKey.value = keys[0].toUpperCase()
+  if (keys.length) {
+    const firstPresent = keys
+      .map((k) => k.trim().toUpperCase())
+      .find((k) => tabs.value.some((t) => t.key === k))
+    if (firstPresent !== undefined) activeKey.value = firstPresent
+  }
 }
 
 defineExpose({ openTickets })

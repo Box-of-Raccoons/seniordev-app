@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
 const props = defineProps<{ id: string; ticketKey: string | null; prompt?: { name?: string; text?: string }; yolo?: boolean; tool?: string }>()
+const emit = defineEmits<{ (e: 'exited', code: number): void }>()
 const host = ref<HTMLDivElement | null>(null)
 const pr = ref<{ url: string; term: string } | null>(null)
 let term: Terminal | null = null
@@ -23,7 +24,12 @@ onMounted(async () => {
 
   term.onData((d) => window.api.writeTerminal(props.id, d))
   offData = window.api.onTerminalData((e) => { if (e.id === props.id) term?.write(e.data) })
-  offExit = window.api.onTerminalExit((e) => { if (e.id === props.id) term?.write(`\r\n[process exited: ${e.exitCode}]\r\n`) })
+  offExit = window.api.onTerminalExit((e) => {
+    if (e.id === props.id) {
+      term?.write(`\r\n[process exited: ${e.exitCode}]\r\n`)
+      emit('exited', e.exitCode)
+    }
+  })
   offPr = window.api.onTerminalPr((e) => { if (e.id === props.id) pr.value = { url: e.url, term: e.term } })
 
   try {

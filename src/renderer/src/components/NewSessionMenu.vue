@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { PromptSummary } from '../../../shared/ipc'
 
 const emit = defineEmits<{ (e: 'start', payload: { prompt?: { name?: string; text?: string }; yolo: boolean }): void }>()
@@ -9,9 +9,33 @@ const prompts = ref<PromptSummary[]>([])
 const customOpen = ref(false)
 const customText = ref('')
 const mode = ref<'interactive' | 'yolo'>('interactive')
+const menuWrap = ref<HTMLElement | null>(null)
+
+function onPointerDown(e: PointerEvent): void {
+  if (open.value && menuWrap.value && !menuWrap.value.contains(e.target as Node)) {
+    open.value = false
+    customOpen.value = false
+  }
+}
+
+function onKeyDown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    open.value = false
+    customOpen.value = false
+  }
+}
 
 onMounted(async () => {
+  // Register synchronously — if this ran after the await, an unmount during the
+  // listPrompts round-trip would leak listeners onBeforeUnmount can't see yet.
+  document.addEventListener('pointerdown', onPointerDown)
+  document.addEventListener('keydown', onKeyDown)
   try { prompts.value = await window.api.listPrompts() } catch { prompts.value = [] }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onPointerDown)
+  document.removeEventListener('keydown', onKeyDown)
 })
 
 function choose(payload: { prompt?: { name?: string; text?: string } }): void {
@@ -24,7 +48,7 @@ function choose(payload: { prompt?: { name?: string; text?: string } }): void {
 </script>
 
 <template>
-  <div class="menu-wrap">
+  <div ref="menuWrap" class="menu-wrap">
     <button class="new-session" @click="open = !open">+ New session ▾</button>
     <div v-if="open" class="menu">
       <div class="mode-toggle" role="group" aria-label="Session mode">
