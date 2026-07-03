@@ -80,7 +80,10 @@ describe('resolveCommandPath', () => {
       pathext: '',
       exists: fakeExists(['C:\\a\\foo.bat'])
     })
-    expect(r).toEqual({ path: 'C:\\a\\foo.bat', kind: 'shell' })
+    // The candidate keeps the default PATHEXT's casing (.BAT); Windows fs is
+    // case-insensitive, so compare case-insensitively like the fs would.
+    expect(r.kind).toBe('shell')
+    expect(r.path.toLowerCase()).toBe('c:\\a\\foo.bat')
   })
 
   it('classifies a .com match as kind exe', () => {
