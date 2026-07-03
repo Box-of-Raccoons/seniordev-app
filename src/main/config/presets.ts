@@ -2,7 +2,11 @@ export const CLI_PRESETS = {
   claude: {
     command: 'claude',
     interactiveArgs: [],
-    yoloArgs: ['--permission-mode', 'bypassPermissions'],
+    // 'auto' eliminates permission prompts via a background safety classifier and
+    // starts straight into an interactive session — unlike 'bypassPermissions',
+    // which can present a one-time acceptance screen that a piped launcher trips.
+    // Override per-tool in config.yaml if you want a different YOLO posture.
+    yoloArgs: ['--permission-mode', 'auto'],
     promptDelivery: 'stdin'
   },
   codex: {

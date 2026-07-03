@@ -80,14 +80,14 @@ export function registerTerminalIpc(
       if (req.yolo) detectors.set(req.id, new PrDetector(buildForgePatterns(config)))
       if (launch.stdinPrompt) {
         const prompt = launch.stdinPrompt
-        // Modern CLI TUIs enable bracketed paste; framing the (often multi-line)
-        // prompt with \x1b[200~ … \x1b[201~ stops each embedded newline from
-        // registering as Enter and submitting a fragment.
+        // Write the prompt text, then submit with Enter a beat later. Do NOT wrap
+        // this in bracketed-paste markers (\x1b[200~ … \x1b[201~): the CLIs we drive
+        // don't treat it as a paste, so the leading ESC registers as the Escape key —
+        // clearing the composed input (nothing gets sent) and, on claude's bypass
+        // acceptance screen, exiting the process. Enter is a SEPARATE keystroke a beat
+        // later so the TUI submits the whole prompt instead of swallowing it.
         setTimeout(() => {
-          manager.write(req.id, '\x1b[200~' + prompt + '\x1b[201~')
-          // Enter must be a SEPARATE keystroke, a beat after the paste — bundled
-          // into the same write the TUI swallows it as part of the paste and the
-          // prompt just sits in the input unsent.
+          manager.write(req.id, prompt)
           setTimeout(() => manager.write(req.id, '\r'), SUBMIT_DELAY_MS)
         }, STDIN_PROMPT_DELAY_MS)
       }
