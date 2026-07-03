@@ -66,20 +66,40 @@ describe('registerTerminalIpc', () => {
     expect(pty.write).toHaveBeenCalledWith('typed')
   })
 
-  it('writes the raw prompt to stdin then submits with a separate Enter, no ESC framing', async () => {
+  it('delivers the stdin prompt only after boot output settles, Enter as a separate write', async () => {
     vi.useFakeTimers()
     const pty = fakePty()
     registerTerminalIpc(cfg, () => undefined, () => pty as unknown as PtyProcess, deps)
     const res = await handleMap.get('pty:spawn')!({}, { id: 'a', ticketKey: 'PROJ-1', prompt: { name: 'p' }, cols: 80, rows: 24 })
     expect(res).toEqual({ ok: true })
-    // Nothing written before the boot delay elapses.
+    // Boot screen still streaming — nothing may be written yet.
+    pty.emitData('booting…')
+    await vi.advanceTimersByTimeAsync(400)
+    pty.emitData('welcome screen')
+    await vi.advanceTimersByTimeAsync(400)
     expect(pty.write).not.toHaveBeenCalled()
-    await vi.runAllTimersAsync()
-    // Prompt text first (no bracketed-paste ESC markers), then Enter as its own write.
+    // Output quiet past the threshold → prompt goes out (no ESC framing).
+    await vi.advanceTimersByTimeAsync(500)
     expect(pty.write).toHaveBeenNthCalledWith(1, 'Do PROJ-1')
+    // Enter follows as its own keystroke a beat later.
+    await vi.advanceTimersByTimeAsync(300)
     expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
-    // Guard the regression: no write may contain an ESC.
+    // Guard the regression: no write may contain an ESC (it acts as the Escape key).
     for (const call of pty.write.mock.calls) expect(call[0]).not.toContain('\x1b')
+    vi.useRealTimers()
+  })
+
+  it('falls back to sending the prompt after the max wait when the CLI prints nothing', async () => {
+    vi.useFakeTimers()
+    const pty = fakePty()
+    registerTerminalIpc(cfg, () => undefined, () => pty as unknown as PtyProcess, deps)
+    await handleMap.get('pty:spawn')!({}, { id: 'a', ticketKey: 'PROJ-1', prompt: { name: 'p' }, cols: 80, rows: 24 })
+    await vi.advanceTimersByTimeAsync(14000)
+    expect(pty.write).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(pty.write).toHaveBeenNthCalledWith(1, 'Do PROJ-1')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
     vi.useRealTimers()
   })
 
