@@ -20,6 +20,11 @@ import { systemResolveCommand } from './terminal/resolve-command'
 import type { TerminalManager } from './terminal/manager'
 import type { YoloRunner } from './headless/runner'
 
+// Dev runs read package.json's `name` (seniordev-app) for app.getName();
+// packaged builds get productName from electron-builder.yml. Pin it for both
+// so About (app:info) always shows the product name.
+app.setName('SeniorDev')
+
 function resolveConfigPath(): string {
   return process.env.SENIORDEV_CONFIG ?? join(defaultConfigDir(), 'config.yaml')
 }
