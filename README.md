@@ -119,6 +119,30 @@ Selecting a prompt from the YOLO menu (or running `seniordev PROJ-123 --yolo dev
 
 5. **Resume button** — after the run exits (finished, failed, or stopped), a **"Resume YOLO Session?"** button appears at the bottom of the tab if a session id was captured. Clicking it opens a new interactive terminal tab in the same repo cwd running `claude --resume <id>` (or `codex resume <id>`), so you can inspect diffs, answer follow-up questions, or iterate on the result without starting over. The YOLO tab stays open with the full log and PR links.
 
+## Trigger from Jira (bookmarklet)
+
+One click from a Jira issue launches SeniorDev via the `seniordev://` deep-link protocol. Two URL forms exist: `seniordev://open?ticket=SD-6` loads the ticket with no prompt, while `seniordev://yolo?ticket=SD-6` loads the ticket and shows an in-app confirmation before running the Jira Orchestrator. The first protocol click in your browser shows the one-time OS prompt **Open SeniorDev? ☑ Always allow**; tick "always allow" to skip re-prompting.
+
+**YOLO trigger.** Create a bookmark with this as the URL:
+
+```javascript
+javascript:(function(){var m=location.href.match(/\/browse\/([A-Za-z][A-Za-z0-9]*-\d+)/)||location.search.match(/selectedIssue=([A-Za-z][A-Za-z0-9]*-\d+)/);if(m){location.href='seniordev://yolo?ticket='+m[1]}else{alert('No Jira issue key found in this URL')}})();
+```
+
+**Open only.** Create a bookmark with this as the URL:
+
+```javascript
+javascript:(function(){var m=location.href.match(/\/browse\/([A-Za-z][A-Za-z0-9]*-\d+)/)||location.search.match(/selectedIssue=([A-Za-z][A-Za-z0-9]*-\d+)/);if(m){location.href='seniordev://open?ticket='+m[1]}else{alert('No Jira issue key found in this URL')}})();
+```
+
+Both work on issue detail pages (`/browse/KEY`) and board/backlog views (`?selectedIssue=KEY`).
+
+### Jira Orchestrator
+
+A confirm gate appears before any deep-link YOLO run — any webpage can navigate to `seniordev://yolo`, so the app always asks first. Confirming runs the orchestrator in two stages: **classify** reads your ticket and prompt library, outputs a JSON object naming the best playbook, then **spawn** launches that prompt verbatim as a normal YOLO run (tab title shows `Jira Orchestrator → <name>`). If the classifier fails — exits non-zero, returns malformed output, names a nonexistent prompt, or answers null — no stage 2 runs; the tab shows the classifier log and reason instead. Never guess-and-run.
+
+Customize the routing prompt via **Config → Prompt Config** → **Jira Orchestrator**. Saving writes `_jira-orchestrator.md` in your prompts directory (underscore-prefixed, so it never shows up as a launchable playbook); saving text identical to the built-in deletes the override and reverts to the default. The built-in cannot be deleted. Read-only behavior during classification is prompt-enforced — the classifier runs with the tool's normal headless flags and is only instructed not to modify files.
+
 ## Develop
 
 ```bash
