@@ -66,14 +66,17 @@ describe('registerTerminalIpc', () => {
     expect(pty.write).toHaveBeenCalledWith('typed')
   })
 
-  it('expands a named prompt and writes it to stdin after the boot delay', async () => {
+  it('expands a named prompt and writes it to stdin (bracketed-paste framed) after the boot delay', async () => {
     vi.useFakeTimers()
     const pty = fakePty()
     registerTerminalIpc(cfg, () => undefined, () => pty as unknown as PtyProcess, deps)
     const res = await handleMap.get('pty:spawn')!({}, { id: 'a', ticketKey: 'PROJ-1', prompt: { name: 'p' }, cols: 80, rows: 24 })
     expect(res).toEqual({ ok: true })
+    // Nothing written before the boot delay elapses.
+    expect(pty.write).not.toHaveBeenCalled()
     await vi.runAllTimersAsync()
-    expect(pty.write).toHaveBeenCalledWith('Do PROJ-1\r')
+    // Bracketed-paste framing: ESC[200~ … ESC[201~ then a submitting CR.
+    expect(pty.write).toHaveBeenCalledWith('\x1b[200~Do PROJ-1\x1b[201~\r')
     vi.useRealTimers()
   })
 

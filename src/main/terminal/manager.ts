@@ -1,3 +1,5 @@
+import type { ResolvedCommand } from './resolve-command'
+
 export interface PtyProcess {
   onData(cb: (data: string) => void): void
   onExit(cb: (e: { exitCode: number }) => void): void
@@ -12,6 +14,7 @@ export interface SpawnOptions {
   cwd: string
   cols: number
   rows: number
+  resolved?: ResolvedCommand
 }
 
 export type PtySpawner = (opts: SpawnOptions) => PtyProcess

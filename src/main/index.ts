@@ -12,6 +12,7 @@ import { registerPromptsIpc } from './ipc/prompts-handlers'
 import { registerShellIpc } from './ipc/shell-handlers'
 import { loadPrompts } from './prompts/library'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
+import { systemResolveCommand } from './terminal/resolve-command'
 import type { Config } from './config/schema'
 import type { TerminalManager } from './terminal/manager'
 
@@ -81,7 +82,7 @@ app.whenReady().then(() => {
       cfg,
       () => BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents,
       nodePtySpawner,
-      { getTicket: (key) => client.fetchIssue(key), prompts }
+      { getTicket: (key) => client.fetchIssue(key), prompts, resolveCommand: systemResolveCommand }
     )
   }
 
