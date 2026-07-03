@@ -47,6 +47,12 @@ describe('buildHeadlessLaunch', () => {
   it('throws for an unknown tool', () => {
     expect(() => buildHeadlessLaunch(cfg(), { tool: 'nope' }, 'p')).toThrow(/Unknown CLI tool/)
   })
+  it('bare:true uses exactly the expanded prompt — no preamble or recap', () => {
+    expect(buildHeadlessLaunch(cfg(), { bare: true }, 'do it').prompt).toBe('do it')
+  })
+  it('bare:false (default) keeps the preamble + prompt + recap wrapping', () => {
+    expect(buildHeadlessLaunch(cfg(), { bare: false }, 'do it').prompt).toBe(`${DEFAULT_YOLO_PREAMBLE}\n\ndo it\n\n${DEFAULT_YOLO_RECAP}`)
+  })
   it('canResume is false without resumeArgs', () => {
     const c = cfg()
     c.cliTools.claude.resumeArgs = undefined

@@ -1,15 +1,17 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import App from './App.vue'
-import type { MenuAction } from '../../shared/ipc'
+import type { DeepLink, MenuAction } from '../../shared/ipc'
 
 let menuCb: (a: MenuAction) => void
+let deepLinkCb: (l: DeepLink) => void
 
 // Shared spies for the panel stubs; App holds template refs to these and drives
 // them via defineExpose-equivalent Options API methods (exposed by default).
 const leftOpenTickets = vi.fn()
 const leftCloseAll = vi.fn()
 const rightStartStartup = vi.fn()
+const rightStartOrchestrator = vi.fn()
 const rightCloseAll = vi.fn()
 const rightHasSessions = vi.fn(() => false as boolean)
 
@@ -29,6 +31,7 @@ const stubs = {
     template: '<div class="right" />',
     methods: {
       startStartupSession: rightStartStartup,
+      startOrchestrator: rightStartOrchestrator,
       closeAll: rightCloseAll,
       hasSessions: rightHasSessions
     }
@@ -54,6 +57,12 @@ beforeEach(() => {
       menuCb = cb
       return () => {}
     }),
+    onDeepLink: vi.fn((cb) => {
+      deepLinkCb = cb
+      return () => {}
+    }),
+    deepLinkReady: vi.fn(),
+    getTicket: vi.fn().mockResolvedValue({ ok: true, ticket: { key: 'SD-6', summary: 'Fix the thing' } }),
     getAppInfo: vi.fn().mockResolvedValue({ name: 'SeniorDev', version: '1.0.0' })
   }
 })
@@ -132,5 +141,69 @@ describe('App menu wiring', () => {
     menuCb('about') // ignored while confirm is open
     await flushPromises()
     expect(w.findComponent({ name: 'AboutModal' }).exists()).toBe(false)
+  })
+})
+
+describe('App deep link flow', () => {
+  it('signals deep-link readiness only after the listener is registered', async () => {
+    mountApp()
+    await flushPromises()
+    expect(window.api.deepLinkReady).toHaveBeenCalledTimes(1)
+    // Ordering matters: main flushes queued links the moment ready arrives, so
+    // the listener must already be attached or the flushed link is lost.
+    const readyOrder = (window.api.deepLinkReady as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    const listenOrder = (window.api.onDeepLink as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    expect(listenOrder).toBeLessThan(readyOrder)
+  })
+
+  it('open action loads the ticket without any confirm', async () => {
+    const w = mountApp()
+    await flushPromises()
+    deepLinkCb({ action: 'open', ticket: 'SD-6' })
+    await flushPromises()
+    expect(leftOpenTickets).toHaveBeenCalledWith(['SD-6'])
+    expect(w.findComponent({ name: 'ConfirmDialog' }).exists()).toBe(false)
+    expect(rightStartOrchestrator).not.toHaveBeenCalled()
+  })
+
+  it('yolo action opens the ticket and gates the orchestrator behind a confirm', async () => {
+    const w = mountApp()
+    await flushPromises()
+    deepLinkCb({ action: 'yolo', ticket: 'SD-6' })
+    await flushPromises()
+    expect(leftOpenTickets).toHaveBeenCalledWith(['SD-6'])
+    const dialog = w.findComponent({ name: 'ConfirmDialog' })
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.props('message')).toContain('SD-6')
+    expect(dialog.props('message')).toContain('Fix the thing')
+    expect(rightStartOrchestrator).not.toHaveBeenCalled()
+    await w.find('.confirm-yes').trigger('click')
+    await flushPromises()
+    expect(rightStartOrchestrator).toHaveBeenCalledWith('SD-6')
+    expect(w.findComponent({ name: 'ConfirmDialog' }).exists()).toBe(false)
+  })
+
+  it('declining the confirm runs nothing and keeps the ticket open', async () => {
+    const w = mountApp()
+    await flushPromises()
+    deepLinkCb({ action: 'yolo', ticket: 'SD-6' })
+    await flushPromises()
+    await w.find('.confirm-no').trigger('click')
+    await flushPromises()
+    expect(rightStartOrchestrator).not.toHaveBeenCalled()
+    expect(w.findComponent({ name: 'ConfirmDialog' }).exists()).toBe(false)
+    expect(leftOpenTickets).toHaveBeenCalledWith(['SD-6'])
+  })
+
+  it('a cold-start startup.deeplink shows the same confirm', async () => {
+    ;(window.api.getStartup as ReturnType<typeof vi.fn>).mockResolvedValue({
+      tickets: ['SD-6'],
+      deeplink: { action: 'yolo', ticket: 'SD-6' }
+    })
+    const w = mountApp()
+    await flushPromises()
+    expect(w.findComponent({ name: 'ConfirmDialog' }).exists()).toBe(true)
+    await w.find('.confirm-yes').trigger('click')
+    expect(rightStartOrchestrator).toHaveBeenCalledWith('SD-6')
   })
 })

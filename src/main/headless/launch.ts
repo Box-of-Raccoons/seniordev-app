@@ -17,7 +17,7 @@ export interface HeadlessLaunch {
 
 export function buildHeadlessLaunch(
   config: Config,
-  opts: { tool?: string; ticketKey?: string; cwdOverride?: string },
+  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; bare?: boolean },
   expandedPrompt: string,
   resolveCommand?: (command: string) => ResolvedCommand | undefined
 ): HeadlessLaunch {
@@ -30,7 +30,9 @@ export function buildHeadlessLaunch(
   const recap = (config.yoloRecap ?? DEFAULT_YOLO_RECAP).trim()
   // Preamble is opening autonomy framing (prepended); recap is the closing
   // summary instruction (appended). Each is skipped when it resolves to empty.
-  const prompt = [preamble, expandedPrompt, recap].filter(Boolean).join('\n\n')
+  // bare skips both wrappers entirely — the classifier's "answer with only JSON"
+  // contract is incompatible with the recap's "## Changes made" instruction.
+  const prompt = opts.bare ? expandedPrompt : [preamble, expandedPrompt, recap].filter(Boolean).join('\n\n')
   return {
     file: tool.command,
     args: [...tool.headless.args],

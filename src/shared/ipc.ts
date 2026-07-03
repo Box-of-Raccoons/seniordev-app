@@ -38,10 +38,15 @@ export interface StartupSession {
   promptText?: string
   tool?: string
 }
+export interface DeepLink { action: 'open' | 'yolo'; ticket: string }
+// `ready` is the renderer's listener-attached signal: main queues warm links
+// until it arrives, so nothing is pushed at a window that can't hear it yet.
+export const DEEPLINK = { event: 'deeplink:event', ready: 'deeplink:ready' } as const
 export interface StartupOptions {
   tickets: string[]
   session?: StartupSession
   warnings?: string[]
+  deeplink?: DeepLink
 }
 export const STARTUP = { get: 'startup:get' } as const
 
@@ -62,6 +67,14 @@ export interface YoloCaps { available: boolean }
 export const YOLO = {
   start: 'yolo:start', log: 'yolo:log', pr: 'yolo:pr',
   exit: 'yolo:exit', kill: 'yolo:kill', caps: 'yolo:caps'
+} as const
+
+export interface OrchestratorPromptInfo { text: string; isDefault: boolean }
+export interface ClassifyRequest { id: string; ticketKey: string; tool?: string }
+export type ClassifyResult = { ok: true; prompt: string } | { ok: false; reason: string }
+export const ORCHESTRATOR = {
+  classify: 'orchestrator:classify', kill: 'orchestrator:kill',
+  readPrompt: 'orchestrator:readPrompt', savePrompt: 'orchestrator:savePrompt'
 } as const
 
 export type MenuAction = 'new-session' | 'app-config' | 'prompt-config' | 'about'

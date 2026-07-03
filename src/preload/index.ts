@@ -1,8 +1,9 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, type GetTicketResult, type PromptSummary } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, ORCHESTRATOR, type GetTicketResult, type PromptSummary, type DeepLink } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
+import type { ClassifyRequest, ClassifyResult, OrchestratorPromptInfo } from '../shared/ipc'
 
 const api = {
   getTicket: (key: string): Promise<GetTicketResult> => ipcRenderer.invoke(IPC.getTicket, key),
@@ -47,6 +48,12 @@ const api = {
     ipcRenderer.on(MENU.action, listener)
     return () => ipcRenderer.off(MENU.action, listener)
   },
+  onDeepLink: (cb: (link: DeepLink) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: DeepLink): void => cb(payload)
+    ipcRenderer.on(DEEPLINK.event, listener)
+    return () => ipcRenderer.off(DEEPLINK.event, listener)
+  },
+  deepLinkReady: (): void => ipcRenderer.send(DEEPLINK.ready),
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(APP.info),
   readConfig: (): Promise<ConfigReadResult> => ipcRenderer.invoke(CONFIG.read),
   saveConfig: (text: string): Promise<SaveResult> => ipcRenderer.invoke(CONFIG.save, text),
@@ -65,7 +72,12 @@ const api = {
   createPrompt: (name: string): Promise<PromptReadResult> => ipcRenderer.invoke(PROMPT_FILES.create, name),
   deletePrompt: (name: string): Promise<SaveResult> => ipcRenderer.invoke(PROMPT_FILES.delete, name),
   readContext: (): Promise<PromptReadResult> => ipcRenderer.invoke(PROMPT_FILES.readContext),
-  writeContext: (text: string): Promise<SaveResult> => ipcRenderer.invoke(PROMPT_FILES.writeContext, text)
+  writeContext: (text: string): Promise<SaveResult> => ipcRenderer.invoke(PROMPT_FILES.writeContext, text),
+
+  classifyTicket: (req: ClassifyRequest): Promise<ClassifyResult> => ipcRenderer.invoke(ORCHESTRATOR.classify, req),
+  killClassify: (id: string): void => ipcRenderer.send(ORCHESTRATOR.kill, id),
+  readOrchestratorPrompt: (): Promise<OrchestratorPromptInfo> => ipcRenderer.invoke(ORCHESTRATOR.readPrompt),
+  saveOrchestratorPrompt: (text: string): Promise<SaveResult> => ipcRenderer.invoke(ORCHESTRATOR.savePrompt, text)
 }
 
 contextBridge.exposeInMainWorld('api', api)

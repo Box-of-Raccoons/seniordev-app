@@ -26,6 +26,12 @@ const stubs = {
     template:
       '<div class="yv" :data-id="id"><button class="trigger-resume" @click="$emit(\'resume\', { sessionId: \'sid\', cwd: \'C:/x\', tool: \'claude\' })">resume</button></div>'
   },
+  OrchestratorView: {
+    props: ['id', 'ticketKey', 'tool'],
+    emits: ['exited', 'resume', 'routed'],
+    template:
+      '<div class="ov" :data-id="id" :data-ticket-key="ticketKey"><button class="trigger-routed" @click="$emit(\'routed\', \'fix-bug\')">route</button></div>'
+  },
   NewSessionMenu: { template: '<button class="new-session" @click="$emit(\'start\', { yolo: false })" />' }
 }
 
@@ -103,6 +109,26 @@ describe('RightPanel', () => {
     await w.vm.$nextTick()
     expect(w.findAll('.yv')).toHaveLength(1)
     expect(w.findAll('.tv')).toHaveLength(0)
+  })
+
+  it('startOrchestrator opens an orchestrator tab with the ticket key', async () => {
+    const w = mount(RightPanel, { props: { activeTicketKey: 'SD-6' }, global: { stubs } })
+    ;(w.vm as unknown as { startOrchestrator: (key: string) => void }).startOrchestrator('SD-6')
+    await w.vm.$nextTick()
+    const ov = w.find('.ov')
+    expect(ov.exists()).toBe(true)
+    expect(ov.attributes('data-ticket-key')).toBe('SD-6')
+    expect(w.text()).toContain('Jira Orchestrator')
+  })
+
+  it('routed event updates the orchestrator tab title', async () => {
+    const w = mount(RightPanel, { props: { activeTicketKey: 'SD-6' }, global: { stubs } })
+    ;(w.vm as unknown as { startOrchestrator: (key: string) => void }).startOrchestrator('SD-6')
+    await w.vm.$nextTick()
+    await w.find('.trigger-routed').trigger('click')
+    await w.vm.$nextTick()
+    const tab = w.find('.term-tab')
+    expect(tab.text()).toContain('Jira Orchestrator → fix-bug')
   })
 
   it('yolo resume event opens a terminal tab with resume + cwdOverride', async () => {
