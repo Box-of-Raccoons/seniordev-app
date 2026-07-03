@@ -24,11 +24,13 @@ describe('ConfigStore', () => {
   it('reload failure keeps the last good config', () => {
     const { store } = tmpSetup(MINIMAL)
     store.reload()
+    const clientBefore = store.jiraClient
     writeFileSync(store.configPath, 'jira: [broken', 'utf8')
     const res = store.reload()
     expect(res.ok).toBe(false)
     expect(store.config?.jira.email).toBe('a@b.co') // last-good preserved
     expect(store.loadError).toBeNull()              // loadError only set when NO good config exists
+    expect(store.jiraClient).toBe(clientBefore)     // client survives a failed reload too
   })
   it('boot failure records loadError and getTicket throws it', async () => {
     const store = new ConfigStore(join(tmpdir(), 'sd-none', 'nope.yaml'))
@@ -49,7 +51,7 @@ describe('ConfigStore', () => {
     expect(ref.map((p) => p.name)).toEqual(['fix'])
   })
   it('requireConfig throws with the load error when config is null', () => {
-    const store = new ConfigStore('C:/definitely/missing.yaml')
+    const store = new ConfigStore(join(tmpdir(), 'sd-none', 'missing.yaml'))
     store.reload()
     expect(() => requireConfig(store)).toThrow(/Config not loaded/)
     const { store: good } = tmpSetup(MINIMAL)
