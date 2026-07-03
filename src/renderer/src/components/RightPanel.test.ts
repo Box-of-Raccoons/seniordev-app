@@ -151,4 +151,18 @@ describe('RightPanel', () => {
     expect(resumedTab).toBeTruthy()
     expect(resumedTab!.text()).toContain('fix-bug 1 (resumed)')
   })
+
+  it('shows mascot empty state before any session is started', () => {
+    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs } })
+    const img = w.find('img.empty-state__art')
+    expect(img.exists()).toBe(true)
+    expect(img.attributes('alt')).toBe('')
+    expect(w.text()).toContain('No sessions')
+  })
+
+  it('hides the mascot empty state after a session is started', async () => {
+    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs } })
+    await w.find('.new-session').trigger('click')
+    expect(w.find('img.empty-state__art').exists()).toBe(false)
+  })
 })

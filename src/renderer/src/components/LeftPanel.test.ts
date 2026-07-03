@@ -81,4 +81,18 @@ describe('LeftPanel', () => {
     expect(w.findAll('.tab')).toHaveLength(1)
     expect(w.find('.tab--active').text()).toContain('PROJ-2')
   })
+
+  it('shows mascot empty state before any ticket is opened', () => {
+    const w = mount(LeftPanel)
+    expect(w.text()).toContain('Open a ticket to start')
+    const img = w.find('img.empty-state__art')
+    expect(img.exists()).toBe(true)
+    expect(img.attributes('alt')).toBe('')
+  })
+
+  it('hides the mascot empty state after a ticket is opened', async () => {
+    const w = mount(LeftPanel)
+    await open(w, 'PROJ-1')
+    expect(w.find('img.empty-state__art').exists()).toBe(false)
+  })
 })
