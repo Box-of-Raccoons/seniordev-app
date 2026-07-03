@@ -1,21 +1,40 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import TerminalView from './TerminalView.vue'
+import YoloView from './YoloView.vue'
 import NewSessionMenu from './NewSessionMenu.vue'
 
 defineProps<{ activeTicketKey: string | null }>()
 
-interface Term { id: string; title: string; prompt?: { name?: string; text?: string }; yolo?: boolean; tool?: string; exited?: boolean }
+interface Term {
+  id: string
+  title: string
+  kind: 'terminal' | 'yolo'
+  prompt?: { name?: string; text?: string }
+  tool?: string
+  exited?: boolean
+  resume?: { sessionId: string }
+  cwdOverride?: string
+}
 const terms = ref<Term[]>([])
 const activeId = ref<string | null>(null)
 let counter = 0
 
-function startSession(payload: { prompt?: { name?: string; text?: string }; yolo?: boolean; tool?: string }): void {
+function addTerm(t: Omit<Term, 'id'>): void {
   counter += 1
   const id = `t${counter}-${Date.now()}`
-  const base = payload.prompt?.name ?? (payload.yolo ? 'yolo' : 'Session')
-  terms.value.push({ id, title: `${base} ${counter}`, prompt: payload.prompt, yolo: payload.yolo, tool: payload.tool })
+  terms.value.push({ id, ...t })
   activeId.value = id
+}
+
+function startSession(payload: { prompt?: { name?: string; text?: string }; yolo?: boolean; tool?: string }): void {
+  const base = payload.prompt?.name ?? (payload.yolo ? 'yolo' : 'Session')
+  addTerm({
+    title: `${base} ${counter + 1}`,
+    kind: payload.yolo ? 'yolo' : 'terminal',
+    prompt: payload.prompt,
+    tool: payload.tool
+  })
 }
 
 function startStartupSession(s: { mode: 'interactive' | 'yolo'; promptName?: string; promptText?: string; tool?: string }): void {
@@ -24,6 +43,16 @@ function startStartupSession(s: { mode: 'interactive' | 'yolo'; promptName?: str
 }
 
 defineExpose({ startStartupSession })
+
+function resumeYolo(from: Term, p: { sessionId: string; cwd: string; tool: string }): void {
+  addTerm({
+    title: `${from.title} (resumed)`,
+    kind: 'terminal',
+    tool: p.tool || undefined,
+    resume: { sessionId: p.sessionId },
+    cwdOverride: p.cwd || undefined
+  })
+}
 
 function closeTerm(id: string): void {
   const i = terms.value.findIndex((t) => t.id === id)
@@ -64,7 +93,25 @@ function markExited(id: string): void {
         :key="t.id"
         class="term-slot"
       >
-        <TerminalView :id="t.id" :ticket-key="activeTicketKey" :prompt="t.prompt" :tool="t.tool" @exited="markExited(t.id)" />
+        <YoloView
+          v-if="t.kind === 'yolo'"
+          :id="t.id"
+          :ticket-key="activeTicketKey"
+          :prompt="t.prompt"
+          :tool="t.tool"
+          @exited="markExited(t.id)"
+          @resume="resumeYolo(t, $event)"
+        />
+        <TerminalView
+          v-else
+          :id="t.id"
+          :ticket-key="activeTicketKey"
+          :prompt="t.prompt"
+          :tool="t.tool"
+          :resume="t.resume"
+          :cwd-override="t.cwdOverride"
+          @exited="markExited(t.id)"
+        />
       </div>
     </div>
   </section>

@@ -1680,7 +1680,13 @@ function append(text: string): void {
   const el = logHost.value
   const pinned = !el || el.scrollTop + el.clientHeight >= el.scrollHeight - 8
   lines.value.push(text)
-  if (pinned) void nextTick(() => logHost.value?.scrollTo({ top: logHost.value.scrollHeight }))
+  // scrollTop assignment, not scrollTo(): jsdom (tests) implements only the property.
+  if (pinned) {
+    void nextTick(() => {
+      const host = logHost.value
+      if (host) host.scrollTop = host.scrollHeight
+    })
+  }
 }
 
 onMounted(async () => {

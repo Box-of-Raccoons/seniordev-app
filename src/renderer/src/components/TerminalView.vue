@@ -5,7 +5,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
 
-const props = defineProps<{ id: string; ticketKey: string | null; prompt?: { name?: string; text?: string }; tool?: string }>()
+const props = defineProps<{ id: string; ticketKey: string | null; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string }>()
 const emit = defineEmits<{ (e: 'exited', code: number): void }>()
 const host = ref<HTMLDivElement | null>(null)
 let term: Terminal | null = null
@@ -37,10 +37,12 @@ onMounted(async () => {
     const res = await window.api.spawnTerminal({
       id: props.id,
       ticketKey: props.ticketKey ?? undefined,
+      cwdOverride: props.cwdOverride,
       cols: term.cols,
       rows: term.rows,
       prompt: props.prompt ? { name: props.prompt.name, text: props.prompt.text } : undefined,
-      tool: props.tool ?? undefined
+      resume: props.resume ? { sessionId: props.resume.sessionId } : undefined,
+      tool: props.tool
     })
     if (!res.ok) term.write(`\r\n[failed to start: ${res.error}]\r\n`)
   } catch (err) {

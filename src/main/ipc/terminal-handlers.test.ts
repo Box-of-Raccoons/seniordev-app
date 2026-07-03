@@ -19,7 +19,7 @@ const deps = { getTicket: async () => ticket, prompts: [{ name: 'p', description
 const cfg = {
   defaultTool: 'claude',
   ticketContext: 'both',
-  cliTools: { claude: { command: 'claude', interactiveArgs: [], yoloArgs: [], promptDelivery: 'stdin' } },
+  cliTools: { claude: { command: 'claude', interactiveArgs: [], promptDelivery: 'stdin' } },
   defaultForge: 'github',
   forges: { github: { prCommand: 'gh pr create', term: 'PR', urlPattern: 'x' } },
   repos: []

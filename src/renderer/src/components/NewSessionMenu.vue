@@ -9,6 +9,7 @@ const prompts = ref<PromptSummary[]>([])
 const customOpen = ref(false)
 const customText = ref('')
 const mode = ref<'interactive' | 'yolo'>('interactive')
+const yoloAvailable = ref(false)
 const menuWrap = ref<HTMLElement | null>(null)
 
 function onPointerDown(e: PointerEvent): void {
@@ -31,6 +32,7 @@ onMounted(async () => {
   document.addEventListener('pointerdown', onPointerDown)
   document.addEventListener('keydown', onKeyDown)
   try { prompts.value = await window.api.listPrompts() } catch { prompts.value = [] }
+  try { yoloAvailable.value = (await window.api.yoloCaps()).available } catch { yoloAvailable.value = false }
 })
 
 onBeforeUnmount(() => {
@@ -53,7 +55,13 @@ function choose(payload: { prompt?: { name?: string; text?: string } }): void {
     <div v-if="open" class="menu">
       <div class="mode-toggle" role="group" aria-label="Session mode">
         <button type="button" :class="{ 'mode--on': mode === 'interactive' }" @click="mode = 'interactive'">Interactive</button>
-        <button type="button" :class="{ 'mode--on': mode === 'yolo' }" @click="mode = 'yolo'">YOLO ⚡</button>
+        <button
+          type="button"
+          :class="{ 'mode--on': mode === 'yolo' }"
+          :disabled="!yoloAvailable"
+          :title="yoloAvailable ? '' : 'Default tool has no headless config'"
+          @click="mode = 'yolo'"
+        >YOLO ⚡</button>
       </div>
       <button v-if="mode === 'interactive'" class="menu-item" @click="choose({})">Interactive (no prompt)</button>
       <button
@@ -113,5 +121,6 @@ function choose(payload: { prompt?: { name?: string; text?: string } }): void {
   border-radius: var(--radius-sm); padding: 5px 8px; cursor: pointer; font-weight: 600; font-size: 12px;
 }
 .mode-toggle button.mode--on { background: var(--surface-2); color: var(--ink); }
+.mode-toggle button:disabled { opacity: 0.4; cursor: default; }
 .mode-toggle button:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
 </style>

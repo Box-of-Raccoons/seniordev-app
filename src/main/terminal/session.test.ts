@@ -29,7 +29,7 @@ const noResumeArgsCfg = {
 } as unknown as Config
 
 describe('buildInteractiveLaunch', () => {
-  it('uses the default tool and interactiveArgs (not yoloArgs)', () => {
+  it('uses the default tool and interactiveArgs', () => {
     const l = buildInteractiveLaunch(cfg, {})
     expect(l.file).toBe('claude')
     expect(l.args).toEqual([])
