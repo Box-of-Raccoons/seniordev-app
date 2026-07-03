@@ -52,4 +52,13 @@ describe('AppConfigModal', () => {
     await w2.get('button.confirm-yes').trigger('click')
     expect(w2.emitted('close')).toBeTruthy()
   })
+  it('a failed readConfig shows the error and keeps Save disabled', async () => {
+    ;(window.api.readConfig as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, error: 'EACCES: denied' })
+    const w = mount(AppConfigModal)
+    await flushPromises()
+    expect(w.text()).toContain('EACCES: denied')
+    expect((w.get('button.cfg-save').element as HTMLButtonElement).disabled).toBe(true)
+    await w.get('button.cfg-save').trigger('click')
+    expect(window.api.saveConfig).not.toHaveBeenCalled() // nothing sensible to save
+  })
 })

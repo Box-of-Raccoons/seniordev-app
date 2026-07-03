@@ -12,6 +12,8 @@ const path = ref('')
 const isTemplate = ref(false)
 const error = ref<string | null>(null)
 const confirmDiscard = ref(false)
+const loaded = ref(false)
+const saving = ref(false)
 const dirty = computed(() => text.value !== original.value)
 
 onMounted(async () => {
@@ -21,16 +23,25 @@ onMounted(async () => {
     original.value = res.text
     path.value = res.path
     isTemplate.value = res.isTemplate === true
+    loaded.value = true
   } else {
+    // Save stays disabled: the main-side validator would reject '' anyway,
+    // but there's nothing sensible to save when the read itself failed.
     error.value = res.error
   }
 })
 
 async function save(): Promise<void> {
+  if (!loaded.value || saving.value) return
+  saving.value = true
   error.value = null
-  const res = await window.api.saveConfig(text.value)
-  if (res.ok) emit('close')
-  else error.value = res.error
+  try {
+    const res = await window.api.saveConfig(text.value)
+    if (res.ok) emit('close')
+    else error.value = res.error
+  } finally {
+    saving.value = false
+  }
 }
 
 function requestClose(): void {
@@ -52,7 +63,7 @@ function requestClose(): void {
     <p v-if="error" class="cfg-error">{{ error }}</p>
     <template #footer>
       <button class="cfg-cancel" @click="requestClose">Cancel</button>
-      <button class="cfg-save" @click="save">Save</button>
+      <button class="cfg-save" :disabled="!loaded || saving" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
     </template>
   </ModalShell>
   <ConfirmDialog
@@ -60,7 +71,7 @@ function requestClose(): void {
     title="Unsaved changes"
     message="Discard changes?"
     confirm-label="Discard"
-    @confirm="emit('close')"
+    @confirm="confirmDiscard = false; emit('close')"
     @cancel="confirmDiscard = false"
   />
 </template>
