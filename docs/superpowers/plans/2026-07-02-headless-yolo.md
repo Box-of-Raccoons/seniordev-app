@@ -1091,7 +1091,7 @@ describe('nodeHeadlessSpawner (integration)', () => {
 })
 ```
 
-Note: `process.execPath` is a full path to `node.exe` — an explicit `.exe` path, so on Windows `resolveSpawnCommand` with no `resolved` routes it through `cmd /c`, which still works (args contain no untrusted text in this test; real launches pass `resolved`). The spawn-failure test relies on the `error` event mapping to exit -1.
+Note (corrected during execution): both tests MUST pass `resolved: { path, kind: 'exe' }` — mirroring production, where `systemResolveCommand` always supplies it on Windows. Without it, `resolveSpawnCommand` routes through `cmd /c`, which re-parses the quoted `-e` script (exit 1) and can never yield ENOENT→-1 (the shell itself always spawns). The spawn-failure test relies on the `error` event mapping to exit -1 via a direct spawn of a missing `.exe`.
 
 - [ ] **Step 6: Run to verify failure** — `pnpm test -- node-spawner` → FAIL (module missing).
 - [ ] **Step 7: Implement the spawner**
