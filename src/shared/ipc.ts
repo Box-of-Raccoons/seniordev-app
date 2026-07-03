@@ -38,10 +38,13 @@ export interface StartupSession {
   promptText?: string
   tool?: string
 }
+export interface DeepLink { action: 'open' | 'yolo'; ticket: string }
+export const DEEPLINK = { event: 'deeplink:event' } as const
 export interface StartupOptions {
   tickets: string[]
   session?: StartupSession
   warnings?: string[]
+  deeplink?: DeepLink
 }
 export const STARTUP = { get: 'startup:get' } as const
 

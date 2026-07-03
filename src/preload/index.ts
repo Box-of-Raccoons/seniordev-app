@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, type GetTicketResult, type PromptSummary } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, type GetTicketResult, type PromptSummary, type DeepLink } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
@@ -46,6 +46,11 @@ const api = {
     const listener = (_e: IpcRendererEvent, action: MenuAction): void => cb(action)
     ipcRenderer.on(MENU.action, listener)
     return () => ipcRenderer.off(MENU.action, listener)
+  },
+  onDeepLink: (cb: (link: DeepLink) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: DeepLink): void => cb(payload)
+    ipcRenderer.on(DEEPLINK.event, listener)
+    return () => ipcRenderer.off(DEEPLINK.event, listener)
   },
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(APP.info),
   readConfig: (): Promise<ConfigReadResult> => ipcRenderer.invoke(CONFIG.read),
