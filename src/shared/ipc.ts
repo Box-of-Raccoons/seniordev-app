@@ -47,6 +47,10 @@ export interface StartupOptions {
   session?: StartupSession
   warnings?: string[]
   deeplink?: DeepLink
+  // `--orchestrate <TICKET>`: run the Jira Orchestrator on this ticket with NO
+  // confirm gate (CLI-only, not web-reachable — used by SeniorDevWatch).
+  orchestrate?: string
+  minimized?: boolean
 }
 export const STARTUP = { get: 'startup:get' } as const
 
@@ -74,7 +78,10 @@ export interface ClassifyRequest { id: string; ticketKey: string; tool?: string 
 export type ClassifyResult = { ok: true; prompt: string } | { ok: false; reason: string }
 export const ORCHESTRATOR = {
   classify: 'orchestrator:classify', kill: 'orchestrator:kill',
-  readPrompt: 'orchestrator:readPrompt', savePrompt: 'orchestrator:savePrompt'
+  readPrompt: 'orchestrator:readPrompt', savePrompt: 'orchestrator:savePrompt',
+  // Warm-launch signal: a second `--orchestrate` invocation forwards to the
+  // running app, which pushes this (no confirm gate) to open an orchestrator tab.
+  run: 'orchestrator:run'
 } as const
 
 export type MenuAction = 'new-session' | 'app-config' | 'prompt-config' | 'about'

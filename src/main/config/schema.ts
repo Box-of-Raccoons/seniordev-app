@@ -40,10 +40,7 @@ export const WatchSchema = z.object({
   label: z.string().min(1).default('SeniorDev'),
   triggerStatusCategory: z.string().min(1).default('To Do'),
   transitionOnDispatch: z.string().min(1).default('In Progress'),
-  autoMode: z.boolean().default(false),
-  // Notify (with a click-to-kill action) if a single classify or run exceeds
-  // this many seconds. 0 disables the warning.
-  runWarnSeconds: z.number().int().nonnegative().default(0)
+  autoMode: z.boolean().default(false)
 })
 
 export type WatchConfig = z.infer<typeof WatchSchema>

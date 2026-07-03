@@ -25,5 +25,3 @@ jira:
 #   triggerStatusCategory: "To Do"
 #   transitionOnDispatch: "In Progress"   # moved here after dispatch
 #   autoMode: false               # initial default; the tray checkbox overrides at runtime
-#   runWarnSeconds: 0             # warn (with a click-to-kill option) if a single classify/run
-#                                 # exceeds this many seconds; 0 disables the warning

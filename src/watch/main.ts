@@ -1,15 +1,8 @@
 import { app, Tray, Menu, Notification, nativeImage, shell, type MenuItemConstructorOptions } from 'electron'
+import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { ConfigStore } from '../main/config/store'
 import { defaultConfigDir } from '../main/config/paths'
-import { nodeHeadlessSpawner } from '../main/headless/node-spawner'
-import { systemResolveCommand } from '../main/terminal/resolve-command'
-import { buildHeadlessLaunch } from '../main/headless/launch'
-import { createParser } from '../main/headless/parsers'
-import { YoloRunner } from '../main/headless/runner'
-import { buildForgePatterns } from '../main/terminal/pr-detector'
-import { resolveExpandedPrompt } from '../main/ipc/resolve-prompt'
-import { buildClassifyLaunch, createClassifyRunner } from '../main/orchestrator/run'
 import { WatchState } from './state'
 import { WatchDispatcher, type WatchNotification } from './dispatcher'
 import type { Ticket } from '../shared/types'
@@ -26,6 +19,19 @@ function assetPath(file: string): string {
   return app.isPackaged
     ? join(process.resourcesPath, 'assets', file)
     : join(__dirname, '..', '..', 'assets', file)
+}
+
+// Launch the SeniorDev app on a ticket ("no invisible work" — the run shows in a
+// visible tab). In dev, process.execPath is the electron binary and needs the app
+// entry (out/main/index.js) as its first arg; in a packaged build the exe's
+// default entry IS index.js, so no entry arg. The app is single-instance, so a
+// second launch becomes a new orchestrator tab in the running app.
+function launchApp(ticketKey: string): void {
+  const entry = app.isPackaged ? [] : [join(__dirname, 'index.js')]
+  spawn(process.execPath, [...entry, '--orchestrate', ticketKey, '--minimized'], {
+    detached: true,
+    stdio: 'ignore'
+  }).unref()
 }
 
 // Single instance: a second tray launch just exits.
@@ -57,17 +63,6 @@ if (!app.requestSingleInstanceLock()) {
       note.show()
     }
 
-    // Stage-1 classify engine (reused across tickets); logs are dropped in the
-    // tray (no renderer) — the verdict is what matters.
-    const classifyEngine = createClassifyRunner(nodeHeadlessSpawner, () => {})
-    const spawnResolvers = new Map<string, (r: { exitCode: number; prUrls: string[] }) => void>()
-    // Stage-2 YOLO runner: resolve each run's exit into a promise for the queue.
-    const yolo = new YoloRunner(nodeHeadlessSpawner, {
-      onLog: () => {},
-      onPr: () => {},
-      onExit: (id, e) => spawnResolvers.get(id)?.({ exitCode: e.exitCode, prUrls: e.prUrls })
-    })
-
     const dispatcher = new WatchDispatcher({
       config: () => {
         if (!store.config) throw new Error(store.loadError ?? 'config not loaded')
@@ -81,38 +76,7 @@ if (!app.requestSingleInstanceLock()) {
         if (!store.jiraClient) throw new Error('config not loaded')
         return store.jiraClient.transition(key, name)
       },
-      classify: async (ticket: Ticket) => {
-        const cfg = store.config!
-        const id = `watch-classify:${ticket.key}`
-        const launch = await buildClassifyLaunch(cfg, store, store.promptsDir(), { id, ticketKey: ticket.key }, systemResolveCommand)
-        return classifyEngine.run(id, launch, store.prompts, buildForgePatterns(cfg))
-      },
-      spawn: async (ticket: Ticket, _repoPath: string, promptName: string) => {
-        const cfg = store.config!
-        const id = `watch-run:${ticket.key}`
-        const expanded = await resolveExpandedPrompt(cfg, store, { prompt: { name: promptName }, ticketKey: ticket.key })
-        const launch = buildHeadlessLaunch(cfg, { ticketKey: ticket.key }, expanded ?? '', systemResolveCommand)
-        return new Promise((resolve, reject) => {
-          spawnResolvers.set(id, (r) => { spawnResolvers.delete(id); resolve(r) })
-          try {
-            yolo.start(id, {
-              file: launch.file, args: launch.args, cwd: launch.cwd, prompt: launch.prompt,
-              parser: createParser(launch.outputParser, launch.sessionIdPattern),
-              patterns: buildForgePatterns(cfg), resolved: launch.resolved
-            })
-          } catch (err) {
-            // start() threw (e.g. duplicate id) — drop the resolver so it can't
-            // leak, and reject so the dispatcher surfaces it.
-            spawnResolvers.delete(id)
-            reject(err)
-          }
-        })
-      },
-      kill: (key: string) => {
-        // Only one of these is live at a time; killing a stale id is a no-op.
-        classifyEngine.kill(`watch-classify:${key}`)
-        yolo.kill(`watch-run:${key}`)
-      },
+      launch: (ticket: Ticket) => launchApp(ticket.key),
       state,
       notify,
       isAuto,
@@ -120,10 +84,8 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     const refreshMenu = (): void => {
-      tray.setToolTip(
-        dispatcher.inFlightCount > 0 ? `SeniorDevWatch — ${dispatcher.inFlightCount} running` : 'SeniorDevWatch — idle'
-      )
       const pending = dispatcher.pendingApprovals()
+      tray.setToolTip(pending.length ? `SeniorDevWatch — ${pending.length} awaiting approval` : 'SeniorDevWatch — idle')
       const approvals: MenuItemConstructorOptions[] = pending.length
         ? [
             { type: 'separator' },
@@ -138,7 +100,7 @@ if (!app.requestSingleInstanceLock()) {
         : []
       const menu = Menu.buildFromTemplate([
         { label: `SeniorDevWatch — last poll ${lastPoll}`, enabled: false },
-        { label: `${dispatcher.inFlightCount} running · ${dispatcher.pendingCount} awaiting approval`, enabled: false },
+        { label: `${dispatcher.pendingCount} awaiting approval`, enabled: false },
         ...approvals,
         { type: 'separator' },
         { label: 'Auto-dispatch', type: 'checkbox', checked: isAuto(), click: (i) => { state.setAutoMode(i.checked); refreshMenu() } },
@@ -146,7 +108,7 @@ if (!app.requestSingleInstanceLock()) {
         { label: 'Poll now', click: () => void runPoll(true) },
         { type: 'separator' },
         { label: 'Open config', click: () => void shell.openPath(store.configPath) },
-        { label: 'Quit', click: () => { yolo.killAll(); classifyEngine.killAll(); app.quit() } }
+        { label: 'Quit', click: () => app.quit() }
       ])
       tray.setContextMenu(menu)
     }
@@ -159,7 +121,6 @@ if (!app.requestSingleInstanceLock()) {
       refreshMenu()
     }
 
-    tray.setToolTip('SeniorDevWatch')
     if (!boot.ok) notify({ title: 'SeniorDevWatch: config error', body: boot.error })
     refreshMenu()
 

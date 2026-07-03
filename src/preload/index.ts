@@ -54,6 +54,11 @@ const api = {
     return () => ipcRenderer.off(DEEPLINK.event, listener)
   },
   deepLinkReady: (): void => ipcRenderer.send(DEEPLINK.ready),
+  onOrchestrate: (cb: (ticket: string) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, ticket: string): void => cb(ticket)
+    ipcRenderer.on(ORCHESTRATOR.run, listener)
+    return () => ipcRenderer.off(ORCHESTRATOR.run, listener)
+  },
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(APP.info),
   readConfig: (): Promise<ConfigReadResult> => ipcRenderer.invoke(CONFIG.read),
   saveConfig: (text: string): Promise<SaveResult> => ipcRenderer.invoke(CONFIG.save, text),
