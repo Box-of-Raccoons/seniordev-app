@@ -5,9 +5,9 @@ import { TerminalManager, type PtySpawner } from '../terminal/manager'
 import { buildInteractiveLaunch } from '../terminal/session'
 import type { ResolvedCommand } from '../terminal/resolve-command'
 import { TERM, type SpawnTerminalRequest, type SpawnResult } from '../../shared/ipc'
-import { type PromptTemplate, findPrompt } from '../prompts/library'
-import { buildPromptTicket, expandPrompt, resolveForge } from '../prompts/expand'
+import type { PromptTemplate } from '../prompts/library'
 import { PrDetector, buildForgePatterns } from '../terminal/pr-detector'
+import { resolveExpandedPrompt } from './resolve-prompt'
 
 export interface TerminalDeps {
   getTicket: (key: string) => Promise<Ticket>
@@ -28,28 +28,6 @@ const POLL_MS = 100
 const SUBMIT_DELAY_MS = 300
 // Safety valve: if the CLI never settles (endless spinner), send anyway.
 const MAX_WAIT_MS = 15000
-
-async function resolveExpandedPrompt(
-  config: Config,
-  deps: TerminalDeps,
-  req: SpawnTerminalRequest
-): Promise<string | undefined> {
-  if (!req.prompt) return undefined
-  let body = req.prompt.text
-  if (req.prompt.name) {
-    const tmpl = findPrompt(deps.prompts, req.prompt.name)
-    if (!tmpl) throw new Error(`Unknown prompt: ${req.prompt.name}`)
-    body = tmpl.body
-  }
-  if (body === undefined) return undefined
-
-  const ticket = req.ticketKey
-    ? await deps.getTicket(req.ticketKey)
-    : { key: '', type: '', status: '', summary: '', descriptionAdf: null, acceptanceCriteria: null, comments: [], url: '' }
-  const ticketCtx = buildPromptTicket(ticket, config.ticketContext)
-  const forge = resolveForge(config, req.ticketKey)
-  return expandPrompt(body, { ticket: ticketCtx, forge })
-}
 
 export function registerTerminalIpc(
   config: Config,

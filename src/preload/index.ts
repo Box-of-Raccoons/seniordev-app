@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, STARTUP, type GetTicketResult, type PromptSummary } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, STARTUP, YOLO, type GetTicketResult, type PromptSummary } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent, TerminalPrEvent } from '../shared/ipc'
+import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
 
 const api = {
   getTicket: (key: string): Promise<GetTicketResult> => ipcRenderer.invoke(IPC.getTicket, key),
@@ -26,6 +27,24 @@ const api = {
     const listener = (_e: IpcRendererEvent, payload: TerminalPrEvent): void => cb(payload)
     ipcRenderer.on(TERM.pr, listener)
     return () => ipcRenderer.off(TERM.pr, listener)
+  },
+  startYolo: (req: StartYoloRequest): Promise<SpawnResult> => ipcRenderer.invoke(YOLO.start, req),
+  killYolo: (id: string): void => ipcRenderer.send(YOLO.kill, id),
+  yoloCaps: (): Promise<YoloCaps> => ipcRenderer.invoke(YOLO.caps),
+  onYoloLog: (cb: (e: YoloLogEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: YoloLogEvent): void => cb(payload)
+    ipcRenderer.on(YOLO.log, listener)
+    return () => ipcRenderer.off(YOLO.log, listener)
+  },
+  onYoloPr: (cb: (e: YoloPrEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: YoloPrEvent): void => cb(payload)
+    ipcRenderer.on(YOLO.pr, listener)
+    return () => ipcRenderer.off(YOLO.pr, listener)
+  },
+  onYoloExit: (cb: (e: YoloExitEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: YoloExitEvent): void => cb(payload)
+    ipcRenderer.on(YOLO.exit, listener)
+    return () => ipcRenderer.off(YOLO.exit, listener)
   }
 }
 

@@ -8,13 +8,16 @@ import { loadConfig } from './config/load'
 import { JiraClient } from './jira/client'
 import { registerIpc } from './ipc/handlers'
 import { registerTerminalIpc } from './ipc/terminal-handlers'
+import { registerYoloIpc } from './ipc/yolo-handlers'
 import { registerPromptsIpc } from './ipc/prompts-handlers'
 import { registerShellIpc } from './ipc/shell-handlers'
 import { loadPrompts } from './prompts/library'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
+import { nodeHeadlessSpawner } from './headless/node-spawner'
 import { systemResolveCommand } from './terminal/resolve-command'
 import type { Config } from './config/schema'
 import type { TerminalManager } from './terminal/manager'
+import type { YoloRunner } from './headless/runner'
 
 function resolveConfigPath(): string {
   return process.env.SENIORDEV_CONFIG ?? join(defaultConfigDir(), 'config.yaml')
@@ -55,6 +58,7 @@ function createWindow(): void {
 }
 
 let terminals: TerminalManager | null = null
+let yolo: YoloRunner | null = null
 
 app.whenReady().then(() => {
   if (!process.env.ELECTRON_RENDERER_URL) {
@@ -86,6 +90,12 @@ app.whenReady().then(() => {
       nodePtySpawner,
       { getTicket: (key) => client.fetchIssue(key), prompts, resolveCommand: systemResolveCommand }
     )
+    yolo = registerYoloIpc(
+      cfg,
+      () => BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents,
+      nodeHeadlessSpawner,
+      { getTicket: (key) => client.fetchIssue(key), prompts, resolveCommand: systemResolveCommand }
+    )
   }
 
   createWindow()
@@ -94,8 +104,12 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('before-quit', () => terminals?.killAll())
+app.on('before-quit', () => {
+  terminals?.killAll()
+  yolo?.killAll()
+})
 app.on('window-all-closed', () => {
   terminals?.killAll()
+  yolo?.killAll()
   if (process.platform !== 'darwin') app.quit()
 })

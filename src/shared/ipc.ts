@@ -46,3 +46,22 @@ export interface StartupOptions {
   warnings?: string[]
 }
 export const STARTUP = { get: 'startup:get' } as const
+
+export interface StartYoloRequest {
+  id: string
+  tool?: string
+  ticketKey?: string
+  cwdOverride?: string
+  prompt?: { name?: string; text?: string }
+}
+export interface YoloLogEvent { id: string; text: string }
+export interface YoloPrEvent { id: string; url: string; term: string }
+export interface YoloExitEvent {
+  id: string; exitCode: number; sessionId?: string
+  cwd: string; tool: string; canResume: boolean; prUrls: string[]
+}
+export interface YoloCaps { available: boolean }
+export const YOLO = {
+  start: 'yolo:start', log: 'yolo:log', pr: 'yolo:pr',
+  exit: 'yolo:exit', kill: 'yolo:kill', caps: 'yolo:caps'
+} as const
