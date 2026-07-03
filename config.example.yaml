@@ -16,3 +16,14 @@ jira:
 #     path: C:/Users/you/code/backend
 #     branchPrefix: feature/
 #     forge: github
+
+# SeniorDevWatch — background tray poller (separate process: `pnpm watch`).
+# watch:
+#   enabled: true
+#   intervalSeconds: 300          # how often to poll Jira
+#   label: SeniorDev              # the trigger label
+#   triggerStatusCategory: "To Do"
+#   transitionOnDispatch: "In Progress"   # moved here after dispatch
+#   autoMode: false               # initial default; the tray checkbox overrides at runtime
+#   runWarnSeconds: 0             # warn (with a click-to-kill option) if a single classify/run
+#                                 # exceeds this many seconds; 0 disables the warning

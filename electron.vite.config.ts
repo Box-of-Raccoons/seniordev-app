@@ -3,7 +3,17 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
-  main: { plugins: [externalizeDepsPlugin()] },
+  main: {
+    plugins: [externalizeDepsPlugin()],
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve('src/main/index.ts'),
+          watch: resolve('src/watch/main.ts')
+        }
+      }
+    }
+  },
   preload: { plugins: [externalizeDepsPlugin()] },
   renderer: {
     root: 'src/renderer',

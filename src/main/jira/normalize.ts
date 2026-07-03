@@ -5,7 +5,7 @@ interface RawComment {
   created?: string
   body?: AdfNode | null
 }
-interface RawIssue {
+export interface RawIssue {
   key: string
   fields?: {
     summary?: string

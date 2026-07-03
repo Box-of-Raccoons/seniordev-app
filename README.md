@@ -143,6 +143,47 @@ A confirm gate appears before any deep-link YOLO run — any webpage can navigat
 
 Customize the routing prompt via **Config → Prompt Config** → **Jira Orchestrator**. Saving writes `_jira-orchestrator.md` in your prompts directory (underscore-prefixed, so it never shows up as a launchable playbook); saving text identical to the built-in deletes the override and reverts to the default. The built-in cannot be deleted. Read-only behavior during classification is prompt-enforced — the classifier runs with the tool's normal headless flags and is only instructed not to modify files.
 
+## SeniorDevWatch (background tray poller)
+
+SeniorDevWatch is a separate, headless system-tray process that watches Jira for your `SeniorDev`-labeled work and drives each new ticket through the Jira Orchestrator (classify → spawn) without you opening the app. On each tick it runs the query:
+
+```
+assignee = currentUser() AND labels = SeniorDev AND statusCategory = "To Do"
+```
+
+and dispatches any ticket it hasn't seen before, one at a time (a sequential queue — never two runs at once). The label, status category, and poll interval are configurable under the `watch` block in `config.yaml` (see `config.example.yaml`); watch is disabled unless you set `watch.enabled: true`.
+
+### Run it
+
+```bash
+pnpm watch
+```
+
+This builds and launches the tray process. It has no window — it lives entirely in the system tray (a sleeping-raccoon icon when idle, a hard-hat raccoon while a run is in flight). It reads the same `config.yaml` as the main app and keeps its own dedup/runtime state in `watch-state.json` next to your config.
+
+### Tray menu
+
+Right-click the tray icon:
+
+- **Auto-dispatch** — a checkbox toggling between auto and approve-first mode (see below). The choice persists to `watch-state.json` and overrides the `watch.autoMode` config default at runtime.
+- **Pause polling / Resume polling** — stop or restart the poll timer without quitting.
+- **Poll now** — poll Jira immediately instead of waiting for the next interval.
+- **Open config** — open `config.yaml` in your default editor.
+- **Quit** — kill any in-flight runs and exit.
+
+### Auto vs. approve
+
+- **Auto-dispatch on** — a newly matched ticket is classified and run immediately.
+- **Auto-dispatch off (approve-first)** — a newly matched ticket raises a click-to-run notification instead; nothing runs until you click it to approve. This is the default.
+
+Either way, when a run is committed the ticket is transitioned to `In Progress` (configurable via `watch.transitionOnDispatch`) and recorded in `watch-state.json`, so it leaves the query and is never re-dispatched. If the transition itself fails, the run still proceeds and you get a notification about the transition error.
+
+### Edge cases
+
+- **No matching repo** — a ticket whose project key has no entry in `repos` is skipped with a "no repo configured" notification. It is never run in the wrong place.
+- **Failed classification** — if the classifier can't route a ticket (non-zero exit, malformed output, an unknown or null playbook), the failure is recorded in `watch-state.json` so the ticket isn't re-classified every tick. To retry it, remove that ticket's key from `watch-state.json` (and fix whatever caused the failure).
+- **Long-running / hung runs** — runs are sequential, so one stuck classify or run would otherwise block the queue. Set `watch.runWarnSeconds` (0 = off) and, when a phase exceeds it, you get a notification you can click to kill that run — freeing the queue. The killed run reports as a normal failure/non-zero exit.
+
 ## Develop
 
 ```bash

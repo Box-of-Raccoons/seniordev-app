@@ -34,6 +34,20 @@ export const JiraSchema = z.object({
   apiToken: z.string().min(1)
 })
 
+export const WatchSchema = z.object({
+  enabled: z.boolean().default(false),
+  intervalSeconds: z.number().int().positive().default(300),
+  label: z.string().min(1).default('SeniorDev'),
+  triggerStatusCategory: z.string().min(1).default('To Do'),
+  transitionOnDispatch: z.string().min(1).default('In Progress'),
+  autoMode: z.boolean().default(false),
+  // Notify (with a click-to-kill action) if a single classify or run exceeds
+  // this many seconds. 0 disables the warning.
+  runWarnSeconds: z.number().int().nonnegative().default(0)
+})
+
+export type WatchConfig = z.infer<typeof WatchSchema>
+
 export const ConfigSchema = z.object({
   jira: JiraSchema,
   ticketContext: z.enum(['key-only', 'both']).default('both'),
@@ -42,6 +56,7 @@ export const ConfigSchema = z.object({
   defaultForge: z.string().default('github'),
   forges: z.record(ForgeSchema).default({}),
   repos: z.array(RepoSchema).default([]),
+  watch: WatchSchema.default({}),
   promptsDir: z.string().optional(),
   yoloPreamble: z.string().optional(),
   yoloRecap: z.string().optional()
