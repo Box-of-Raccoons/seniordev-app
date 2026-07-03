@@ -38,6 +38,9 @@ export function registerYoloIpc(
   ipcMain.handle(YOLO.start, async (_e, req: StartYoloRequest): Promise<SpawnResult> => {
     try {
       if (!req.prompt?.name && !req.prompt?.text) throw new Error('YOLO session requires a prompt')
+      // Check BEFORE meta.set: a duplicate id must not overwrite (then delete,
+      // in the catch) the live run's meta on its way to the runner's throw.
+      if (runner.has(req.id)) throw new Error(`YOLO run ${req.id} already exists`)
       const expanded = await resolveExpandedPrompt(config, deps, req)
       const launch = buildHeadlessLaunch(config, req, expanded ?? '', deps.resolveCommand)
       meta.set(req.id, { cwd: launch.cwd, tool: launch.toolName, canResume: launch.canResume })
