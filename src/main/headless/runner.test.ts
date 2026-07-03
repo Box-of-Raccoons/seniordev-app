@@ -62,4 +62,17 @@ describe('YoloRunner', () => {
     expect(child.killed).toBe(true)
     expect(runner.has('y1')).toBe(false)
   })
+  it('a killed child\'s late exit does not evict a new run reusing the id', () => {
+    const first = fakeChild()
+    const second = fakeChild()
+    let call = 0
+    const cb = { onLog: vi.fn(), onPr: vi.fn(), onExit: vi.fn() }
+    const runner = new YoloRunner(() => (++call === 1 ? first : second), cb)
+    runner.start('y1', { file: 'x', args: [], cwd: '.', prompt: 'p', parser: new TextParser(), patterns: [] })
+    runner.kill('y1')
+    runner.start('y1', { file: 'x', args: [], cwd: '.', prompt: 'p', parser: new TextParser(), patterns: [] })
+    first.exit(1) // taskkill'd child reports its close late
+    expect(runner.has('y1')).toBe(true) // the new child must survive in the map
+    expect(cb.onExit).toHaveBeenCalledWith('y1', { exitCode: 1, sessionId: undefined, prUrls: [] })
+  })
 })

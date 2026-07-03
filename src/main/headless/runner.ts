@@ -67,7 +67,9 @@ export class YoloRunner {
     child.onExit((exitCode) => {
       emit(opts.parser.flush())
       for (const line of stderrLines.flush()) if (line.trim()) this.cb.onLog(id, line)
-      this.runs.delete(id)
+      // Guard against id reuse: after kill()+start() with the same id, the old
+      // child's late 'close' must not evict the NEW child from the map.
+      if (this.runs.get(id) === child) this.runs.delete(id)
       this.cb.onExit(id, { exitCode, sessionId, prUrls: collector.urls })
     })
     child.writeAndCloseStdin(opts.prompt)
