@@ -8,7 +8,7 @@ export interface PromptTemplate {
   body: string
 }
 
-function parseFrontmatter(raw: string, fallbackName: string): PromptTemplate {
+export function parseFrontmatter(raw: string, fallbackName: string): PromptTemplate {
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
   if (!m) return { name: fallbackName, description: '', body: raw.trim() }
   const fm = (parse(m[1]) ?? {}) as Record<string, unknown>
@@ -22,7 +22,7 @@ function parseFrontmatter(raw: string, fallbackName: string): PromptTemplate {
 export function loadPrompts(dir: string): PromptTemplate[] {
   if (!dir || !existsSync(dir)) return []
   return readdirSync(dir)
-    .filter((f) => f.toLowerCase().endsWith('.md'))
+    .filter((f) => f.toLowerCase().endsWith('.md') && !f.startsWith('_'))
     .map((f) => parseFrontmatter(readFileSync(join(dir, f), 'utf8'), f.replace(/\.md$/i, '')))
 }
 

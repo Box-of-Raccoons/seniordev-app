@@ -57,4 +57,24 @@ describe('expandPrompt', () => {
   it('leaves unknown placeholders untouched', () => {
     expect(expandPrompt('keep {{weird.thing}}', { ticket: pt, forge })).toBe('keep {{weird.thing}}')
   })
+  it('expands {{ticket.context}} from the context template (one level)', () => {
+    const out = expandPrompt('Do it.\n\n{{ticket.context}}', {
+      ticket: { ...pt, key: 'P-1', summary: 'S' },
+      forge: { prCommand: 'gh pr create', term: 'PR' },
+      contextTemplate: 'Ticket {{ticket.key}}: {{ticket.summary}}'
+    })
+    expect(out).toBe('Do it.\n\nTicket P-1: S')
+  })
+  it('a {{ticket.context}} inside the template itself stays literal (no loop)', () => {
+    const out = expandPrompt('{{ticket.context}}', {
+      ticket: { ...pt, key: 'P-1' },
+      forge: { prCommand: '', term: 'PR' },
+      contextTemplate: 'K={{ticket.key}} SELF={{ticket.context}}'
+    })
+    expect(out).toBe('K=P-1 SELF={{ticket.context}}')
+  })
+  it('without a contextTemplate, {{ticket.context}} stays literal', () => {
+    const out = expandPrompt('{{ticket.context}}', { ticket: pt, forge: { prCommand: '', term: 'PR' } })
+    expect(out).toBe('{{ticket.context}}')
+  })
 })

@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import type { Config } from '../config/schema'
+import { requireConfig } from '../config/store'
 import { YOLO, type SpawnResult, type StartYoloRequest, type YoloCaps } from '../../shared/ipc'
 import { buildHeadlessLaunch } from '../headless/launch'
 import { createParser } from '../headless/parsers'
@@ -9,7 +9,6 @@ import { resolveExpandedPrompt } from './resolve-prompt'
 import type { TerminalDeps } from './terminal-handlers'
 
 export function registerYoloIpc(
-  config: Config,
   getSender: () => Electron.WebContents | undefined,
   spawner: HeadlessSpawner,
   deps: TerminalDeps
@@ -37,11 +36,12 @@ export function registerYoloIpc(
 
   ipcMain.handle(YOLO.start, async (_e, req: StartYoloRequest): Promise<SpawnResult> => {
     try {
+      const config = requireConfig(deps.source)
       if (!req.prompt?.name && !req.prompt?.text) throw new Error('YOLO session requires a prompt')
       // Check BEFORE meta.set: a duplicate id must not overwrite (then delete,
       // in the catch) the live run's meta on its way to the runner's throw.
       if (runner.has(req.id)) throw new Error(`YOLO run ${req.id} already exists`)
-      const expanded = await resolveExpandedPrompt(config, deps, req)
+      const expanded = await resolveExpandedPrompt(config, deps.source, req)
       const launch = buildHeadlessLaunch(config, req, expanded ?? '', deps.resolveCommand)
       meta.set(req.id, { cwd: launch.cwd, tool: launch.toolName, canResume: launch.canResume })
       runner.start(req.id, {
@@ -60,9 +60,10 @@ export function registerYoloIpc(
     }
   })
 
-  ipcMain.handle(YOLO.caps, (): YoloCaps => ({
-    available: Boolean(config.cliTools[config.defaultTool]?.headless)
-  }))
+  ipcMain.handle(YOLO.caps, (): YoloCaps => {
+    const c = deps.source.config
+    return { available: Boolean(c && c.cliTools[c.defaultTool]?.headless) }
+  })
 
   ipcMain.on(YOLO.kill, (_e, id: string) => {
     runner.kill(id)

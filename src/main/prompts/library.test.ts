@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadPrompts, findPrompt } from './library'
+import { loadPrompts, findPrompt, parseFrontmatter } from './library'
 
 function dirWith(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), 'sd-prompts-'))
@@ -34,5 +34,16 @@ describe('findPrompt', () => {
     const prompts = [{ name: 'a', description: '', body: 'x' }]
     expect(findPrompt(prompts, 'a')?.body).toBe('x')
     expect(findPrompt(prompts, 'z')).toBeUndefined()
+  })
+})
+
+describe('parseFrontmatter', () => {
+  it('is exported and parses frontmatter name/description/body', () => {
+    const result = parseFrontmatter('---\nname: my-prompt\ndescription: A test\n---\nBody text', 'fallback')
+    expect(result).toEqual({ name: 'my-prompt', description: 'A test', body: 'Body text' })
+  })
+  it('falls back to the given name when frontmatter has no name field', () => {
+    const result = parseFrontmatter('just a body', 'fallback-name')
+    expect(result).toEqual({ name: 'fallback-name', description: '', body: 'just a body' })
   })
 })

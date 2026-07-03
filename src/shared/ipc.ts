@@ -63,3 +63,23 @@ export const YOLO = {
   start: 'yolo:start', log: 'yolo:log', pr: 'yolo:pr',
   exit: 'yolo:exit', kill: 'yolo:kill', caps: 'yolo:caps'
 } as const
+
+export type MenuAction = 'new-session' | 'app-config' | 'prompt-config' | 'about'
+export const MENU = { action: 'menu:action' } as const
+
+export interface AppInfo { name: string; version: string }
+export const APP = { info: 'app:info' } as const
+
+export type ConfigReadResult = { ok: true; text: string; path: string; isTemplate?: boolean } | { ok: false; error: string }
+export type SaveResult = { ok: true } | { ok: false; error: string }
+export interface RecapInfo { text: string; isDefault: boolean }
+export const CONFIG = {
+  read: 'config:read', save: 'config:save', changed: 'config:changed',
+  readRecap: 'config:readRecap', saveRecap: 'config:saveRecap'
+} as const
+
+export type PromptReadResult = { ok: true; text: string } | { ok: false; error: string }
+export const PROMPT_FILES = {
+  read: 'prompts:read', write: 'prompts:write', create: 'prompts:create', delete: 'prompts:delete',
+  readContext: 'prompts:readContext', writeContext: 'prompts:writeContext'
+} as const

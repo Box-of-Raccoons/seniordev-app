@@ -42,7 +42,15 @@ function startStartupSession(s: { mode: 'interactive' | 'yolo'; promptName?: str
   startSession({ prompt, yolo: s.mode === 'yolo', tool: s.tool })
 }
 
-defineExpose({ startStartupSession })
+function closeAll(): void {
+  for (const t of [...terms.value]) closeTerm(t.id)
+}
+
+function hasSessions(): boolean {
+  return terms.value.length > 0
+}
+
+defineExpose({ startStartupSession, closeAll, hasSessions })
 
 function resumeYolo(from: Term, p: { sessionId: string; cwd: string; tool: string }): void {
   addTerm({

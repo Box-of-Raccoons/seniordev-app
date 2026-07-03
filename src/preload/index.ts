@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, STARTUP, YOLO, type GetTicketResult, type PromptSummary } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, type GetTicketResult, type PromptSummary } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
+import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PromptReadResult } from '../shared/ipc'
 
 const api = {
   getTicket: (key: string): Promise<GetTicketResult> => ipcRenderer.invoke(IPC.getTicket, key),
@@ -40,7 +41,29 @@ const api = {
     const listener = (_e: IpcRendererEvent, payload: YoloExitEvent): void => cb(payload)
     ipcRenderer.on(YOLO.exit, listener)
     return () => ipcRenderer.off(YOLO.exit, listener)
-  }
+  },
+  onMenuAction: (cb: (action: MenuAction) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, action: MenuAction): void => cb(action)
+    ipcRenderer.on(MENU.action, listener)
+    return () => ipcRenderer.off(MENU.action, listener)
+  },
+  getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(APP.info),
+  readConfig: (): Promise<ConfigReadResult> => ipcRenderer.invoke(CONFIG.read),
+  saveConfig: (text: string): Promise<SaveResult> => ipcRenderer.invoke(CONFIG.save, text),
+  onConfigChanged: (cb: () => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent): void => cb()
+    ipcRenderer.on(CONFIG.changed, listener)
+    return () => ipcRenderer.off(CONFIG.changed, listener)
+  },
+  readRecap: (): Promise<RecapInfo> => ipcRenderer.invoke(CONFIG.readRecap),
+  saveRecap: (text: string): Promise<SaveResult> => ipcRenderer.invoke(CONFIG.saveRecap, text),
+
+  readPrompt: (name: string): Promise<PromptReadResult> => ipcRenderer.invoke(PROMPT_FILES.read, name),
+  writePrompt: (name: string, text: string): Promise<SaveResult> => ipcRenderer.invoke(PROMPT_FILES.write, name, text),
+  createPrompt: (name: string): Promise<PromptReadResult> => ipcRenderer.invoke(PROMPT_FILES.create, name),
+  deletePrompt: (name: string): Promise<SaveResult> => ipcRenderer.invoke(PROMPT_FILES.delete, name),
+  readContext: (): Promise<PromptReadResult> => ipcRenderer.invoke(PROMPT_FILES.readContext),
+  writeContext: (text: string): Promise<SaveResult> => ipcRenderer.invoke(PROMPT_FILES.writeContext, text)
 }
 
 contextBridge.exposeInMainWorld('api', api)
