@@ -45,7 +45,14 @@ async function openTickets(keys: string[]): Promise<void> {
   }
 }
 
-defineExpose({ openTickets })
+function closeAll(): void {
+  tabs.value = []
+  activeKey.value = null
+  keyInput.value = ''
+  error.value = null
+}
+
+defineExpose({ openTickets, closeAll })
 
 function closeTab(key: string): void {
   const i = tabs.value.findIndex((t) => t.key === key)

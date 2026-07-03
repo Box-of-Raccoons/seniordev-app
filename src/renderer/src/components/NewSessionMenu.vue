@@ -11,6 +11,12 @@ const customText = ref('')
 const mode = ref<'interactive' | 'yolo'>('interactive')
 const yoloAvailable = ref(false)
 const menuWrap = ref<HTMLElement | null>(null)
+let offConfig: (() => void) | null = null
+
+async function refetch(): Promise<void> {
+  try { prompts.value = await window.api.listPrompts() } catch { prompts.value = [] }
+  try { yoloAvailable.value = (await window.api.yoloCaps()).available } catch { yoloAvailable.value = false }
+}
 
 function onPointerDown(e: PointerEvent): void {
   if (open.value && menuWrap.value && !menuWrap.value.contains(e.target as Node)) {
@@ -31,13 +37,14 @@ onMounted(async () => {
   // listPrompts round-trip would leak listeners onBeforeUnmount can't see yet.
   document.addEventListener('pointerdown', onPointerDown)
   document.addEventListener('keydown', onKeyDown)
-  try { prompts.value = await window.api.listPrompts() } catch { prompts.value = [] }
-  try { yoloAvailable.value = (await window.api.yoloCaps()).available } catch { yoloAvailable.value = false }
+  offConfig = window.api.onConfigChanged(() => void refetch())
+  await refetch()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onPointerDown)
   document.removeEventListener('keydown', onKeyDown)
+  offConfig?.()
 })
 
 function choose(payload: { prompt?: { name?: string; text?: string } }): void {
