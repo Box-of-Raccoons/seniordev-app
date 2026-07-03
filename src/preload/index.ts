@@ -53,6 +53,7 @@ const api = {
     ipcRenderer.on(DEEPLINK.event, listener)
     return () => ipcRenderer.off(DEEPLINK.event, listener)
   },
+  deepLinkReady: (): void => ipcRenderer.send(DEEPLINK.ready),
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(APP.info),
   readConfig: (): Promise<ConfigReadResult> => ipcRenderer.invoke(CONFIG.read),
   saveConfig: (text: string): Promise<SaveResult> => ipcRenderer.invoke(CONFIG.save, text),

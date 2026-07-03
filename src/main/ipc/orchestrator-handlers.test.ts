@@ -113,6 +113,23 @@ describe('orchestrator handlers — classify', () => {
     expect(await p).toEqual({ ok: false, reason: 'classifier returned no JSON verdict' })
   })
 
+  it('classifier receives the full ticket even when ticketContext is key-only', async () => {
+    const child = fakeChild()
+    let sent = ''
+    child.writeAndCloseStdin = (data: string) => { sent = data }
+    const keyOnly = ConfigSchema.parse({ ...JSON.parse(JSON.stringify(config)), ticketContext: 'key-only' })
+    registerOrchestratorIpc(() => undefined, () => child, { source: { ...makeSource(), config: keyOnly }, promptsDir: () => dir })
+    const p = handleMap.get(ORCHESTRATOR.classify)!({}, { id: 'c1', ticketKey: 'PROJ-1' }) as Promise<ClassifyResult>
+    await flush()
+    // The privacy mode governs interactive/yolo prompts; the classifier cannot
+    // route on a bare key, so it always gets the full ticket fields.
+    expect(sent).toContain('Summary: s')
+    expect(sent).toContain('Type: Bug')
+    child.stdout('{"prompt": "fix-bug"}\n')
+    child.exit(0)
+    await p
+  })
+
   it('duplicate id is rejected while a run is live', async () => {
     const child = fakeChild()
     registerOrchestratorIpc(() => undefined, () => child, { source: makeSource(), promptsDir: () => dir })

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session } from 'electron'
+import { app, BrowserWindow, ipcMain, session } from 'electron'
 import { join, resolve } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { defaultConfigDir } from './config/paths'
@@ -19,8 +19,9 @@ import { installMenu } from './menu'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
 import { nodeHeadlessSpawner } from './headless/node-spawner'
 import { systemResolveCommand } from './terminal/resolve-command'
-import { parseDeepLink, findDeepLinkArg } from './deeplink/parse'
-import { DEEPLINK, type DeepLink } from '../shared/ipc'
+import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './deeplink/parse'
+import { DeepLinkDelivery } from './deeplink/delivery'
+import { DEEPLINK } from '../shared/ipc'
 import type { TerminalManager } from './terminal/manager'
 import type { YoloRunner } from './headless/runner'
 
@@ -42,8 +43,15 @@ let terminals: TerminalManager | null = null
 let yolo: YoloRunner | null = null
 let orchestrator: YoloRunner | null = null
 let mainWindow: BrowserWindow | null = null
-// A macOS open-url can fire before the window exists; stash it for cold start.
-let pendingLink: DeepLink | null = null
+
+// Warm links are queued until the renderer says it's listening (DEEPLINK.ready);
+// pre-ready links either summon a window or ride the cold-start StartupOptions.
+const deepLinks = new DeepLinkDelivery({
+  send: (link) => mainWindow?.webContents.send(DEEPLINK.event, link),
+  ensureWindow: () => {
+    if (app.isReady() && BrowserWindow.getAllWindows().length === 0) createWindow()
+  }
+})
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -56,7 +64,10 @@ function createWindow(): void {
   })
   mainWindow = win
   win.on('ready-to-show', () => win.show())
-  win.on('closed', () => { mainWindow = null })
+  win.on('closed', () => {
+    mainWindow = null
+    deepLinks.windowClosed()
+  })
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else win.loadFile(join(__dirname, '../renderer/index.html'))
 }
@@ -84,24 +95,21 @@ if (!gotLock) {
     app.setAsDefaultProtocolClient('seniordev')
   }
 
-  // Windows/Linux: a second launch delivers its argv here.
+  // Windows/Linux: a second launch delivers its argv here. Plain ticket keys
+  // (`seniordev PROJ-123` while running) are forwarded as open links — before
+  // the single-instance lock they opened in their own instance.
   app.on('second-instance', (_e, argv) => {
     focusMainWindow()
-    const raw = findDeepLinkArg(argv)
-    const link = raw ? parseDeepLink(raw) : null
-    if (link) mainWindow?.webContents.send(DEEPLINK.event, link)
+    for (const link of linksFromArgv(argv)) deepLinks.deliver(link)
   })
 
-  // macOS: the OS delivers the URL here (can fire before the window exists).
+  // macOS: the OS delivers the URL here (can fire before the window exists,
+  // or while the app is alive with zero windows).
   app.on('open-url', (_e2, url) => {
     const link = parseDeepLink(url)
     if (!link) return
-    if (mainWindow) {
-      focusMainWindow()
-      mainWindow.webContents.send(DEEPLINK.event, link)
-    } else {
-      pendingLink = link
-    }
+    focusMainWindow()
+    deepLinks.deliver(link)
   })
 
   app.whenReady().then(() => {
@@ -137,16 +145,19 @@ if (!gotLock) {
     const startup = parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8'))
     for (const w of startup.warnings ?? []) console.error('[startup]', w)
 
-    // Cold start: the deep link arrives in argv (Windows/Linux) or via a pending
-    // open-url (macOS). Ensure its ticket is loaded; a yolo action also gets
-    // carried through so the renderer can run the confirm gate + orchestrator.
+    // Cold start: the deep link arrives in argv (Windows/Linux) or via a
+    // pre-ready open-url (macOS, queued in deepLinks). Ensure its ticket is
+    // loaded; a yolo action also gets carried through so the renderer can run
+    // the confirm gate + orchestrator.
     const rawLink = findDeepLinkArg(process.argv.slice(1))
-    const coldLink = rawLink ? parseDeepLink(rawLink) : pendingLink
-    if (coldLink) {
+    const argvLink = rawLink ? parseDeepLink(rawLink) : null
+    for (const coldLink of [...(argvLink ? [argvLink] : []), ...deepLinks.drainPending()]) {
       if (!startup.tickets.includes(coldLink.ticket)) startup.tickets = [...startup.tickets, coldLink.ticket]
       if (coldLink.action === 'yolo') startup.deeplink = coldLink
     }
     registerStartupIpc(startup)
+    // Renderer listener attached → flush any queued warm links from now on.
+    ipcMain.on(DEEPLINK.ready, () => deepLinks.rendererReady())
     registerPromptsIpc(store.prompts)
     const getSender = (): Electron.WebContents | undefined =>
       BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents

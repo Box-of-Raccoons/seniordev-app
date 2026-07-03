@@ -20,7 +20,7 @@ const emit = defineEmits<{
 const classifyId = `${props.id}:classify`
 const runId = `${props.id}:run`
 
-type Phase = 'classifying' | 'running' | 'failed'
+type Phase = 'classifying' | 'running' | 'failed' | 'cancelled'
 const phase = ref<Phase>('classifying')
 const classifyLog = ref<string[]>([])
 const chosenName = ref('')
@@ -51,7 +51,9 @@ onMounted(async () => {
     ticketKey: props.ticketKey,
     tool: props.tool
   })
-  if (unmounted) return
+  // A cancel kills the child, which resolves this promise as ok:false — that is
+  // the user's own action, not a routing failure; the phase is already set.
+  if (unmounted || phase.value === 'cancelled') return
   if (result.ok) {
     chosenName.value = result.prompt
     phase.value = 'running'
@@ -63,6 +65,7 @@ onMounted(async () => {
 })
 
 function cancel(): void {
+  phase.value = 'cancelled'
   window.api.killClassify(classifyId)
 }
 
@@ -82,6 +85,13 @@ onBeforeUnmount(() => {
       </div>
       <pre
         ref="logHost"
+        class="orch-log"
+        :style="{ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE + 'px' }"
+      >{{ classifyLog.join('\n') }}</pre>
+    </template>
+    <template v-else-if="phase === 'cancelled'">
+      <p class="orch-reason">Classification cancelled.</p>
+      <pre
         class="orch-log"
         :style="{ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE + 'px' }"
       >{{ classifyLog.join('\n') }}</pre>

@@ -1,6 +1,5 @@
 import type { StartupOptions } from '../../shared/ipc'
-
-const TICKET = /^[A-Za-z][A-Za-z0-9]*-\d+$/
+import { isTicketKey } from '../../shared/ticket-key'
 
 export function parseStartupArgs(argv: string[], readFile: (p: string) => string): StartupOptions {
   const tickets: string[] = []
@@ -19,7 +18,7 @@ export function parseStartupArgs(argv: string[], readFile: (p: string) => string
       // look like a ticket key — a prompt named like a ticket key can't be passed
       // positionally; use --prompt or a config alias instead.
       const next = argv[i + 1]
-      if (next !== undefined && !next.startsWith('-') && !TICKET.test(next)) {
+      if (next !== undefined && !next.startsWith('-') && !isTicketKey(next)) {
         promptName = next
         i++
       }
@@ -38,7 +37,7 @@ export function parseStartupArgs(argv: string[], readFile: (p: string) => string
       } else {
         promptText = v
       }
-    } else if (!a.startsWith('-') && TICKET.test(a)) {
+    } else if (!a.startsWith('-') && isTicketKey(a)) {
       tickets.push(a.toUpperCase())
     }
   }

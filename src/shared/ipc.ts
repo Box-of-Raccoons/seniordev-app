@@ -39,7 +39,9 @@ export interface StartupSession {
   tool?: string
 }
 export interface DeepLink { action: 'open' | 'yolo'; ticket: string }
-export const DEEPLINK = { event: 'deeplink:event' } as const
+// `ready` is the renderer's listener-attached signal: main queues warm links
+// until it arrives, so nothing is pushed at a window that can't hear it yet.
+export const DEEPLINK = { event: 'deeplink:event', ready: 'deeplink:ready' } as const
 export interface StartupOptions {
   tickets: string[]
   session?: StartupSession

@@ -64,7 +64,10 @@ export function registerOrchestratorIpc(
 
       const template = readOrchestratorFile(deps.promptsDir())
       const ticket = await deps.source.getTicket(req.ticketKey)
-      const ticketCtx = buildPromptTicket(ticket, config.ticketContext)
+      // Always 'both', ignoring config.ticketContext: that privacy mode shapes
+      // interactive/yolo prompts, but a classifier routing on a bare key would
+      // deterministically return garbage — it needs the ticket's content.
+      const ticketCtx = buildPromptTicket(ticket, 'both')
       const forge = resolveForge(config, req.ticketKey)
       const expanded = expandPrompt(template, {
         ticket: ticketCtx,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseDeepLink, findDeepLinkArg } from './parse'
+import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './parse'
 
 describe('parseDeepLink', () => {
   it('parses a valid open link', () => {
@@ -38,5 +38,27 @@ describe('findDeepLinkArg', () => {
   })
   it('returns undefined when absent', () => {
     expect(findDeepLinkArg(['C:/electron.exe', 'PROJ-1'])).toBeUndefined()
+  })
+})
+
+describe('linksFromArgv', () => {
+  it('an explicit deep link wins', () => {
+    expect(linksFromArgv(['C:/electron.exe', 'seniordev://yolo?ticket=SD-6', 'PROJ-1'])).toEqual([
+      { action: 'yolo', ticket: 'SD-6' }
+    ])
+  })
+  it('plain ticket keys become open links (second-instance `seniordev PROJ-1`)', () => {
+    expect(linksFromArgv(['C:/electron.exe', 'proj-1', 'AB-2'])).toEqual([
+      { action: 'open', ticket: 'PROJ-1' },
+      { action: 'open', ticket: 'AB-2' }
+    ])
+  })
+  it('ignores flags and non-ticket args', () => {
+    expect(linksFromArgv(['C:/electron.exe', '--yolo', 'not a ticket'])).toEqual([])
+  })
+  it('a malformed deep link falls back to ticket args', () => {
+    expect(linksFromArgv(['seniordev://delete?ticket=SD-6', 'SD-7'])).toEqual([
+      { action: 'open', ticket: 'SD-7' }
+    ])
   })
 })

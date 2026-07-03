@@ -112,4 +112,33 @@ describe('OrchestratorView', () => {
     await w.get('button.orch-cancel').trigger('click')
     expect(window.api.killClassify).toHaveBeenCalledWith('o1:classify')
   })
+
+  it('a cancelled run is presented as cancelled, not as a routing failure', async () => {
+    const w = mount(OrchestratorView, {
+      props: { id: 'o1', ticketKey: 'SD-6' },
+      global: { stubs }
+    })
+    await flushPromises()
+    await w.get('button.orch-cancel').trigger('click')
+    // The killed child exits non-zero and the classify promise resolves ok:false —
+    // that is the user's own cancel, not an error.
+    resolveClassify({ ok: false, reason: 'classifier exited with code 143' })
+    await flushPromises()
+    expect(w.text()).toContain('Classification cancelled')
+    expect(w.text()).not.toContain('No playbook selected')
+    expect(w.text()).not.toContain('exited with code 143')
+    expect(w.find('.yv-stub').exists()).toBe(false)
+  })
+
+  it('unmount after cancel does not kill again', async () => {
+    const w = mount(OrchestratorView, {
+      props: { id: 'o1', ticketKey: 'SD-6' },
+      global: { stubs }
+    })
+    await flushPromises()
+    await w.get('button.orch-cancel').trigger('click')
+    ;(window.api.killClassify as ReturnType<typeof vi.fn>).mockClear()
+    w.unmount()
+    expect(window.api.killClassify).not.toHaveBeenCalled()
+  })
 })

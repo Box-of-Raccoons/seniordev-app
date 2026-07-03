@@ -66,6 +66,8 @@ async function handleDeepLink(link: DeepLink): Promise<void> {
 onMounted(async () => {
   offMenu = window.api.onMenuAction(onMenu)
   offDeepLink = window.api.onDeepLink(handleDeepLink)
+  // Only now can main push deep links — anything sent earlier would be lost.
+  window.api.deepLinkReady()
   try {
     const startup = await window.api.getStartup()
     if (startup.tickets.length) {

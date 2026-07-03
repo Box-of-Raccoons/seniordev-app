@@ -61,6 +61,7 @@ beforeEach(() => {
       deepLinkCb = cb
       return () => {}
     }),
+    deepLinkReady: vi.fn(),
     getTicket: vi.fn().mockResolvedValue({ ok: true, ticket: { key: 'SD-6', summary: 'Fix the thing' } }),
     getAppInfo: vi.fn().mockResolvedValue({ name: 'SeniorDev', version: '1.0.0' })
   }
@@ -144,6 +145,17 @@ describe('App menu wiring', () => {
 })
 
 describe('App deep link flow', () => {
+  it('signals deep-link readiness only after the listener is registered', async () => {
+    mountApp()
+    await flushPromises()
+    expect(window.api.deepLinkReady).toHaveBeenCalledTimes(1)
+    // Ordering matters: main flushes queued links the moment ready arrives, so
+    // the listener must already be attached or the flushed link is lost.
+    const readyOrder = (window.api.deepLinkReady as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    const listenOrder = (window.api.onDeepLink as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    expect(listenOrder).toBeLessThan(readyOrder)
+  })
+
   it('open action loads the ticket without any confirm', async () => {
     const w = mountApp()
     await flushPromises()

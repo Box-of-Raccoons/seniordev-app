@@ -17,6 +17,24 @@ describe('extractVerdict', () => {
   it('carries prompt:null with its reason', () => {
     expect(extractVerdict('{"prompt": null, "reason": "no playbook fits"}')).toEqual({ prompt: null, reason: 'no playbook fits' })
   })
+  it('parses a verdict whose reason contains braces in the string', () => {
+    expect(extractVerdict('{"prompt": null, "reason": "none fit; use the {custom} flow"}')).toEqual({
+      prompt: null,
+      reason: 'none fit; use the {custom} flow'
+    })
+  })
+  it('parses a verdict containing a nested object', () => {
+    expect(extractVerdict('{"prompt": "fix-bug", "meta": {"confidence": 0.9}}')).toEqual({ prompt: 'fix-bug' })
+  })
+  it('handles escaped quotes inside string values', () => {
+    expect(extractVerdict('{"prompt": null, "reason": "say \\"hi {there}\\" first"}')).toEqual({
+      prompt: null,
+      reason: 'say "hi {there}" first'
+    })
+  })
+  it('still takes the last verdict when earlier text has stray braces', () => {
+    expect(extractVerdict('{ not json {\n{"prompt": "first"}\n{"prompt": "second"}')).toEqual({ prompt: 'second' })
+  })
   it('returns null when there is no JSON', () => {
     expect(extractVerdict('I could not decide.')).toBeNull()
   })
