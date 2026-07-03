@@ -18,12 +18,26 @@ const recapDefault = ref(false)
 const creating = ref(false)
 const newName = ref('')
 const confirmDelete = ref(false)
+const pendingSelect = ref<Entry | null>(null)
 
 async function refresh(): Promise<void> {
   try { prompts.value = await window.api.listPrompts() } catch { prompts.value = [] }
 }
 
 onMounted(refresh)
+
+// Unsaved edits must not be silently discarded by clicking another list item —
+// stash the target and ask first.
+function requestSelect(entry: Entry): void {
+  if (selected.value && text.value !== original.value) pendingSelect.value = entry
+  else void select(entry)
+}
+
+async function confirmSwitch(): Promise<void> {
+  const target = pendingSelect.value
+  pendingSelect.value = null
+  if (target) await select(target)
+}
 
 async function select(entry: Entry): Promise<void> {
   error.value = null
@@ -87,11 +101,11 @@ async function doDelete(): Promise<void> {
   <ModalShell title="Prompt Config" @close="emit('close')">
     <div class="pcfg">
       <aside class="pcfg-list">
-        <button class="pcfg-item" :class="{ 'pcfg-item--on': selected?.kind === 'context' }" @click="select({ kind: 'context' })">
+        <button class="pcfg-item" :class="{ 'pcfg-item--on': selected?.kind === 'context' }" @click="requestSelect({ kind: 'context' })">
           <span class="pcfg-item__name">Ticket context</span>
           <span class="pcfg-item__desc">what &#123;&#123;ticket.context&#125;&#125; injects</span>
         </button>
-        <button class="pcfg-item" :class="{ 'pcfg-item--on': selected?.kind === 'recap' }" @click="select({ kind: 'recap' })">
+        <button class="pcfg-item" :class="{ 'pcfg-item--on': selected?.kind === 'recap' }" @click="requestSelect({ kind: 'recap' })">
           <span class="pcfg-item__name">YOLO recap</span>
           <span class="pcfg-item__desc">appended to every YOLO prompt</span>
         </button>
@@ -101,7 +115,7 @@ async function doDelete(): Promise<void> {
           :key="p.name"
           class="pcfg-item"
           :class="{ 'pcfg-item--on': selected?.kind === 'prompt' && selected.name === p.name }"
-          @click="select({ kind: 'prompt', name: p.name, description: p.description })"
+          @click="requestSelect({ kind: 'prompt', name: p.name, description: p.description })"
         >
           <span class="pcfg-item__name">{{ p.name }}</span>
           <span v-if="p.description" class="pcfg-item__desc">{{ p.description }}</span>
@@ -143,6 +157,14 @@ async function doDelete(): Promise<void> {
     confirm-label="Delete"
     @confirm="doDelete"
     @cancel="confirmDelete = false"
+  />
+  <ConfirmDialog
+    v-if="pendingSelect"
+    title="Unsaved changes"
+    message="Discard changes and switch?"
+    confirm-label="Discard"
+    @confirm="confirmSwitch"
+    @cancel="pendingSelect = null"
   />
 </template>
 

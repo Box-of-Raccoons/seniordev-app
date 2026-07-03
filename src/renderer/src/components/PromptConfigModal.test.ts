@@ -79,4 +79,22 @@ describe('PromptConfigModal', () => {
     await flushPromises()
     expect(window.api.deletePrompt).toHaveBeenCalledWith('fix-bug')
   })
+  it('switching selection with unsaved edits asks to discard first', async () => {
+    const w = await open()
+    await w.findAll('.pcfg-item')[0].trigger('click') // context
+    await flushPromises()
+    await w.get('textarea').setValue('EDITED BUT UNSAVED')
+    await w.findAll('.pcfg-item')[1].trigger('click') // recap — must NOT load yet
+    await flushPromises()
+    expect(window.api.readRecap).not.toHaveBeenCalled()
+    expect(w.text()).toContain('Discard changes and switch?')
+    // cancel keeps the edit; confirm switches and loads the target
+    await w.get('button.confirm-no').trigger('click')
+    expect((w.get('textarea').element as HTMLTextAreaElement).value).toBe('EDITED BUT UNSAVED')
+    await w.findAll('.pcfg-item')[1].trigger('click')
+    await w.get('button.confirm-yes').trigger('click')
+    await flushPromises()
+    expect(window.api.readRecap).toHaveBeenCalled()
+    expect(w.text()).toContain('using built-in default')
+  })
 })
