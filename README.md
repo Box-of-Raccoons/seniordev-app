@@ -6,10 +6,12 @@ A cross-platform desktop workbench: a tabbed Jira ticket reader (left) and a tab
 
 Copy `config.example.yaml` to your OS config dir and fill it in:
 
-- Windows: `%APPDATA%/SeniorDev/config.yaml`
+- Windows: `%APPDATA%\SeniorDev\config.yaml`
 - macOS/Linux: `~/.config/SeniorDev/config.yaml`
 
-Prompts live in `promptsDir` (default `~/.config/SeniorDev/prompts`), one markdown file per prompt with `name`/`description` frontmatter and `{{ticket.*}}` / `{{forge.*}}` placeholders.
+Override the config path with the `SENIORDEV_CONFIG` environment variable.
+
+Prompts default to a `prompts/` folder next to `config.yaml` (same dir), overridable via the `promptsDir` config key. One markdown file per prompt with `name`/`description` frontmatter and `{{ticket.*}}` / `{{forge.*}}` placeholders.
 
 ## Develop
 

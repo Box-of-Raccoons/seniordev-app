@@ -43,5 +43,6 @@ export interface StartupSession {
 export interface StartupOptions {
   tickets: string[]
   session?: StartupSession
+  warnings?: string[]
 }
 export const STARTUP = { get: 'startup:get' } as const

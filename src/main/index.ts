@@ -1,7 +1,7 @@
 import { app, BrowserWindow, session } from 'electron'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { readFileSync } from 'node:fs'
+import { defaultConfigDir } from './config/paths'
 import { parseStartupArgs } from './cli/parse-args'
 import { registerStartupIpc } from './ipc/startup-handlers'
 import { loadConfig } from './config/load'
@@ -17,11 +17,11 @@ import type { Config } from './config/schema'
 import type { TerminalManager } from './terminal/manager'
 
 function resolveConfigPath(): string {
-  return process.env.SENIORDEV_CONFIG ?? join(app.getPath('userData'), 'config.yaml')
+  return process.env.SENIORDEV_CONFIG ?? join(defaultConfigDir(), 'config.yaml')
 }
 
 function resolvePromptsDir(cfg: Config): string {
-  return cfg.promptsDir ?? join(homedir(), '.config', 'SeniorDev', 'prompts')
+  return cfg.promptsDir ?? join(defaultConfigDir(), 'prompts')
 }
 
 let loadedConfig: Config | null = null
@@ -72,7 +72,9 @@ app.whenReady().then(() => {
 
   registerIpc(buildGetTicket())
   registerShellIpc()
-  registerStartupIpc(parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8')))
+  const startup = parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8'))
+  for (const w of startup.warnings ?? []) console.error('[startup]', w)
+  registerStartupIpc(startup)
   if (loadedConfig) {
     const cfg = loadedConfig
     const client = new JiraClient(cfg.jira)
