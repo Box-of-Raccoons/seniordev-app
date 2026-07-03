@@ -6,6 +6,13 @@ directories:
 files:
   - out/**
   - package.json
+# Ship the default prompt library so a fresh install can seed it into the user's
+# promptsDir on first run. Lands at <resourcesPath>/prompts (see bundledPromptsDir).
+extraResources:
+  - from: resources/prompts
+    to: prompts
+    filter:
+      - '**/*.md'
 win:
   target: nsis
   icon: build/icon.png

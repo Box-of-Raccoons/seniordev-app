@@ -51,6 +51,34 @@ yoloRecap: |
 - **`yoloRecap`** — appended (with a blank line) to every YOLO prompt so the agent ends its run with a structured summary. Set an empty string to disable entirely.
 - **`yoloArgs`** — no longer used. Old configs containing this key load without error; the key is silently ignored.
 
+## Prompt library
+
+A fresh install seeds a set of role-based prompts into `promptsDir` on first launch (from the copies committed under `resources/prompts/`, bundled into the installer). Seeding is non-destructive — it only fills in files you don't already have, so your edits and deletions are never clobbered. Each covers one SDLC role against a Jira ticket:
+
+| Prompt | Role | What it does |
+| --- | --- | --- |
+| `business-analyst` | BA | Breaks the source documentation on a ticket into a Jira epic + child stories with acceptance criteria. |
+| `tech-lead` | Architect | Produces a short technical design and a suggested story breakdown before implementation. |
+| `developer` | Senior dev | Pulls the ticket, works on a feature branch, implements, adds + runs tests, commits, and opens a PR. |
+| `qa` | QA | Derives a test plan from the acceptance criteria, writes Playwright e2e + unit tests, runs them, reports pass/fail per criterion. |
+| `code-reviewer` | Reviewer | Reviews the open PR / working changes against the ticket's acceptance criteria — reviews, doesn't implement. |
+| `doc-writer` | Docs | Updates the user/dev docs to match the behavior a ticket changes. |
+
+Manage them from **Config → Prompt Config** (create, edit, delete). Prompt bodies may use only these template variables — anything else renders literally to the agent:
+
+| Variable | Expands to |
+| --- | --- |
+| `{{ticket.key}}` | Issue key, e.g. `PROJ-123` |
+| `{{ticket.type}}` | Issue type, e.g. `Story` |
+| `{{ticket.status}}` | Workflow status, e.g. `To Do` |
+| `{{ticket.summary}}` | Issue summary / title |
+| `{{ticket.description}}` | Description, rendered to Markdown |
+| `{{ticket.acceptanceCriteria}}` | Acceptance-criteria field |
+| `{{ticket.comments}}` | Comments, rendered to Markdown |
+| `{{forge.term}}` | Forge's term for a change request, e.g. `PR` / `MR` |
+| `{{forge.prCommand}}` | Configured PR-open command, resolved per repo |
+| `{{ticket.context}}` | The reusable ticket-context block (`_ticket-context.md`) |
+
 ## In-app configuration
 
 The menu bar shows **File / Edit / Config / About**.
@@ -68,7 +96,7 @@ The menu bar shows **File / Edit / Config / About**.
 
 ## YOLO
 
-Selecting a prompt from the YOLO menu (or running `seniordev PROJ-123 --yolo fix-bug`) opens a dedicated YOLO tab — no PTY, no TUI:
+Selecting a prompt from the YOLO menu (or running `seniordev PROJ-123 --yolo developer`) opens a dedicated YOLO tab — no PTY, no TUI:
 
 1. **Live log** — the agent's stdout/stderr streams through the configured parser and renders as a scrolling monospace log, using the same font as the interactive terminals. Tool calls appear as one-liners (e.g. `▸ Edit src/foo.ts`).
 
@@ -98,7 +126,7 @@ seniordev [tickets...] [--interactive] [--yolo <prompt>] [--prompt <text|@file>]
 ```
 
 - `seniordev PROJ-123 PROJ-124` — open both tickets.
-- `seniordev PROJ-123 --yolo fix-bug` — open the ticket and run the `fix-bug` prompt headless; a live log tab opens, PR cards surface on completion.
+- `seniordev PROJ-123 --yolo developer` — open the ticket and run the `developer` prompt headless; a live log tab opens, PR cards surface on completion.
 - `--tool codex` — override the default CLI tool.
 
 ## Package
