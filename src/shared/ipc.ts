@@ -67,6 +67,14 @@ export const YOLO = {
   exit: 'yolo:exit', kill: 'yolo:kill', caps: 'yolo:caps'
 } as const
 
+export interface OrchestratorPromptInfo { text: string; isDefault: boolean }
+export interface ClassifyRequest { id: string; ticketKey: string; tool?: string }
+export type ClassifyResult = { ok: true; prompt: string } | { ok: false; reason: string }
+export const ORCHESTRATOR = {
+  classify: 'orchestrator:classify', kill: 'orchestrator:kill',
+  readPrompt: 'orchestrator:readPrompt', savePrompt: 'orchestrator:savePrompt'
+} as const
+
 export type MenuAction = 'new-session' | 'app-config' | 'prompt-config' | 'about'
 export const MENU = { action: 'menu:action' } as const
 

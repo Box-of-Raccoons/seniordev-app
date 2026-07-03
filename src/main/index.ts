@@ -8,6 +8,7 @@ import { ConfigStore } from './config/store'
 import { registerIpc } from './ipc/handlers'
 import { registerTerminalIpc } from './ipc/terminal-handlers'
 import { registerYoloIpc } from './ipc/yolo-handlers'
+import { registerOrchestratorIpc } from './ipc/orchestrator-handlers'
 import { registerPromptsIpc } from './ipc/prompts-handlers'
 import { seedDefaultPrompts } from './prompts/defaults'
 import { registerShellIpc } from './ipc/shell-handlers'
@@ -39,6 +40,7 @@ const store = new ConfigStore(resolveConfigPath())
 
 let terminals: TerminalManager | null = null
 let yolo: YoloRunner | null = null
+let orchestrator: YoloRunner | null = null
 let mainWindow: BrowserWindow | null = null
 // A macOS open-url can fire before the window exists; stash it for cold start.
 let pendingLink: DeepLink | null = null
@@ -150,6 +152,7 @@ if (!gotLock) {
       BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents
     terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand })
     yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand })
+    orchestrator = registerOrchestratorIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand, promptsDir: () => store.promptsDir() })
     registerAppIpc()
     registerConfigIpc(store, getSender)
     registerPromptConfigIpc(store, getSender)
@@ -164,10 +167,12 @@ if (!gotLock) {
   app.on('before-quit', () => {
     terminals?.killAll()
     yolo?.killAll()
+    orchestrator?.killAll()
   })
   app.on('window-all-closed', () => {
     terminals?.killAll()
     yolo?.killAll()
+    orchestrator?.killAll()
     if (process.platform !== 'darwin') app.quit()
   })
 }

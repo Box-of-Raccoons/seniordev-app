@@ -3,9 +3,11 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  CONTEXT_FILE, DEFAULT_TICKET_CONTEXT,
-  createPromptFile, deletePromptFile, readContextFile, readPromptFile, writeContextFile, writePromptFile
+  CONTEXT_FILE, DEFAULT_TICKET_CONTEXT, ORCHESTRATOR_FILE,
+  createPromptFile, deletePromptFile, readContextFile, readPromptFile, writeContextFile, writePromptFile,
+  readOrchestratorFile, writeOrchestratorFile
 } from './files'
+import { DEFAULT_ORCHESTRATOR_PROMPT } from '../config/presets'
 import { loadPrompts } from './library'
 
 let dir: string
@@ -63,6 +65,23 @@ describe('prompt files', () => {
   it('loadPrompts never lists _-prefixed files', () => {
     createPromptFile(dir, 'real')
     writeContextFile(dir, 'ctx')
+    writeOrchestratorFile(dir, 'custom orchestrator')
     expect(loadPrompts(dir).map((p) => p.name)).toEqual(['real'])
+  })
+  it('orchestrator read falls back to the built-in preset when no override file', () => {
+    expect(readOrchestratorFile(dir)).toBe(DEFAULT_ORCHESTRATOR_PROMPT)
+    expect(existsSync(join(dir, ORCHESTRATOR_FILE))).toBe(false)
+  })
+  it('orchestrator override round-trips when present', () => {
+    writeOrchestratorFile(dir, 'my router {{ticket.key}}')
+    expect(existsSync(join(dir, ORCHESTRATOR_FILE))).toBe(true)
+    expect(readOrchestratorFile(dir)).toBe('my router {{ticket.key}}')
+  })
+  it('writing the default text removes the override (reverts to built-in)', () => {
+    writeOrchestratorFile(dir, 'my router')
+    expect(existsSync(join(dir, ORCHESTRATOR_FILE))).toBe(true)
+    writeOrchestratorFile(dir, DEFAULT_ORCHESTRATOR_PROMPT)
+    expect(existsSync(join(dir, ORCHESTRATOR_FILE))).toBe(false)
+    expect(readOrchestratorFile(dir)).toBe(DEFAULT_ORCHESTRATOR_PROMPT)
   })
 })

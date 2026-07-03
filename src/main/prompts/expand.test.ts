@@ -77,4 +77,11 @@ describe('expandPrompt', () => {
     const out = expandPrompt('{{ticket.context}}', { ticket: pt, forge: { prCommand: '', term: 'PR' } })
     expect(out).toBe('{{ticket.context}}')
   })
+  it('substitutes {{prompts.catalog}} when a catalog is supplied', () => {
+    const out = expandPrompt('Pick:\n{{prompts.catalog}}', { ticket: pt, forge, catalog: '- fix-bug: fixes bugs' })
+    expect(out).toBe('Pick:\n- fix-bug: fixes bugs')
+  })
+  it('without a catalog, {{prompts.catalog}} stays literal', () => {
+    expect(expandPrompt('{{prompts.catalog}}', { ticket: pt, forge })).toBe('{{prompts.catalog}}')
+  })
 })

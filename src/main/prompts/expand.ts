@@ -43,7 +43,7 @@ export function resolveForge(config: Config, ticketKey?: string): { prCommand: s
 
 export function expandPrompt(
   body: string,
-  ctx: { ticket: PromptTicket; forge: { prCommand: string; term: string }; contextTemplate?: string }
+  ctx: { ticket: PromptTicket; forge: { prCommand: string; term: string }; contextTemplate?: string; catalog?: string }
 ): string {
   const map: Record<string, string> = {
     'ticket.key': ctx.ticket.key,
@@ -56,6 +56,9 @@ export function expandPrompt(
     'forge.prCommand': ctx.forge.prCommand,
     'forge.term': ctx.forge.term
   }
+  // Only present for the orchestrator's stage-1 template; left out otherwise so
+  // {{prompts.catalog}} stays literal (unknown-key behavior) for normal prompts.
+  if (ctx.catalog !== undefined) map['prompts.catalog'] = ctx.catalog
   const fill = (s: string): string =>
     s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, key: string) => (key in map ? map[key] : m))
   // One-level expansion: the template's own {{ticket.*}} fields are filled, but
