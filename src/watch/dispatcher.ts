@@ -86,13 +86,19 @@ export class WatchDispatcher {
   }
 
   private enqueue(ticket: Ticket, repoPath: string): void {
+    // Reserve the key SYNCHRONOUSLY at enqueue time. The queue is sequential and
+    // stage-2 runs are long, so a ticket can sit queued across poll ticks; until
+    // dispatch() records/transitions it, the only thing keeping the next poll
+    // from re-enqueuing it is this reservation (the poll guard checks inFlight).
+    this.inFlight.add(ticket.key)
     this.queue.enqueue(() => this.dispatch(ticket, repoPath))
   }
 
   private async dispatch(ticket: Ticket, repoPath: string): Promise<void> {
-    const key = ticket.key
-    this.inFlight.add(key)
+    const key = ticket.key // already reserved in inFlight by enqueue()
     try {
+      // Defense-in-depth: never run a ticket already recorded as dispatched.
+      if (this.deps.state.has(key)) return
       const verdict = await this.deps.classify(ticket, repoPath)
       if (!verdict.ok) {
         this.deps.state.record(key, 'failed', this.deps.now())
@@ -113,6 +119,11 @@ export class WatchDispatcher {
         ? res.prUrls.join(', ')
         : res.exitCode === 0 ? 'no PR detected' : `run exited ${res.exitCode}`
       this.deps.notify({ title: `Done: ${key} (${verdict.prompt})`, body, ticketKey: key })
+    } catch (err) {
+      // Unexpected error (e.g. getTicket/network during classify, or a spawn
+      // rejection). Surface it — the queue swallows the rejection, so without
+      // this the user would get no feedback and the ticket would silently retry.
+      this.deps.notify({ title: `Dispatch error: ${key}`, body: this.msg(err), ticketKey: key })
     } finally {
       this.inFlight.delete(key)
     }

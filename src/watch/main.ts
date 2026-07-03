@@ -87,13 +87,20 @@ if (!app.requestSingleInstanceLock()) {
         const id = `watch-run:${ticket.key}`
         const expanded = await resolveExpandedPrompt(cfg, store, { prompt: { name: promptName }, ticketKey: ticket.key })
         const launch = buildHeadlessLaunch(cfg, { ticketKey: ticket.key }, expanded ?? '', systemResolveCommand)
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
           spawnResolvers.set(id, (r) => { spawnResolvers.delete(id); resolve(r) })
-          yolo.start(id, {
-            file: launch.file, args: launch.args, cwd: launch.cwd, prompt: launch.prompt,
-            parser: createParser(launch.outputParser, launch.sessionIdPattern),
-            patterns: buildForgePatterns(cfg), resolved: launch.resolved
-          })
+          try {
+            yolo.start(id, {
+              file: launch.file, args: launch.args, cwd: launch.cwd, prompt: launch.prompt,
+              parser: createParser(launch.outputParser, launch.sessionIdPattern),
+              patterns: buildForgePatterns(cfg), resolved: launch.resolved
+            })
+          } catch (err) {
+            // start() threw (e.g. duplicate id) — drop the resolver so it can't
+            // leak, and reject so the dispatcher surfaces it.
+            spawnResolvers.delete(id)
+            reject(err)
+          }
         })
       },
       state,
@@ -110,7 +117,7 @@ if (!app.requestSingleInstanceLock()) {
         { type: 'separator' },
         { label: 'Auto-dispatch', type: 'checkbox', checked: isAuto(), click: (i) => { state.setAutoMode(i.checked); refreshMenu() } },
         { label: paused ? 'Resume polling' : 'Pause polling', click: () => { paused = !paused; refreshMenu() } },
-        { label: 'Poll now', click: () => void runPoll() },
+        { label: 'Poll now', click: () => void runPoll(true) },
         { type: 'separator' },
         { label: 'Open config', click: () => void shell.openPath(store.configPath) },
         { label: 'Quit', click: () => { yolo.killAll(); classifyEngine.killAll(); app.quit() } }
@@ -118,8 +125,9 @@ if (!app.requestSingleInstanceLock()) {
       tray.setContextMenu(menu)
     }
 
-    const runPoll = async (): Promise<void> => {
-      if (paused || !store.config) return
+    const runPoll = async (force = false): Promise<void> => {
+      // "Poll now" (force) bypasses the paused flag; the interval tick does not.
+      if ((paused && !force) || !store.config) return
       await dispatcher.poll()
       lastPoll = new Date().toLocaleTimeString()
       refreshMenu()

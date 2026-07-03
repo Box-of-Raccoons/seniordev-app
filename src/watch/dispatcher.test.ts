@@ -100,4 +100,37 @@ describe('WatchDispatcher', () => {
     expect(deps.spawn).toHaveBeenCalledTimes(1)
     expect(notes.some((n) => n.title.includes('Transition failed'))).toBe(true)
   })
+
+  it('does not re-dispatch a ticket still queued behind a running one', async () => {
+    // SD-1's spawn blocks the sequential queue while SD-2 waits enqueued. A poll
+    // during that window must NOT re-enqueue SD-2 (it is not yet recorded and
+    // still "To Do" in Jira) — the enqueue-time reservation must cover it.
+    let releaseSpawn!: () => void
+    const spawnGate = new Promise<void>((r) => { releaseSpawn = r })
+    let first = true
+    const spawn = vi.fn(async () => {
+      if (first) { first = false; await spawnGate }
+      return { exitCode: 0, prUrls: [] as string[] }
+    })
+    const classify = vi.fn(async (_ticket: Ticket, _repoPath: string) => ({ ok: true as const, prompt: 'fix-bug' }))
+    const { deps } = makeDeps({
+      search: async () => [ticket('SD-1'), ticket('SD-2')],
+      classify,
+      spawn
+    })
+    const d = new WatchDispatcher(deps)
+    await d.poll(); await settle()   // SD-1 running (spawn gated), SD-2 queued
+    await d.poll(); await settle()   // must not re-enqueue SD-2
+    releaseSpawn(); await settle()   // drain the queue
+    const sd2Classifies = classify.mock.calls.filter((c) => c[0].key === 'SD-2').length
+    expect(sd2Classifies).toBe(1)
+  })
+
+  it('classify throwing (not a failure verdict) is notified, not swallowed', async () => {
+    const { deps, notes } = makeDeps({ classify: vi.fn(async () => { throw new Error('network down') }) })
+    await new WatchDispatcher(deps).poll()
+    await settle()
+    expect(notes.some((n) => n.body.includes('network down'))).toBe(true)
+    expect(deps.spawn).not.toHaveBeenCalled()
+  })
 })
