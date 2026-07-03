@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import TerminalView from './TerminalView.vue'
 import YoloView from './YoloView.vue'
+import OrchestratorView from './OrchestratorView.vue'
 import NewSessionMenu from './NewSessionMenu.vue'
 
 defineProps<{ activeTicketKey: string | null }>()
@@ -9,9 +10,10 @@ defineProps<{ activeTicketKey: string | null }>()
 interface Term {
   id: string
   title: string
-  kind: 'terminal' | 'yolo'
+  kind: 'terminal' | 'yolo' | 'orchestrator'
   prompt?: { name?: string; text?: string }
   tool?: string
+  ticketKey?: string
   exited?: boolean
   resume?: { sessionId: string }
   cwdOverride?: string
@@ -50,7 +52,11 @@ function hasSessions(): boolean {
   return terms.value.length > 0
 }
 
-defineExpose({ startStartupSession, closeAll, hasSessions })
+function startOrchestrator(ticketKey: string): void {
+  addTerm({ title: 'Jira Orchestrator', kind: 'orchestrator', ticketKey })
+}
+
+defineExpose({ startStartupSession, closeAll, hasSessions, startOrchestrator })
 
 function resumeYolo(from: Term, p: { sessionId: string; cwd: string; tool: string }): void {
   addTerm({
@@ -101,8 +107,17 @@ function markExited(id: string): void {
         :key="t.id"
         class="term-slot"
       >
+        <OrchestratorView
+          v-if="t.kind === 'orchestrator'"
+          :id="t.id"
+          :ticket-key="t.ticketKey ?? activeTicketKey ?? ''"
+          :tool="t.tool"
+          @exited="markExited(t.id)"
+          @resume="resumeYolo(t, $event)"
+          @routed="t.title = `Jira Orchestrator → ${$event}`"
+        />
         <YoloView
-          v-if="t.kind === 'yolo'"
+          v-else-if="t.kind === 'yolo'"
           :id="t.id"
           :ticket-key="activeTicketKey"
           :prompt="t.prompt"

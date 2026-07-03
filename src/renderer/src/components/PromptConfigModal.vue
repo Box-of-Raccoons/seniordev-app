@@ -6,7 +6,7 @@ import ConfirmDialog from './ConfirmDialog.vue'
 import { TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
 import type { PromptSummary } from '../../../shared/ipc'
 
-type Entry = { kind: 'context' } | { kind: 'preamble' } | { kind: 'recap' } | { kind: 'prompt'; name: string; description: string }
+type Entry = { kind: 'context' } | { kind: 'preamble' } | { kind: 'recap' } | { kind: 'orchestrator' } | { kind: 'prompt'; name: string; description: string }
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 const prompts = ref<PromptSummary[]>([])
@@ -16,6 +16,7 @@ const original = ref('')
 const error = ref<string | null>(null)
 const recapDefault = ref(false)
 const preambleDefault = ref(false)
+const orchestratorDefault = ref(false)
 const creating = ref(false)
 const newName = ref('')
 const confirmDelete = ref(false)
@@ -54,6 +55,10 @@ async function select(entry: Entry): Promise<void> {
     const res = await window.api.readRecap()
     text.value = res.text
     recapDefault.value = res.isDefault
+  } else if (entry.kind === 'orchestrator') {
+    const res = await window.api.readOrchestratorPrompt()
+    text.value = res.text
+    orchestratorDefault.value = res.isDefault
   } else {
     const res = await window.api.readPrompt(entry.name)
     if (!res.ok) { error.value = res.error; return }
@@ -71,11 +76,13 @@ async function save(): Promise<void> {
     s.kind === 'context' ? await window.api.writeContext(text.value)
     : s.kind === 'preamble' ? await window.api.savePreamble(text.value)
     : s.kind === 'recap' ? await window.api.saveRecap(text.value)
+    : s.kind === 'orchestrator' ? await window.api.saveOrchestratorPrompt(text.value)
     : await window.api.writePrompt(s.name, text.value)
   if (!res.ok) { error.value = res.error; return }
   original.value = text.value
   if (s.kind === 'preamble') preambleDefault.value = false
   if (s.kind === 'recap') recapDefault.value = false
+  if (s.kind === 'orchestrator') orchestratorDefault.value = false
   await refresh()
 }
 
@@ -120,6 +127,10 @@ async function doDelete(): Promise<void> {
           <span class="pcfg-item__name">YOLO recap</span>
           <span class="pcfg-item__desc">appended to every YOLO prompt</span>
         </button>
+        <button class="pcfg-item" :class="{ 'pcfg-item--on': selected?.kind === 'orchestrator' }" @click="requestSelect({ kind: 'orchestrator' })">
+          <span class="pcfg-item__name">Jira Orchestrator</span>
+          <span class="pcfg-item__desc">routes Jira tickets to playbooks</span>
+        </button>
         <hr class="pcfg-sep" />
         <button
           v-for="p in prompts"
@@ -144,6 +155,7 @@ async function doDelete(): Promise<void> {
         <template v-if="selected">
           <p v-if="selected.kind === 'preamble' && preambleDefault" class="pcfg-badge">using built-in default</p>
           <p v-if="selected.kind === 'recap' && recapDefault" class="pcfg-badge">using built-in default</p>
+          <p v-if="selected.kind === 'orchestrator' && orchestratorDefault" class="pcfg-badge">using built-in default</p>
           <textarea
             v-model="text"
             class="pcfg-editor"
