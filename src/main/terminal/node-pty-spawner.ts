@@ -1,9 +1,11 @@
 import { spawn as ptySpawn } from 'node-pty'
 import type { PtySpawner, PtyProcess } from './manager'
+import { resolveSpawnCommand } from './spawn-command'
 
 // The ONLY module that imports the native node-pty. Never import this from a test.
 export const nodePtySpawner: PtySpawner = ({ file, args, cwd, cols, rows }) => {
-  const proc = ptySpawn(file, args, {
+  const cmd = resolveSpawnCommand(process.platform, file, args, process.env.ComSpec)
+  const proc = ptySpawn(cmd.file, cmd.args, {
     name: 'xterm-color',
     cwd,
     cols,
