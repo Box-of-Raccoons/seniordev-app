@@ -1,11 +1,19 @@
 import { z } from 'zod'
 
+export const HeadlessSchema = z.object({
+  args: z.array(z.string()).default([]),
+  outputParser: z.enum(['claude-stream-json', 'codex-jsonl', 'text']).default('text'),
+  sessionIdPattern: z.string().optional()
+})
+
 export const CliToolSchema = z.object({
   command: z.string().min(1),
   interactiveArgs: z.array(z.string()).default([]),
   yoloArgs: z.array(z.string()).default([]),
   promptDelivery: z.enum(['stdin', 'arg']).default('stdin'),
-  promptArg: z.string().optional()
+  promptArg: z.string().optional(),
+  headless: HeadlessSchema.optional(),
+  resumeArgs: z.array(z.string()).optional()
 })
 
 export const ForgeSchema = z.object({
@@ -35,7 +43,8 @@ export const ConfigSchema = z.object({
   defaultForge: z.string().default('github'),
   forges: z.record(ForgeSchema).default({}),
   repos: z.array(RepoSchema).default([]),
-  promptsDir: z.string().optional()
+  promptsDir: z.string().optional(),
+  yoloRecap: z.string().optional()
 })
 
 export type Config = z.infer<typeof ConfigSchema>

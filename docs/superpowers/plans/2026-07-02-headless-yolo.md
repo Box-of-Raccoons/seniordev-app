@@ -70,7 +70,7 @@ describe('headless config', () => {
   it('accepts resumeArgs and yoloRecap', () => {
     const t = CliToolSchema.parse({ command: 'x', resumeArgs: ['--resume', '{{sessionId}}'] })
     expect(t.resumeArgs).toEqual(['--resume', '{{sessionId}}'])
-    const c = ConfigSchema.parse({ jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.c', apiToken: 't' }, yoloRecap: 'recap' })
+    const c = ConfigSchema.parse({ jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' }, yoloRecap: 'recap' })
     expect(c.yoloRecap).toBe('recap')
   })
   it('still accepts configs carrying legacy yoloArgs', () => {
@@ -736,7 +736,7 @@ import { ConfigSchema, type Config } from '../config/schema'
 
 function cfg(over: Record<string, unknown> = {}): Config {
   return ConfigSchema.parse({
-    jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.c', apiToken: 't' },
+    jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' },
     defaultTool: 'claude',
     cliTools: {
       claude: {
@@ -1248,7 +1248,7 @@ import type { HeadlessChild } from '../headless/runner'
 // ... electron ipcMain mock exactly as in terminal-handlers.test.ts ...
 
 const config = ConfigSchema.parse({
-  jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.c', apiToken: 't' },
+  jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' },
   defaultTool: 'claude',
   cliTools: {
     claude: {
