@@ -1,4 +1,4 @@
-import { app, Tray, Menu, Notification, nativeImage, shell } from 'electron'
+import { app, Tray, Menu, Notification, nativeImage, shell, type MenuItemConstructorOptions } from 'electron'
 import { join } from 'node:path'
 import { ConfigStore } from '../main/config/store'
 import { defaultConfigDir } from '../main/config/paths'
@@ -123,9 +123,23 @@ if (!app.requestSingleInstanceLock()) {
       tray.setToolTip(
         dispatcher.inFlightCount > 0 ? `SeniorDevWatch — ${dispatcher.inFlightCount} running` : 'SeniorDevWatch — idle'
       )
+      const pending = dispatcher.pendingApprovals()
+      const approvals: MenuItemConstructorOptions[] = pending.length
+        ? [
+            { type: 'separator' },
+            {
+              label: `Pending approvals (${pending.length})`,
+              submenu: pending.map((p) => ({
+                label: `Approve ${p.key} — ${p.summary}`,
+                click: () => { dispatcher.approve(p.key); refreshMenu() }
+              }))
+            }
+          ]
+        : []
       const menu = Menu.buildFromTemplate([
         { label: `SeniorDevWatch — last poll ${lastPoll}`, enabled: false },
         { label: `${dispatcher.inFlightCount} running · ${dispatcher.pendingCount} awaiting approval`, enabled: false },
+        ...approvals,
         { type: 'separator' },
         { label: 'Auto-dispatch', type: 'checkbox', checked: isAuto(), click: (i) => { state.setAutoMode(i.checked); refreshMenu() } },
         { label: paused ? 'Resume polling' : 'Pause polling', click: () => { paused = !paused; refreshMenu() } },

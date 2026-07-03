@@ -45,6 +45,12 @@ export class WatchDispatcher {
     return this.pending.size
   }
 
+  // Tickets awaiting manual approval (approve-first mode), for the tray submenu —
+  // so a missed notification isn't the only way to approve.
+  pendingApprovals(): { key: string; summary: string }[] {
+    return [...this.pending.values()].map((p) => ({ key: p.ticket.key, summary: p.ticket.summary }))
+  }
+
   get inFlightCount(): number {
     return this.inFlight.size
   }

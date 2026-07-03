@@ -87,6 +87,18 @@ describe('WatchDispatcher', () => {
     expect(deps.classify).toHaveBeenCalledTimes(1)
   })
 
+  it('exposes pending approvals for the tray submenu and clears one on approve', async () => {
+    const { deps } = makeDeps({ isAuto: () => false })
+    const d = new WatchDispatcher(deps)
+    await d.poll()
+    await settle()
+    expect(d.pendingApprovals()).toEqual([{ key: 'SD-1', summary: 'sum SD-1' }])
+    d.approve('SD-1')
+    await settle()
+    expect(d.pendingApprovals()).toEqual([])
+    expect(deps.classify).toHaveBeenCalledTimes(1)
+  })
+
   it('search failure: notify, no crash', async () => {
     const { deps, notes } = makeDeps({ search: async () => { throw new Error('boom') } })
     await new WatchDispatcher(deps).poll()
