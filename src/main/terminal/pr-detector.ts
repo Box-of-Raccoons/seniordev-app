@@ -39,3 +39,36 @@ export class PrDetector {
     return null
   }
 }
+
+// Collect-all variant for headless YOLO: every distinct PR/MR URL, in first-seen
+// order, across the whole run (a monorepo run can open several).
+export class PrCollector {
+  private buffer = ''
+  private readonly seen = new Set<string>()
+  private readonly ordered: string[] = []
+
+  constructor(
+    private readonly patterns: ForgePattern[],
+    private readonly maxBuffer = 8192
+  ) {}
+
+  feed(chunk: string): { url: string; term: string }[] {
+    this.buffer = (this.buffer + chunk).slice(-this.maxBuffer)
+    const hits: { url: string; term: string }[] = []
+    for (const p of this.patterns) {
+      const global = new RegExp(p.regex.source, p.regex.flags.includes('g') ? p.regex.flags : p.regex.flags + 'g')
+      for (const m of this.buffer.matchAll(global)) {
+        if (!this.seen.has(m[0])) {
+          this.seen.add(m[0])
+          this.ordered.push(m[0])
+          hits.push({ url: m[0], term: p.term })
+        }
+      }
+    }
+    return hits
+  }
+
+  get urls(): string[] {
+    return [...this.ordered]
+  }
+}
