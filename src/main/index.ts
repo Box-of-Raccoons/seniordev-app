@@ -9,6 +9,7 @@ import { registerIpc } from './ipc/handlers'
 import { registerTerminalIpc } from './ipc/terminal-handlers'
 import { registerYoloIpc } from './ipc/yolo-handlers'
 import { registerPromptsIpc } from './ipc/prompts-handlers'
+import { seedDefaultPrompts } from './prompts/defaults'
 import { registerShellIpc } from './ipc/shell-handlers'
 import { registerAppIpc } from './ipc/app-handlers'
 import { registerConfigIpc } from './ipc/config-handlers'
@@ -27,6 +28,14 @@ app.setName('SeniorDev')
 
 function resolveConfigPath(): string {
   return process.env.SENIORDEV_CONFIG ?? join(defaultConfigDir(), 'config.yaml')
+}
+
+// Where the app's committed default prompts live at runtime: bundled under
+// resourcesPath in a packaged build, or the repo's resources/prompts in dev.
+function bundledPromptsDir(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'prompts')
+    : join(app.getAppPath(), 'resources', 'prompts')
 }
 
 const store = new ConfigStore(resolveConfigPath())
@@ -64,6 +73,17 @@ app.whenReady().then(() => {
 
   const boot = store.reload()
   if (!boot.ok) console.error('[config]', boot.error)
+
+  // Deliver the shipped role-prompt library into the user's promptsDir on first
+  // run (non-destructive; only fills in missing files), then reload so they show
+  // up in the New Session / YOLO menu.
+  if (boot.ok) {
+    const seeded = seedDefaultPrompts(bundledPromptsDir(), store.promptsDir())
+    if (seeded.length) {
+      console.log('[prompts] seeded default prompts:', seeded.join(', '))
+      store.reloadPrompts()
+    }
+  }
 
   registerIpc(store.getTicket)
   registerShellIpc()
