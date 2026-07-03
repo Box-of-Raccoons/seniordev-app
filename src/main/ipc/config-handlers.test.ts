@@ -15,7 +15,7 @@ vi.mock('electron', () => ({
 import { registerConfigIpc, STARTER_CONFIG, writeFileAtomic } from './config-handlers'
 import { ConfigStore } from '../config/store'
 import { CONFIG } from '../../shared/ipc'
-import { DEFAULT_YOLO_RECAP } from '../config/presets'
+import { DEFAULT_YOLO_PREAMBLE, DEFAULT_YOLO_RECAP } from '../config/presets'
 
 const MINIMAL = 'jira:\n  baseUrl: https://x.atlassian.net\n  email: a@b.co\n  apiToken: t\n'
 
@@ -117,6 +117,48 @@ describe('config handlers', () => {
     expect(readFileSync(cfgPath, 'utf8')).not.toContain('yoloRecap')
     // readRecap reports the built-in default again
     const r = (await handleMap.get(CONFIG.readRecap)!({})) as { isDefault: boolean }
+    expect(r.isDefault).toBe(true)
+  })
+
+  it('savePreamble refuses when no config file exists yet', async () => {
+    const { sender } = setup() // file absent
+    const result = (await handleMap.get(CONFIG.savePreamble)!({}, 'anything')) as { ok: boolean; error?: string }
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/save App Config first/i)
+    expect(sender.send).not.toHaveBeenCalled()
+  })
+
+  it('readPreamble reports the built-in default until config overrides it', async () => {
+    setup(MINIMAL) // load MINIMAL — no yoloPreamble key
+    const r1 = (await handleMap.get(CONFIG.readPreamble)!({})) as { text: string; isDefault: boolean }
+    expect(r1.text).toBe(DEFAULT_YOLO_PREAMBLE)
+    expect(r1.isDefault).toBe(true)
+
+    // Save a config that now includes yoloPreamble
+    await handleMap.get(CONFIG.save)!({}, MINIMAL + 'yoloPreamble: custom\n')
+    const r2 = (await handleMap.get(CONFIG.readPreamble)!({})) as { text: string; isDefault: boolean }
+    expect(r2.text).toBe('custom')
+    expect(r2.isDefault).toBe(false)
+  })
+
+  it('savePreamble edits ONLY the yoloPreamble key and preserves comments elsewhere', async () => {
+    const { cfgPath, store } = setup('# keep me\n' + MINIMAL)
+    const result = (await handleMap.get(CONFIG.savePreamble)!({}, 'my preamble')) as { ok: boolean }
+    expect(result.ok).toBe(true)
+    // Comment survived the round-trip
+    expect(readFileSync(cfgPath, 'utf8')).toContain('# keep me')
+    // Store was reloaded and reflects the new value
+    expect(store.config?.yoloPreamble).toBe('my preamble')
+  })
+
+  it('savePreamble with the default text deletes the key', async () => {
+    const { cfgPath } = setup(MINIMAL + 'yoloPreamble: custom\n')
+    const result = (await handleMap.get(CONFIG.savePreamble)!({}, DEFAULT_YOLO_PREAMBLE)) as { ok: boolean }
+    expect(result.ok).toBe(true)
+    // yoloPreamble key must be absent from the written file
+    expect(readFileSync(cfgPath, 'utf8')).not.toContain('yoloPreamble')
+    // readPreamble reports the built-in default again
+    const r = (await handleMap.get(CONFIG.readPreamble)!({})) as { isDefault: boolean }
     expect(r.isDefault).toBe(true)
   })
 

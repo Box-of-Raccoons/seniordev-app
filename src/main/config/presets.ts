@@ -25,6 +25,8 @@ export const CLI_PRESETS = {
   }
 } as const
 
+export const DEFAULT_YOLO_PREAMBLE = `This is a headless, autonomous session — no human is watching to answer questions. Work the task to completion to the best of your ability. When you hit ambiguity, make the most reasonable assumption, note it in your final recap, and keep going. Do not stop to ask for confirmation or clarification; stop only when the task is done or you are genuinely blocked.`
+
 export const DEFAULT_YOLO_RECAP = `When you are completely finished, end your final message with:
 1. "## Changes made" — every file you changed and a one-line why.
 2. "## Pull requests" — the URL of each PR/MR you created (one per project if this repo is a monorepo).`

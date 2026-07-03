@@ -6,7 +6,7 @@ import ConfirmDialog from './ConfirmDialog.vue'
 import { TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
 import type { PromptSummary } from '../../../shared/ipc'
 
-type Entry = { kind: 'context' } | { kind: 'recap' } | { kind: 'prompt'; name: string; description: string }
+type Entry = { kind: 'context' } | { kind: 'preamble' } | { kind: 'recap' } | { kind: 'prompt'; name: string; description: string }
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 const prompts = ref<PromptSummary[]>([])
@@ -15,6 +15,7 @@ const text = ref('')
 const original = ref('')
 const error = ref<string | null>(null)
 const recapDefault = ref(false)
+const preambleDefault = ref(false)
 const creating = ref(false)
 const newName = ref('')
 const confirmDelete = ref(false)
@@ -45,6 +46,10 @@ async function select(entry: Entry): Promise<void> {
     const res = await window.api.readContext()
     if (!res.ok) { error.value = res.error; return }
     text.value = res.text
+  } else if (entry.kind === 'preamble') {
+    const res = await window.api.readPreamble()
+    text.value = res.text
+    preambleDefault.value = res.isDefault
   } else if (entry.kind === 'recap') {
     const res = await window.api.readRecap()
     text.value = res.text
@@ -64,10 +69,12 @@ async function save(): Promise<void> {
   const s = selected.value
   const res =
     s.kind === 'context' ? await window.api.writeContext(text.value)
+    : s.kind === 'preamble' ? await window.api.savePreamble(text.value)
     : s.kind === 'recap' ? await window.api.saveRecap(text.value)
     : await window.api.writePrompt(s.name, text.value)
   if (!res.ok) { error.value = res.error; return }
   original.value = text.value
+  if (s.kind === 'preamble') preambleDefault.value = false
   if (s.kind === 'recap') recapDefault.value = false
   await refresh()
 }
@@ -105,6 +112,10 @@ async function doDelete(): Promise<void> {
           <span class="pcfg-item__name">Ticket context</span>
           <span class="pcfg-item__desc">what &#123;&#123;ticket.context&#125;&#125; injects</span>
         </button>
+        <button class="pcfg-item" :class="{ 'pcfg-item--on': selected?.kind === 'preamble' }" @click="requestSelect({ kind: 'preamble' })">
+          <span class="pcfg-item__name">YOLO preamble</span>
+          <span class="pcfg-item__desc">prepended to every YOLO prompt</span>
+        </button>
         <button class="pcfg-item" :class="{ 'pcfg-item--on': selected?.kind === 'recap' }" @click="requestSelect({ kind: 'recap' })">
           <span class="pcfg-item__name">YOLO recap</span>
           <span class="pcfg-item__desc">appended to every YOLO prompt</span>
@@ -131,6 +142,7 @@ async function doDelete(): Promise<void> {
       </aside>
       <section class="pcfg-editor-pane">
         <template v-if="selected">
+          <p v-if="selected.kind === 'preamble' && preambleDefault" class="pcfg-badge">using built-in default</p>
           <p v-if="selected.kind === 'recap' && recapDefault" class="pcfg-badge">using built-in default</p>
           <textarea
             v-model="text"
