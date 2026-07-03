@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildInteractiveLaunch } from './session'
 import type { Config } from '../config/schema'
+import type { ResolvedCommand } from './resolve-command'
 
 const cfg = {
   defaultTool: 'claude',
@@ -44,5 +45,31 @@ describe('buildInteractiveLaunch', () => {
     const l = buildInteractiveLaunch(cfg, { tool: 'claude', yolo: true }, 'GO')
     expect(l.args).toEqual(['--permission-mode', 'bypassPermissions'])
     expect(l.stdinPrompt).toBe('GO')
+  })
+
+  it('downgrades arg-delivery to stdin when the command is a shell shim', () => {
+    // codex resolves to codex.cmd (kind shell) → prompt must NOT ride the args
+    // (they route through cmd /c and would be re-parsed / injectable).
+    const shim: ResolvedCommand = { path: 'C:\\bin\\codex.cmd', kind: 'shell' }
+    const l = buildInteractiveLaunch(cfg, { tool: 'codex' }, 'a & b\nc', () => shim)
+    expect(l.args).toEqual(['--foo'])
+    expect(l.args).not.toContain('a & b\nc')
+    expect(l.stdinPrompt).toBe('a & b\nc')
+    expect(l.resolved).toEqual(shim)
+  })
+
+  it('keeps arg-delivery in args when the command resolves to a real .exe', () => {
+    const exe: ResolvedCommand = { path: 'C:\\bin\\codex.exe', kind: 'exe' }
+    const l = buildInteractiveLaunch(cfg, { tool: 'codex' }, 'DO THIS', () => exe)
+    expect(l.args).toEqual(['--foo', 'DO THIS'])
+    expect(l.stdinPrompt).toBeUndefined()
+    expect(l.resolved).toEqual(exe)
+  })
+
+  it('keeps current arg-delivery behavior when no resolver is provided', () => {
+    const l = buildInteractiveLaunch(cfg, { tool: 'codex' }, 'DO THIS')
+    expect(l.args).toEqual(['--foo', 'DO THIS'])
+    expect(l.stdinPrompt).toBeUndefined()
+    expect(l.resolved).toBeUndefined()
   })
 })

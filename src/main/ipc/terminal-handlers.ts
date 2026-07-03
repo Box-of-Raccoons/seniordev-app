@@ -3,6 +3,7 @@ import type { Config } from '../config/schema'
 import type { Ticket } from '../../shared/types'
 import { TerminalManager, type PtySpawner } from '../terminal/manager'
 import { buildInteractiveLaunch } from '../terminal/session'
+import type { ResolvedCommand } from '../terminal/resolve-command'
 import { TERM, type SpawnTerminalRequest, type SpawnResult } from '../../shared/ipc'
 import { type PromptTemplate, findPrompt } from '../prompts/library'
 import { buildPromptTicket, expandPrompt, resolveForge } from '../prompts/expand'
@@ -11,6 +12,7 @@ import { PrDetector, buildForgePatterns } from '../terminal/pr-detector'
 export interface TerminalDeps {
   getTicket: (key: string) => Promise<Ticket>
   prompts: PromptTemplate[]
+  resolveCommand?: (command: string) => ResolvedCommand | undefined
 }
 
 // Interactive CLIs need a moment to boot before they accept typed input.
@@ -64,12 +66,26 @@ export function registerTerminalIpc(
   ipcMain.handle(TERM.spawn, async (_e, req: SpawnTerminalRequest): Promise<SpawnResult> => {
     try {
       const expanded = await resolveExpandedPrompt(config, deps, req)
-      const launch = buildInteractiveLaunch(config, req, expanded)
-      manager.spawn(req.id, { file: launch.file, args: launch.args, cwd: launch.cwd, cols: req.cols, rows: req.rows })
+      const launch = buildInteractiveLaunch(config, req, expanded, deps.resolveCommand)
+      manager.spawn(req.id, {
+        file: launch.file,
+        args: launch.args,
+        cwd: launch.cwd,
+        cols: req.cols,
+        rows: req.rows,
+        resolved: launch.resolved
+      })
       if (req.yolo) detectors.set(req.id, new PrDetector(buildForgePatterns(config)))
       if (launch.stdinPrompt) {
         const prompt = launch.stdinPrompt
-        setTimeout(() => manager.write(req.id, prompt + '\r'), STDIN_PROMPT_DELAY_MS)
+        // Modern CLI TUIs enable bracketed paste; framing the (often multi-line)
+        // prompt with \x1b[200~ … \x1b[201~ stops each embedded newline from
+        // registering as Enter and submitting a fragment. The trailing CR then
+        // submits the whole prompt once.
+        setTimeout(
+          () => manager.write(req.id, '\x1b[200~' + prompt + '\x1b[201~\r'),
+          STDIN_PROMPT_DELAY_MS
+        )
       }
       return { ok: true }
     } catch (err) {
