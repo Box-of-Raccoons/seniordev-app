@@ -4,6 +4,7 @@ import type { Ticket } from '../../shared/types'
 import { loadConfig } from './load'
 import { defaultConfigDir } from './paths'
 import { loadPrompts, type PromptTemplate } from '../prompts/library'
+import { readContextFile } from '../prompts/files'
 import { JiraClient } from '../jira/client'
 
 // The minimal read surface IPC handlers depend on — lets tests hand in a plain
@@ -13,6 +14,7 @@ export interface ConfigSource {
   readonly loadError: string | null
   readonly prompts: PromptTemplate[]
   getTicket(key: string): Promise<Ticket>
+  contextTemplate?: () => string
 }
 
 export function requireConfig(src: ConfigSource): Config {
@@ -55,6 +57,8 @@ export class ConfigStore implements ConfigSource {
     if (!this.config) return
     this.prompts.splice(0, this.prompts.length, ...loadPrompts(this.promptsDir()))
   }
+
+  contextTemplate = (): string => readContextFile(this.promptsDir())
 
   getTicket = async (key: string): Promise<Ticket> => {
     if (!this.jiraClient) {

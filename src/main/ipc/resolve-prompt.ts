@@ -11,6 +11,7 @@ export interface PromptRequest {
 export interface PromptDeps {
   getTicket: (key: string) => Promise<Ticket>
   prompts: PromptTemplate[]
+  contextTemplate?: () => string
 }
 
 export async function resolveExpandedPrompt(
@@ -32,5 +33,5 @@ export async function resolveExpandedPrompt(
     : { key: '', type: '', status: '', summary: '', descriptionAdf: null, acceptanceCriteria: null, comments: [], url: '' }
   const ticketCtx = buildPromptTicket(ticket, config.ticketContext)
   const forge = resolveForge(config, req.ticketKey)
-  return expandPrompt(body, { ticket: ticketCtx, forge })
+  return expandPrompt(body, { ticket: ticketCtx, forge, contextTemplate: deps.contextTemplate?.() })
 }

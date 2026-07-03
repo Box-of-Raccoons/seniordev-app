@@ -43,7 +43,7 @@ export function resolveForge(config: Config, ticketKey?: string): { prCommand: s
 
 export function expandPrompt(
   body: string,
-  ctx: { ticket: PromptTicket; forge: { prCommand: string; term: string } }
+  ctx: { ticket: PromptTicket; forge: { prCommand: string; term: string }; contextTemplate?: string }
 ): string {
   const map: Record<string, string> = {
     'ticket.key': ctx.ticket.key,
@@ -56,5 +56,10 @@ export function expandPrompt(
     'forge.prCommand': ctx.forge.prCommand,
     'forge.term': ctx.forge.term
   }
-  return body.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, key: string) => (key in map ? map[key] : m))
+  const fill = (s: string): string =>
+    s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, key: string) => (key in map ? map[key] : m))
+  // One-level expansion: the template's own {{ticket.*}} fields are filled, but
+  // 'ticket.context' is not yet in the map, so a self-reference stays literal.
+  if (ctx.contextTemplate !== undefined) map['ticket.context'] = fill(ctx.contextTemplate)
+  return fill(body)
 }
