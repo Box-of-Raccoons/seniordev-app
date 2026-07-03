@@ -41,7 +41,7 @@ const store = new ConfigStore(resolveConfigPath())
 
 let terminals: TerminalManager | null = null
 let yolo: YoloRunner | null = null
-let orchestrator: YoloRunner | null = null
+let orchestrator: import('./orchestrator/run').ClassifyEngine | null = null
 let mainWindow: BrowserWindow | null = null
 
 // Warm links are queued until the renderer says it's listening (DEEPLINK.ready);
