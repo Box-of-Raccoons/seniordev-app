@@ -66,7 +66,7 @@ describe('registerTerminalIpc', () => {
     expect(pty.write).toHaveBeenCalledWith('typed')
   })
 
-  it('expands a named prompt and writes it to stdin (bracketed-paste framed) after the boot delay', async () => {
+  it('writes the raw prompt to stdin then submits with a separate Enter, no ESC framing', async () => {
     vi.useFakeTimers()
     const pty = fakePty()
     registerTerminalIpc(cfg, () => undefined, () => pty as unknown as PtyProcess, deps)
@@ -75,9 +75,11 @@ describe('registerTerminalIpc', () => {
     // Nothing written before the boot delay elapses.
     expect(pty.write).not.toHaveBeenCalled()
     await vi.runAllTimersAsync()
-    // Bracketed-paste framing first, then Enter as a separate write to submit.
-    expect(pty.write).toHaveBeenNthCalledWith(1, '\x1b[200~Do PROJ-1\x1b[201~')
+    // Prompt text first (no bracketed-paste ESC markers), then Enter as its own write.
+    expect(pty.write).toHaveBeenNthCalledWith(1, 'Do PROJ-1')
     expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
+    // Guard the regression: no write may contain an ESC.
+    for (const call of pty.write.mock.calls) expect(call[0]).not.toContain('\x1b')
     vi.useRealTimers()
   })
 
