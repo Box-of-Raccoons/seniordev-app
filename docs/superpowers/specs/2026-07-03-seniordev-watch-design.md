@@ -38,14 +38,27 @@ The two features are complementary and **share one orchestrator module**.
   creates only a `Tray` (no `BrowserWindow`), reusing node-pty spawning, native
   Notifications, and the single-instance lock.
 
-## Preconditions (not yet built on develop)
+## Preconditions (now built on develop @ f75b7fc)
 
-Neither the `seniordev://` protocol handler nor the Jira Orchestrator from
-`2026-07-03-jira-trigger-design.md` exists in `src/` yet (verified: no
-`setAsDefaultProtocolClient`, `deeplink/`, `orchestrator/`, or JQL/`search`
-code). The current `JiraClient` only exposes `fetchIssue(key)`. This design
-therefore **creates** the shared orchestrator and extends `JiraClient`; the
-future in-app trigger will reuse both.
+The Jira Orchestrator and `seniordev://` handler from
+`2026-07-03-jira-trigger-design.md` **landed on `develop`** (PR #3, merge
+`f75b7fc`) while this design was being drafted; `feature/seniordev-watch` is
+rebased onto that merge. The relevant existing code:
+
+- `src/main/orchestrator/catalog.ts` — `buildCatalog(prompts)` (pure).
+- `src/main/orchestrator/extract.ts` — `extractVerdict(output)` (pure).
+- `src/main/ipc/orchestrator-handlers.ts` — `registerOrchestratorIpc`, holding a
+  **private** `finalize()` (never-guess-and-run result logic) and an inline
+  stage-1 classify build, bound to `ipcMain` + `getSender()`.
+- `src/renderer/src/components/OrchestratorView.vue` — the **classify→spawn
+  sequencing** (calls `classify`, then mounts `YoloView` on success). This lives
+  in the renderer, so a headless tray cannot reuse it.
+- `JiraClient` still only exposes `fetchIssue(key)` — no JQL search or
+  transitions.
+
+This design therefore **consumes** the orchestrator and adds a small
+renderer-agnostic extraction (§1) that both the existing IPC handler and the new
+tray share, plus JQL/transition methods on `JiraClient`.
 
 ## 1. Architecture & components
 
@@ -56,23 +69,32 @@ All new code lives in this repo and reuses existing plumbing.
   own `requestSingleInstanceLock`. Owns the poll timer, the queue, and tray
   state. Deliberately thin — orchestration logic lives in the tested modules
   below.
-- **`src/main/orchestrator/`** *(new, shared with the future in-app trigger)* —
-  the classify→spawn logic. **Stage 1 (classify):** a bespoke headless launch
-  that does **not** apply `yoloPreamble`/`yoloRecap` (per the jira-trigger
-  design's integration note — the recap "end with ## Changes made / ## Pull
-  requests" contradicts "answer with only a JSON object"). Prompt carries the
-  ticket context plus a catalog of prompt **names + descriptions** from
-  `loadPrompts`, instructing a JSON-only answer `{"prompt":"<name>"}` or
-  `{"prompt":null,"reason":"..."}`, and to modify no files. The module extracts
-  the JSON from the final output. **Stage 2 (spawn):** a normal YOLO launch
-  (with preamble/recap) for the chosen prompt, via the existing spawner/parser.
-  The orchestrator's own prompt is a `presets.ts` built-in and never appears in
-  its own catalog. Tested with a fake spawner.
+- **`src/main/orchestrator/run.ts`** *(new — the extraction)* — pulls the
+  renderer-agnostic classify machinery out of `orchestrator-handlers.ts` so both
+  the IPC handler and the tray share one code path:
+  - `finalize(exitCode, buffer, prompts): ClassifyResult` — moved out of the
+    handler and **exported** (the never-guess-and-run logic; now unit-testable).
+  - `buildClassifyLaunch(config, source, promptsDir, req)` — the async stage-1
+    build (readOrchestratorFile → getTicket → `buildPromptTicket('both')` →
+    `resolveForge` → `expandPrompt` with `buildCatalog` → `buildHeadlessLaunch`
+    with **`bare:true`** so no `yoloPreamble`/`yoloRecap` wraps the classifier).
+  - `createClassifyRunner(spawner, onLog)` → `{ classify(req): Promise<ClassifyResult>; kill(id) }`
+    — owns a `YoloRunner`, buffers stdout per id, and resolves via `finalize`.
+  `orchestrator-handlers.ts` is refactored to call these (behavior-preserving;
+  its existing behavior and tests stay green). **Stage 2 (spawn)** needs no new
+  module: on `ok`, the tray composes the existing `resolveExpandedPrompt` +
+  `buildHeadlessLaunch` (non-bare, so preamble/recap apply) + `YoloRunner` +
+  `buildForgePatterns` — the same pieces `yolo-handlers.ts` uses. The
+  orchestrator's own prompt remains the `presets.ts`/`_jira-orchestrator.md`
+  built-in and never appears in its own catalog.
 - **`src/main/jira/client.ts`** — extend with:
-  - `search(jql, opts?)` → `/rest/api/3/search` (JQL) returning normalized keys
-    + summaries.
+  - `search(jql): Promise<Ticket[]>` → **`POST /rest/api/3/search/jql`** (the
+    current enhanced-search endpoint; the old `GET /rest/api/3/search` is
+    deprecated — verify against the live instance at build time, using the same
+    `FIELDS` and reusing `normalizeIssue` per issue).
   - `getTransitions(key)` and `transition(key, transitionName)` →
-    `/rest/api/3/issue/{key}/transitions`.
+    `GET`/`POST /rest/api/3/issue/{key}/transitions` (resolve the transition id
+    by name, case-insensitive; a missing name is a distinguishable "not found").
   The existing `fetchIssue` and `authHeader` are untouched. Same fake-`fetch`
   test style as `client.test.ts`.
 - **`src/watch/` pure modules** (each unit-tested in isolation):
@@ -129,23 +151,27 @@ watch:
   triggerStatusCategory: "To Do"    # only tickets in this category are picked up
   transitionOnDispatch: "In Progress"  # transition name, matched via getTransitions;
                                         # if not found, notify and proceed with the run
-  autoMode: false                   # false = approve-first; the tray checkbox flips
-                                    # this at runtime and persists it back to config
+  autoMode: false                   # INITIAL default only; the tray checkbox's
+                                    # runtime value is persisted to watch-state.json
 ```
 
-The tray checkbox writes `autoMode` back to the config file so it survives
-restarts. Validated by extending `ConfigSchema` with an optional `WatchSchema`
-(all fields defaulted; absence = watcher disabled).
+Validated by extending `ConfigSchema` with `watch: WatchSchema.default({})` (all
+fields defaulted; `enabled` defaults false, so an absent block = watcher
+disabled). The tray checkbox does **not** rewrite `config.yaml` — that file has
+user comments a `parse`/`stringify` round-trip would drop. Instead the toggle's
+value lives in the runtime state file; effective mode on boot =
+`state.autoMode ?? config.watch.autoMode`.
 
 State file: `%APPDATA%\SeniorDev\watch-state.json` (next to config), holding
-`{ dispatched: { "SD-6": { at: "<iso>", outcome: "spawned|failed" } } }`.
+`{ autoMode?: boolean, dispatched: { "SD-6": { at: "<iso>", outcome: "spawned|failed" } } }`.
+Written atomically (tmp + rename, like `writeAtomic` in `prompts/files.ts`).
 
 ## 4. Tray UX
 
 Tray icon + tooltip reflect state: idle / polling / running N / error. Context
 menu:
 
-- **☑ Auto-dispatch** — the auto/approve toggle (persists to config).
+- **☑ Auto-dispatch** — the auto/approve toggle (persists to `watch-state.json`).
 - **Poll now** — force an immediate tick.
 - **Pause / Resume polling**.
 - Status line (disabled item): "last poll 14:02 · 1 running · 3 done today".
@@ -177,9 +203,11 @@ a small on-demand window that closes after the decision.
 - `JiraClient.search` / `getTransitions` / `transition` — fake-`fetch` tests in
   the existing `client.test.ts` style (auth header, URL/JQL shape, error status
   handling).
-- Orchestrator — fake-spawner tests: classify JSON extraction (valid, garbage,
-  `null`, nonexistent name), stage-1 launch omits preamble/recap, stage-2 uses
-  the chosen prompt verbatim, failure never triggers stage 2.
+- `orchestrator/run.ts` — fake-spawner tests for the extraction: `finalize`
+  cases (non-zero exit, no verdict, `null`, unknown name, valid), the stage-1
+  launch omits preamble/recap (`bare:true`), and `createClassifyRunner` resolves
+  correctly. The existing `orchestrator-handlers.ts` behavior stays unchanged
+  after refactoring to call `run.ts` (its current tests remain green).
 - Tray wiring is thin; covered by a manual smoke checklist (icon appears, toggle
   persists, Poll now works, notification click starts a run).
 - All existing tests must remain green against the recorded baseline.
@@ -192,7 +220,7 @@ a small on-demand window that closes after the decision.
   statusCategory = "<trigger>"` and mapping to a configured repo is dispatched
   through classify→spawn.
 - **Approve mode (default):** the run waits for a click; **auto mode:** it runs
-  immediately. The tray checkbox flips modes and persists.
+  immediately. The tray checkbox flips modes and persists to `watch-state.json`.
 - Successful spawn transitions the ticket out of the trigger status and records
   it; the same ticket is never dispatched twice.
 - Classifier failure/no-match runs no stage 2, does **not** transition, notifies
@@ -201,13 +229,16 @@ a small on-demand window that closes after the decision.
   once a repo is configured.
 - Runs execute **one at a time** (FIFO); a batch drains sequentially.
 - Jira/transition/config errors surface in the tray without crashing the poller.
-- Existing app tests, CLI flows, and the (future) in-app trigger's use of the
-  shared orchestrator are unaffected — verified against the recorded baseline.
+- Existing app tests, CLI flows, and the in-app orchestrator/deep-link trigger
+  (already on `develop`) are unaffected by the extraction — verified against the
+  recorded baseline.
 
 ## Out of scope (v1)
 
-- The `seniordev://` deep-link/protocol handler and the in-app Jira trigger
-  (separate future work that will **reuse** this orchestrator module).
+- Any change to the `seniordev://` deep-link/protocol handler or the in-app Jira
+  trigger beyond the behavior-preserving `run.ts` extraction they now share.
+- A packaged installer / OS auto-start for the tray (v1 runs it via a `pnpm`
+  script + `electron out/main/watch.js`); installer + login-item is a follow-up.
 - Label-removal and Jira-comment audit trails (state-file + status transition
   only).
 - Per-tool flag-enforced read-only classifier (`classifyArgs`) — prompt-enforced
@@ -227,8 +258,8 @@ a small on-demand window that closes after the decision.
 - `transitionOnDispatch` is matched by transition **name** and depends on each
   project's workflow exposing it; a missing transition degrades to "run happens,
   no status change" (with a notification), relying on the state file for dedup.
-- The watcher branches off `feature/jira-trigger`'s lineage only for the shared
-  orchestrator's design context; at implementation time the orchestrator should
-  land in a way both features can depend on (sequence producer-first if the
-  in-app trigger is built in parallel).
+- `feature/seniordev-watch` is rebased onto `develop @ f75b7fc` (the merged
+  orchestrator), so the extraction refactors code that already shipped —
+  the plan must keep `orchestrator-handlers.ts` and `OrchestratorView.vue`
+  behavior identical and their tests green.
 ```
