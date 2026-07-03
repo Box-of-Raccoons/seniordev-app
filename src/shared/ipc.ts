@@ -77,3 +77,9 @@ export const CONFIG = {
   read: 'config:read', save: 'config:save', changed: 'config:changed',
   readRecap: 'config:readRecap', saveRecap: 'config:saveRecap'
 } as const
+
+export type PromptReadResult = { ok: true; text: string } | { ok: false; error: string }
+export const PROMPT_FILES = {
+  read: 'prompts:read', write: 'prompts:write', create: 'prompts:create', delete: 'prompts:delete',
+  readContext: 'prompts:readContext', writeContext: 'prompts:writeContext'
+} as const

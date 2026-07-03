@@ -12,6 +12,7 @@ import { registerPromptsIpc } from './ipc/prompts-handlers'
 import { registerShellIpc } from './ipc/shell-handlers'
 import { registerAppIpc } from './ipc/app-handlers'
 import { registerConfigIpc } from './ipc/config-handlers'
+import { registerPromptConfigIpc } from './ipc/prompt-config-handlers'
 import { installMenu } from './menu'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
 import { nodeHeadlessSpawner } from './headless/node-spawner'
@@ -71,6 +72,7 @@ app.whenReady().then(() => {
   yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand })
   registerAppIpc()
   registerConfigIpc(store, getSender)
+  registerPromptConfigIpc(store, getSender)
   installMenu(getSender)
 
   createWindow()
