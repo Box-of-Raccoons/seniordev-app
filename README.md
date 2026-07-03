@@ -11,7 +11,7 @@ Copy `config.example.yaml` to your OS config dir and fill it in:
 
 Override the config path with the `SENIORDEV_CONFIG` environment variable.
 
-Prompts default to a `prompts/` folder next to `config.yaml` (same dir), overridable via the `promptsDir` config key. One markdown file per prompt with `name`/`description` frontmatter and `{{ticket.*}}` / `{{forge.*}}` placeholders.
+Prompts default to a `prompts/` folder next to `config.yaml` (same dir), overridable via the `promptsDir` config key. One markdown file per prompt with `name`/`description` frontmatter and `{{ticket.*}}` / `{{forge.*}}` placeholders, including `{{ticket.context}}` — a reusable context block maintained in `_ticket-context.md` in the same dir.
 
 ### YOLO config
 
@@ -50,6 +50,21 @@ yoloRecap: |
 - **`resumeArgs`** — template appended to `interactiveArgs` when the Resume button spawns a follow-up tab. `{{sessionId}}` is substituted. Omit to disable the Resume button for a tool.
 - **`yoloRecap`** — appended (with a blank line) to every YOLO prompt so the agent ends its run with a structured summary. Set an empty string to disable entirely.
 - **`yoloArgs`** — no longer used. Old configs containing this key load without error; the key is silently ignored.
+
+## In-app configuration
+
+The menu bar shows **File / Edit / Config / About**.
+
+**Config → App Config** opens `config.yaml` in a built-in editor with schema validation. Saving applies the new config immediately — sessions opened after saving use the updated values; sessions already running are untouched. A save is rejected (precise error, file unchanged) if the YAML is invalid or fails schema validation.
+
+**Config → Prompt Config** manages the prompts directory. From here you can:
+- Edit the ticket-context template (`_ticket-context.md` in the prompts dir) — its content is what `{{ticket.context}}` expands to in any prompt.
+- Edit the YOLO recap text (the instruction appended to every YOLO prompt asking the agent to end with a structured summary).
+- Create, edit, or delete prebuilt prompts; changes appear in the YOLO / New Session menu immediately, no restart required.
+
+**File → New Session** (`Ctrl+N`) resets the workbench: all open tickets and terminal sessions are closed and the layout returns to its initial state. If any sessions are running you are asked to confirm first.
+
+**About** shows the application name, version, and credits.
 
 ## YOLO
 
