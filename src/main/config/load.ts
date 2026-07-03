@@ -7,7 +7,7 @@ type Dict = Record<string, unknown>
 
 // Merge user entries onto presets per key AND per field, so overriding one
 // field of a preset (e.g. cliTools.claude.command) keeps the preset's other
-// fields (e.g. the safety-relevant yoloArgs) instead of silently dropping them.
+// fields (e.g. the safety-relevant headless args) instead of silently dropping them.
 function mergeByKey(presets: Record<string, Dict>, user: unknown): Dict {
   const out: Dict = { ...presets }
   const entries = user && typeof user === 'object' ? Object.entries(user as Dict) : []

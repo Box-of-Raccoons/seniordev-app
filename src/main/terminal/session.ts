@@ -12,7 +12,7 @@ export interface Launch {
 
 export function buildInteractiveLaunch(
   config: Config,
-  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; yolo?: boolean },
+  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; resume?: { sessionId: string } },
   expandedPrompt?: string,
   resolveCommand?: (command: string) => ResolvedCommand | undefined
 ): Launch {
@@ -20,7 +20,18 @@ export function buildInteractiveLaunch(
   const tool = config.cliTools[toolName]
   if (!tool) throw new Error(`Unknown CLI tool: ${toolName}`)
   const cwd = resolveCwd(config, opts.ticketKey, opts.cwdOverride)
-  const args = [...(opts.yolo ? tool.yoloArgs : tool.interactiveArgs)]
+  // Session ids come from the CLI's own output (UUIDs), but resume args can ride
+  // through a cmd /c shim launch that RE-PARSES its line — so refuse anything
+  // outside the UUID charset rather than let it near a shell. Defense in depth.
+  if (opts.resume && !/^[0-9a-zA-Z-]+$/.test(opts.resume.sessionId)) {
+    throw new Error(`Invalid session id for resume: ${opts.resume.sessionId}`)
+  }
+  // Function replacer: a literal '$' in a session id must not trigger $&-style patterns.
+  const resumeArgs =
+    opts.resume && tool.resumeArgs
+      ? tool.resumeArgs.map((a) => a.replace('{{sessionId}}', () => opts.resume!.sessionId))
+      : []
+  const args = [...tool.interactiveArgs, ...resumeArgs]
   const resolved = resolveCommand?.(tool.command)
 
   // Deliver the prompt as a launch arg ONLY when it can't be re-parsed by cmd.exe.

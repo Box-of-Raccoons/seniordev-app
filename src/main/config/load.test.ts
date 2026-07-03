@@ -39,13 +39,13 @@ describe('loadConfig', () => {
   })
 
   it('preserves preset fields when a user overrides only one field', () => {
-    // Overriding claude.command must NOT drop the preset's yoloArgs (the
-    // permission-mode flag used by YOLO mode later).
+    // Overriding claude.command must NOT drop the preset's headless args (the
+    // safety-relevant flags used by headless YOLO mode later).
     const cfg = loadConfig(
       tmpConfig(MINIMAL + '\ncliTools:\n  claude:\n    command: my-claude\n')
     )
     expect(cfg.cliTools.claude.command).toBe('my-claude')
-    expect(cfg.cliTools.claude.yoloArgs).toEqual(['--permission-mode', 'auto'])
+    expect(cfg.cliTools.claude.headless?.outputParser).toBe('claude-stream-json')
   })
 
   it('throws on invalid jira email', () => {

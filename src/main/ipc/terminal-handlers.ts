@@ -5,9 +5,8 @@ import { TerminalManager, type PtySpawner } from '../terminal/manager'
 import { buildInteractiveLaunch } from '../terminal/session'
 import type { ResolvedCommand } from '../terminal/resolve-command'
 import { TERM, type SpawnTerminalRequest, type SpawnResult } from '../../shared/ipc'
-import { type PromptTemplate, findPrompt } from '../prompts/library'
-import { buildPromptTicket, expandPrompt, resolveForge } from '../prompts/expand'
-import { PrDetector, buildForgePatterns } from '../terminal/pr-detector'
+import type { PromptTemplate } from '../prompts/library'
+import { resolveExpandedPrompt } from './resolve-prompt'
 
 export interface TerminalDeps {
   getTicket: (key: string) => Promise<Ticket>
@@ -29,35 +28,12 @@ const SUBMIT_DELAY_MS = 300
 // Safety valve: if the CLI never settles (endless spinner), send anyway.
 const MAX_WAIT_MS = 15000
 
-async function resolveExpandedPrompt(
-  config: Config,
-  deps: TerminalDeps,
-  req: SpawnTerminalRequest
-): Promise<string | undefined> {
-  if (!req.prompt) return undefined
-  let body = req.prompt.text
-  if (req.prompt.name) {
-    const tmpl = findPrompt(deps.prompts, req.prompt.name)
-    if (!tmpl) throw new Error(`Unknown prompt: ${req.prompt.name}`)
-    body = tmpl.body
-  }
-  if (body === undefined) return undefined
-
-  const ticket = req.ticketKey
-    ? await deps.getTicket(req.ticketKey)
-    : { key: '', type: '', status: '', summary: '', descriptionAdf: null, acceptanceCriteria: null, comments: [], url: '' }
-  const ticketCtx = buildPromptTicket(ticket, config.ticketContext)
-  const forge = resolveForge(config, req.ticketKey)
-  return expandPrompt(body, { ticket: ticketCtx, forge })
-}
-
 export function registerTerminalIpc(
   config: Config,
   getSender: () => Electron.WebContents | undefined,
   spawner: PtySpawner,
   deps: TerminalDeps
 ): TerminalManager {
-  const detectors = new Map<string, PrDetector>()
   // Per-session prompt-delivery state: output activity + the live timer handle.
   const pendingPrompts = new Map<string, { sawData: boolean; lastData: number }>()
   const promptTimers = new Map<string, NodeJS.Timeout>()
@@ -74,15 +50,9 @@ export function registerTerminalIpc(
       getSender()?.send(TERM.data, { id, data })
       const pend = pendingPrompts.get(id)
       if (pend) { pend.sawData = true; pend.lastData = Date.now() }
-      const det = detectors.get(id)
-      if (det) {
-        const hit = det.feed(data)
-        if (hit) getSender()?.send(TERM.pr, { id, url: hit.url, term: hit.term })
-      }
     },
     onExit: (id, exitCode) => {
       getSender()?.send(TERM.exit, { id, exitCode })
-      detectors.delete(id)
       cancelPendingPrompt(id)
     }
   })
@@ -118,7 +88,6 @@ export function registerTerminalIpc(
         rows: req.rows,
         resolved: launch.resolved
       })
-      if (req.yolo) detectors.set(req.id, new PrDetector(buildForgePatterns(config)))
       // NOTE: no bracketed-paste framing here — the raw ESC of \x1b[200~ registers
       // as the Escape key in these TUIs (clears the composer / exits dialogs).
       if (launch.stdinPrompt) deliverPromptWhenReady(req.id, launch.stdinPrompt)

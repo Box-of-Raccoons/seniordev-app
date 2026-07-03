@@ -19,7 +19,7 @@ const deps = { getTicket: async () => ticket, prompts: [{ name: 'p', description
 const cfg = {
   defaultTool: 'claude',
   ticketContext: 'both',
-  cliTools: { claude: { command: 'claude', interactiveArgs: [], yoloArgs: [], promptDelivery: 'stdin' } },
+  cliTools: { claude: { command: 'claude', interactiveArgs: [], promptDelivery: 'stdin' } },
   defaultForge: 'github',
   forges: { github: { prCommand: 'gh pr create', term: 'PR', urlPattern: 'x' } },
   repos: []
@@ -101,15 +101,5 @@ describe('registerTerminalIpc', () => {
     await vi.advanceTimersByTimeAsync(300)
     expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
     vi.useRealTimers()
-  })
-
-  it('emits pty:pr when a yolo session prints a PR url', async () => {
-    const pty = fakePty()
-    const send = vi.fn()
-    const yoloCfg = { ...cfg, forges: { github: { prCommand: 'gh pr create', term: 'PR', urlPattern: 'https://github\\.com/[^/\\s]+/[^/\\s]+/pull/\\d+' } } } as unknown as Config
-    registerTerminalIpc(yoloCfg, () => ({ send } as unknown as Electron.WebContents), () => pty as unknown as PtyProcess, deps)
-    await handleMap.get('pty:spawn')!({}, { id: 'y', yolo: true, cols: 80, rows: 24 })
-    pty.emitData('opened https://github.com/o/r/pull/5\n')
-    expect(send).toHaveBeenCalledWith('pty:pr', { id: 'y', url: 'https://github.com/o/r/pull/5', term: 'PR' })
   })
 })

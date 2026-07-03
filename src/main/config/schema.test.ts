@@ -1,0 +1,23 @@
+import { describe, expect, it } from 'vitest'
+import { CliToolSchema, ConfigSchema } from './schema'
+
+describe('headless config', () => {
+  it('parses a headless block with defaults', () => {
+    const t = CliToolSchema.parse({ command: 'x', headless: { args: ['-p'] } })
+    expect(t.headless?.outputParser).toBe('text')
+    expect(t.headless?.args).toEqual(['-p'])
+  })
+  it('rejects an unknown outputParser', () => {
+    expect(() => CliToolSchema.parse({ command: 'x', headless: { outputParser: 'nope' } })).toThrow()
+  })
+  it('accepts resumeArgs and yoloRecap', () => {
+    const t = CliToolSchema.parse({ command: 'x', resumeArgs: ['--resume', '{{sessionId}}'] })
+    expect(t.resumeArgs).toEqual(['--resume', '{{sessionId}}'])
+    const c = ConfigSchema.parse({ jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' }, yoloRecap: 'recap' })
+    expect(c.yoloRecap).toBe('recap')
+  })
+  it('still accepts configs carrying legacy yoloArgs', () => {
+    const t = CliToolSchema.parse({ command: 'x', yoloArgs: ['--old'] })
+    expect(t.command).toBe('x')
+  })
+})

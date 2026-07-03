@@ -17,25 +17,43 @@ export function buildForgePatterns(config: Config): ForgePattern[] {
   return out
 }
 
-export class PrDetector {
+// Collect-all variant for headless YOLO: every distinct PR/MR URL, in first-seen
+// order, across the whole run (a monorepo run can open several).
+export class PrCollector {
   private buffer = ''
-  private found = false
+  private readonly seen = new Set<string>()
+  private readonly ordered: string[] = []
+  // matchAll needs the 'g' flag; compile once — feed() runs per log line.
+  private readonly globals: { term: string; regex: RegExp }[]
 
   constructor(
-    private readonly patterns: ForgePattern[],
+    patterns: ForgePattern[],
     private readonly maxBuffer = 8192
-  ) {}
+  ) {
+    this.globals = patterns.map((p) => ({
+      term: p.term,
+      regex: new RegExp(p.regex.source, p.regex.flags.includes('g') ? p.regex.flags : p.regex.flags + 'g')
+    }))
+  }
 
-  feed(chunk: string): { url: string; term: string } | null {
-    if (this.found) return null
+  feed(chunk: string): { url: string; term: string }[] {
+    // A URL that straddles the eviction boundary at maxBuffer is silently
+    // dropped — accepted sliding-window tradeoff (URLs are far shorter than 8k).
     this.buffer = (this.buffer + chunk).slice(-this.maxBuffer)
-    for (const p of this.patterns) {
-      const m = this.buffer.match(p.regex)
-      if (m) {
-        this.found = true
-        return { url: m[0], term: p.term }
+    const hits: { url: string; term: string }[] = []
+    for (const p of this.globals) {
+      for (const m of this.buffer.matchAll(p.regex)) {
+        if (!this.seen.has(m[0])) {
+          this.seen.add(m[0])
+          this.ordered.push(m[0])
+          hits.push({ url: m[0], term: p.term })
+        }
       }
     }
-    return null
+    return hits
+  }
+
+  get urls(): string[] {
+    return [...this.ordered]
   }
 }
