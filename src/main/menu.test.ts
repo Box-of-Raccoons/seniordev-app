@@ -17,6 +17,11 @@ describe('menuTemplate', () => {
   it('has exactly File, Edit(role), Config, About', () => {
     expect(tpl.map((m) => m.label ?? m.role)).toEqual(['File', 'editMenu', 'Config', 'About'])
   })
+  it('dev mode appends a View menu with DevTools', () => {
+    const devTpl = menuTemplate(() => {}, true) as Item[]
+    expect(devTpl.map((m) => m.label ?? m.role)).toEqual(['File', 'editMenu', 'Config', 'About', 'View'])
+    expect(devTpl[4].submenu!.map((i) => i.role)).toEqual(['toggleDevTools', 'reload'])
+  })
   it('File: New Session (CmdOrCtrl+N) fires new-session; Exit is the quit role labeled Exit', () => {
     const file = tpl[0].submenu!
     expect(file[0].label).toBe('New Session')

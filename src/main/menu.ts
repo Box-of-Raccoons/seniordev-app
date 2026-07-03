@@ -1,9 +1,14 @@
-import { Menu, type MenuItemConstructorOptions } from 'electron'
+import { app, Menu, type MenuItemConstructorOptions } from 'electron'
 import { MENU, type MenuAction } from '../shared/ipc'
 
 // The menu is deliberately dumb: every item only sends one IPC action to the
 // focused window; the renderer owns all behavior (modals, reset flow).
-export function menuTemplate(send: (action: MenuAction) => void): MenuItemConstructorOptions[] {
+// `dev` appends a View menu (DevTools/reload) — replacing the default menu
+// otherwise removes the F12/Ctrl+Shift+I accelerators entirely.
+export function menuTemplate(send: (action: MenuAction) => void, dev = false): MenuItemConstructorOptions[] {
+  const view: MenuItemConstructorOptions[] = dev
+    ? [{ label: 'View', submenu: [{ role: 'toggleDevTools' }, { role: 'reload' }] }]
+    : []
   return [
     {
       label: 'File',
@@ -25,11 +30,12 @@ export function menuTemplate(send: (action: MenuAction) => void): MenuItemConstr
     {
       label: 'About',
       submenu: [{ label: 'About SeniorDev', click: () => send('about') }]
-    }
+    },
+    ...view
   ]
 }
 
 export function installMenu(getSender: () => Electron.WebContents | undefined): void {
   const send = (action: MenuAction): void => getSender()?.send(MENU.action, action)
-  Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate(send)))
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate(send, !app.isPackaged)))
 }
