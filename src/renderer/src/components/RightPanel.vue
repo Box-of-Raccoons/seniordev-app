@@ -5,7 +5,7 @@ import NewSessionMenu from './NewSessionMenu.vue'
 
 defineProps<{ activeTicketKey: string | null }>()
 
-interface Term { id: string; title: string; prompt?: { name?: string; text?: string }; yolo?: boolean; tool?: string }
+interface Term { id: string; title: string; prompt?: { name?: string; text?: string }; yolo?: boolean; tool?: string; exited?: boolean }
 const terms = ref<Term[]>([])
 const activeId = ref<string | null>(null)
 let counter = 0
@@ -31,6 +31,11 @@ function closeTerm(id: string): void {
   terms.value.splice(i, 1)
   if (activeId.value === id) activeId.value = terms.value.at(-1)?.id ?? null
 }
+
+function markExited(id: string): void {
+  const t = terms.value.find((t) => t.id === id)
+  if (t) t.exited = true
+}
 </script>
 
 <template>
@@ -41,7 +46,7 @@ function closeTerm(id: string): void {
           v-for="t in terms"
           :key="t.id"
           class="term-tab"
-          :class="{ 'term-tab--active': t.id === activeId }"
+          :class="{ 'term-tab--active': t.id === activeId, 'term-tab--dead': t.exited }"
           @click="activeId = t.id"
         >
           {{ t.title }}
@@ -59,7 +64,7 @@ function closeTerm(id: string): void {
         :key="t.id"
         class="term-slot"
       >
-        <TerminalView :id="t.id" :ticket-key="activeTicketKey" :prompt="t.prompt" :yolo="t.yolo" :tool="t.tool" />
+        <TerminalView :id="t.id" :ticket-key="activeTicketKey" :prompt="t.prompt" :yolo="t.yolo" :tool="t.tool" @exited="markExited(t.id)" />
       </div>
     </div>
   </section>
@@ -74,6 +79,7 @@ function closeTerm(id: string): void {
   padding: 5px 10px; cursor: pointer;
 }
 .term-tab--active { background: var(--surface-2); color: var(--ink); }
+.term-tab--dead { color: var(--ink-muted); text-decoration: line-through; }
 .term-tab__close { margin-left: 6px; color: var(--ink-muted); }
 .term-body { flex: 1; position: relative; overflow: hidden; }
 .term-slot { position: absolute; inset: 0; padding: 6px; }

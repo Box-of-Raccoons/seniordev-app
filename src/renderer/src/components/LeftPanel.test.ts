@@ -52,4 +52,33 @@ describe('LeftPanel', () => {
     await flushPromises()
     expect(w.findAll('.tab')).toHaveLength(2)
   })
+
+  it('prevents duplicate tabs when the same key is opened concurrently', async () => {
+    let resolve!: (v: unknown) => void
+    const controlled = new Promise((res) => { resolve = res })
+    ;(window as unknown as { api: { getTicket: ReturnType<typeof vi.fn> } }).api.getTicket =
+      vi.fn(() => controlled)
+
+    const w = mount(LeftPanel)
+    // Fire first open — openKey starts, adds key to pending, then suspends at getTicket
+    await w.find('input').setValue('PROJ-1')
+    await w.find('button').trigger('click')
+    // Fire second open before first resolves — pending.has('PROJ-1') is true, early return
+    await w.find('input').setValue('PROJ-1')
+    await w.find('button').trigger('click')
+
+    // Now let the first fetch resolve
+    resolve({ ok: true, ticket: ticket('PROJ-1') })
+    await flushPromises()
+
+    expect(w.findAll('.tab')).toHaveLength(1)
+  })
+
+  it('sets activeKey to the first successfully opened key from openTickets when the first fails', async () => {
+    const w = mount(LeftPanel)
+    await (w.vm as unknown as { openTickets: (k: string[]) => Promise<void> }).openTickets(['BAD-1', 'PROJ-2'])
+    await flushPromises()
+    expect(w.findAll('.tab')).toHaveLength(1)
+    expect(w.find('.tab--active').text()).toContain('PROJ-2')
+  })
 })
