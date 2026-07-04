@@ -6,7 +6,9 @@ import AboutModal from './components/AboutModal.vue'
 import AppConfigModal from './components/AppConfigModal.vue'
 import PromptConfigModal from './components/PromptConfigModal.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
+import Splash from './components/Splash.vue'
 import { useResizableSplit } from './composables/useResizableSplit'
+import { useSplash } from './composables/useSplash'
 import type { MenuAction, DeepLink } from '../../shared/ipc'
 
 const activeTicketKey = ref<string | null>(null)
@@ -14,6 +16,8 @@ const leftPanel = ref<InstanceType<typeof LeftPanel> | null>(null)
 const rightPanel = ref<InstanceType<typeof RightPanel> | null>(null)
 const shell = ref<HTMLElement | null>(null)
 const { leftStyle, leftPercent, dragging, onPointerDown, onKeydown } = useResizableSplit(shell)
+// Boot splash: shown from first paint, dismissed once startup work settles below.
+const { visible: splashVisible, ready: splashReady } = useSplash()
 const modal = ref<'about' | 'app-config' | 'prompt-config' | null>(null)
 const confirmReset = ref(false)
 const orchestratorAsk = ref<{ key: string; summary: string } | null>(null)
@@ -94,6 +98,11 @@ onMounted(async () => {
   } catch (err) {
     // Startup is best-effort: fall back to an empty workbench the user drives manually.
     console.error('Startup load failed:', err)
+  } finally {
+    // The app is now as ready as it gets (tickets/session loaded, or startup
+    // failed and we're falling back) — take the splash down. Fires on both the
+    // success and error paths so the splash can never outlive startup.
+    splashReady()
   }
 })
 
@@ -140,4 +149,7 @@ onBeforeUnmount(() => {
     @confirm="confirmOrchestrator"
     @cancel="orchestratorAsk = null"
   />
+  <Transition name="splash-fade">
+    <Splash v-if="splashVisible" />
+  </Transition>
 </template>

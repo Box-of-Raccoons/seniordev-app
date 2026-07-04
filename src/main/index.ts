@@ -58,6 +58,10 @@ function createWindow(minimized = false): void {
     width: 1400,
     height: 900,
     show: false,
+    // Paint the dark theme background (--bg) behind the renderer so any uncovered
+    // frame between launch and first paint matches the UI instead of flashing
+    // white. #131a17 is the sRGB form of oklch(0.21 0.012 165). See SD-2.
+    backgroundColor: '#131a17',
     // sandbox:false is required for the ESM (.mjs) preload — sandboxed preloads
     // must be CJS. Don't "fix" this to true without also converting the preload.
     webPreferences: { preload: join(__dirname, '../preload/index.mjs'), sandbox: false }
