@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron'
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
 import { join, resolve } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { defaultConfigDir } from './config/paths'
@@ -20,6 +20,7 @@ import { nodePtySpawner } from './terminal/node-pty-spawner'
 import { nodeHeadlessSpawner } from './headless/node-spawner'
 import { systemResolveCommand } from './terminal/resolve-command'
 import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './deeplink/parse'
+import { findRepoForTicket } from '../watch/repo-map'
 import { DeepLinkDelivery } from './deeplink/delivery'
 import { DEEPLINK, ORCHESTRATOR } from '../shared/ipc'
 import type { TerminalManager } from './terminal/manager'
@@ -81,6 +82,17 @@ function createWindow(minimized = false): void {
     webPreferences: { preload: join(__dirname, '../preload/index.mjs'), sandbox: false }
   })
   mainWindow = win
+  // Electron hardening (SD-9 S1): remote ticket content renders links as in-app
+  // anchors. Never let the webContents open a new window or navigate itself —
+  // route http(s) out through the OS browser (the vetted shell.openExternal path)
+  // and deny everything else. Defense-in-depth on top of safeUrl's href allowlist.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (e, url) => {
+    if (url !== win.webContents.getURL()) e.preventDefault()
+  })
   // A watcher-launched run starts minimized (visible in the taskbar, not stealing
   // focus); a normal launch shows and focuses.
   win.on('ready-to-show', () => {
@@ -111,6 +123,9 @@ if (!gotLock) {
   // packaged builds get productName from electron-builder.yml. Pin it for both
   // so About (app:info) always shows the product name.
   app.setName('SeniorDev')
+  // B3 (SD-9): Windows toast notifications require an AppUserModelID matching the
+  // installed shortcut (== electron-builder appId) or they silently never display.
+  app.setAppUserModelId('com.boxofraccoons.seniordev')
 
   if (process.defaultApp) {
     if (process.argv.length >= 2) app.setAsDefaultProtocolClient('seniordev', process.execPath, [resolve(process.argv[1])])
@@ -124,14 +139,19 @@ if (!gotLock) {
   app.on('second-instance', (_e, argv) => {
     // A warm `--orchestrate <ticket>` (from SeniorDevWatch): run it in a new tab
     // with no confirm gate. CLI-only, so it's not a web-reachable bypass.
+    const argvLinks = linksFromArgv(argv)
     const opts = parseStartupArgs(argv.slice(1), () => '')
-    if (opts.orchestrate) {
+    // S3 (SD-9): the no-confirm orchestrate path assumes a trusted CLI argv. If
+    // this same argv also carries a deep link (a web-reachable `seniordev://…`),
+    // a lost-quoting quirk could smuggle `--orchestrate` past the confirm gate —
+    // so if any deep link is present, ignore orchestrate and take the gated path.
+    if (opts.orchestrate && argvLinks.length === 0) {
       if (!opts.minimized) focusMainWindow()
       mainWindow?.webContents.send(ORCHESTRATOR.run, opts.orchestrate)
       return
     }
     focusMainWindow()
-    for (const link of linksFromArgv(argv)) deepLinks.deliver(link)
+    for (const link of argvLinks) deepLinks.deliver(link)
   })
 
   // macOS: the OS delivers the URL here (can fire before the window exists,
@@ -171,7 +191,12 @@ if (!gotLock) {
       }
     }
 
-    registerIpc(store.getTicket)
+    registerIpc(store.getTicket, (key) => {
+      const cfg = store.config
+      if (!cfg) return null
+      const repo = findRepoForTicket(cfg, key)
+      return repo ? { key: repo.key, path: repo.path, tool: cfg.defaultTool } : null
+    })
     registerShellIpc()
     const startup = parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8'))
     for (const w of startup.warnings ?? []) console.error('[startup]', w)

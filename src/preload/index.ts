@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, ORCHESTRATOR, type GetTicketResult, type PromptSummary, type DeepLink } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, ORCHESTRATOR, type GetTicketResult, type PromptSummary, type DeepLink, type RepoResolution } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
@@ -7,6 +7,7 @@ import type { ClassifyRequest, ClassifyResult, OrchestratorPromptInfo } from '..
 
 const api = {
   getTicket: (key: string): Promise<GetTicketResult> => ipcRenderer.invoke(IPC.getTicket, key),
+  resolveRepo: (key: string): Promise<RepoResolution> => ipcRenderer.invoke(IPC.resolveRepo, key),
   listPrompts: (): Promise<PromptSummary[]> => ipcRenderer.invoke(PROMPTS.list),
 
   spawnTerminal: (req: SpawnTerminalRequest): Promise<SpawnResult> => ipcRenderer.invoke(TERM.spawn, req),

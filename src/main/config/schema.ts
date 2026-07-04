@@ -35,7 +35,12 @@ export const RepoSchema = z.object({
 })
 
 export const JiraSchema = z.object({
-  baseUrl: z.string().url(),
+  // Must be https: the client sends `Authorization: Basic base64(email:apiToken)`,
+  // so an http baseUrl would leak the API token in cleartext (SD-9 S5).
+  baseUrl: z
+    .string()
+    .url()
+    .refine((u) => u.startsWith('https://'), 'jira.baseUrl must use https://'),
   email: z.string().email(),
   apiToken: z.string().min(1)
 })

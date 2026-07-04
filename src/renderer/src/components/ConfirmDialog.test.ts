@@ -12,4 +12,13 @@ describe('ConfirmDialog', () => {
     await w.get('button.confirm-no').trigger('click')
     expect(w.emitted('cancel')).toBeTruthy()
   })
+
+  it('hideConfirm hides the affirmative button and labels cancel "Close" (SD-9 S2 refusal)', async () => {
+    const w = mount(ConfirmDialog, { props: { title: 'YOLO refused', message: 'No repo', hideConfirm: true } })
+    expect(w.find('button.confirm-yes').exists()).toBe(false)
+    const close = w.get('button.confirm-no')
+    expect(close.text()).toBe('Close')
+    await close.trigger('click')
+    expect(w.emitted('cancel')).toBeTruthy()
+  })
 })
