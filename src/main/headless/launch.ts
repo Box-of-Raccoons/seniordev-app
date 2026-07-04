@@ -2,6 +2,7 @@ import type { Config } from '../config/schema'
 import type { ResolvedCommand } from '../terminal/resolve-command'
 import { resolveCwd } from '../terminal/resolve'
 import { DEFAULT_YOLO_PREAMBLE, DEFAULT_YOLO_RECAP } from '../config/presets'
+import { pickPromptModel, resolveModelArgs, type PromptModel } from '../config/model'
 
 export interface HeadlessLaunch {
   file: string
@@ -17,7 +18,7 @@ export interface HeadlessLaunch {
 
 export function buildHeadlessLaunch(
   config: Config,
-  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; bare?: boolean },
+  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; bare?: boolean; model?: PromptModel },
   expandedPrompt: string,
   resolveCommand?: (command: string) => ResolvedCommand | undefined
 ): HeadlessLaunch {
@@ -33,9 +34,13 @@ export function buildHeadlessLaunch(
   // bare skips both wrappers entirely — the classifier's "answer with only JSON"
   // contract is incompatible with the recap's "## Changes made" instruction.
   const prompt = opts.bare ? expandedPrompt : [preamble, expandedPrompt, recap].filter(Boolean).join('\n\n')
+  // Resolution order: prompt frontmatter model (this tool's entry, if a per-tool
+  // map) → tool defaultModel → nothing. Empty ⇒ no extra argv entries, so the
+  // line is unchanged from today.
+  const modelArgs = resolveModelArgs(tool, pickPromptModel(opts.model, toolName))
   return {
     file: tool.command,
-    args: [...tool.headless.args],
+    args: [...tool.headless.args, ...modelArgs],
     cwd: resolveCwd(config, opts.ticketKey, opts.cwdOverride),
     // The prompt travels over stdin only (never argv) — see spawn-command.ts.
     prompt,

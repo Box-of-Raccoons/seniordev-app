@@ -24,6 +24,15 @@ describe('headless config', () => {
     const t = CliToolSchema.parse({ command: 'x', yoloArgs: ['--old'] })
     expect(t.command).toBe('x')
   })
+
+  it('parses modelArgs and defaultModel, defaulting modelArgs to []', () => {
+    const t = CliToolSchema.parse({ command: 'x', modelArgs: ['--model', '{{model}}'], defaultModel: 'big' })
+    expect(t.modelArgs).toEqual(['--model', '{{model}}'])
+    expect(t.defaultModel).toBe('big')
+    const bare = CliToolSchema.parse({ command: 'x' })
+    expect(bare.modelArgs).toEqual([])
+    expect(bare.defaultModel).toBeUndefined()
+  })
 })
 
 describe('WatchSchema', () => {

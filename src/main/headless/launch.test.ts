@@ -10,6 +10,7 @@ function cfg(over: Record<string, unknown> = {}): Config {
     cliTools: {
       claude: {
         command: 'claude',
+        modelArgs: ['--model', '{{model}}'],
         headless: { args: ['-p', '--output-format', 'stream-json'], outputParser: 'claude-stream-json' },
         resumeArgs: ['--resume', '{{sessionId}}']
       },
@@ -57,5 +58,31 @@ describe('buildHeadlessLaunch', () => {
     const c = cfg()
     c.cliTools.claude.resumeArgs = undefined
     expect(buildHeadlessLaunch(c, {}, 'p').canResume).toBe(false)
+  })
+  it('appends the prompt model to the headless args', () => {
+    const l = buildHeadlessLaunch(cfg(), { model: 'claude-opus' }, 'p')
+    expect(l.args).toEqual(['-p', '--output-format', 'stream-json', '--model', 'claude-opus'])
+  })
+  it('uses the tool defaultModel when the prompt has no model', () => {
+    const c = cfg()
+    c.cliTools.claude.defaultModel = 'claude-sonnet'
+    expect(buildHeadlessLaunch(c, {}, 'p').args).toEqual(['-p', '--output-format', 'stream-json', '--model', 'claude-sonnet'])
+  })
+  it('the prompt model overrides the tool defaultModel', () => {
+    const c = cfg()
+    c.cliTools.claude.defaultModel = 'claude-sonnet'
+    expect(buildHeadlessLaunch(c, { model: 'claude-opus' }, 'p').args).toEqual(['-p', '--output-format', 'stream-json', '--model', 'claude-opus'])
+  })
+  it('appends no model flag when neither a prompt model nor a defaultModel is set (argv unchanged)', () => {
+    expect(buildHeadlessLaunch(cfg(), {}, 'p').args).toEqual(['-p', '--output-format', 'stream-json'])
+  })
+  it('picks the active tool\'s entry from a per-tool model map', () => {
+    const l = buildHeadlessLaunch(cfg(), { model: { claude: 'claude-opus-4-8', codex: 'gpt-5' } }, 'p')
+    expect(l.args).toEqual(['-p', '--output-format', 'stream-json', '--model', 'claude-opus-4-8'])
+  })
+  it('falls back to the tool defaultModel when the model map omits the active tool', () => {
+    const c = cfg()
+    c.cliTools.claude.defaultModel = 'claude-sonnet'
+    expect(buildHeadlessLaunch(c, { model: { codex: 'gpt-5' } }, 'p').args).toEqual(['-p', '--output-format', 'stream-json', '--model', 'claude-sonnet'])
   })
 })

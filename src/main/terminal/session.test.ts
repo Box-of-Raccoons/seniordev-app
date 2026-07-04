@@ -28,6 +28,21 @@ const noResumeArgsCfg = {
   repos: []
 } as unknown as Config
 
+const modelCfg = {
+  defaultTool: 'claude',
+  cliTools: {
+    claude: {
+      command: 'claude',
+      interactiveArgs: ['--ide'],
+      promptDelivery: 'stdin',
+      modelArgs: ['--model', '{{model}}'],
+      defaultModel: 'claude-sonnet',
+      resumeArgs: ['--resume', '{{sessionId}}']
+    }
+  },
+  repos: []
+} as unknown as Config
+
 describe('buildInteractiveLaunch', () => {
   it('uses the default tool and interactiveArgs', () => {
     const l = buildInteractiveLaunch(cfg, {})
@@ -94,5 +109,30 @@ describe('buildInteractiveLaunch', () => {
     expect(l.args).toEqual(['--foo', 'DO THIS'])
     expect(l.stdinPrompt).toBeUndefined()
     expect(l.resolved).toBeUndefined()
+  })
+
+  it('appends the prompt model after interactiveArgs', () => {
+    const l = buildInteractiveLaunch(modelCfg, { model: 'claude-opus' })
+    expect(l.args).toEqual(['--ide', '--model', 'claude-opus'])
+  })
+  it('falls back to the tool defaultModel when no prompt model is given', () => {
+    const l = buildInteractiveLaunch(modelCfg, {})
+    expect(l.args).toEqual(['--ide', '--model', 'claude-sonnet'])
+  })
+  it('picks the active tool\'s entry from a per-tool model map', () => {
+    const l = buildInteractiveLaunch(modelCfg, { model: { claude: 'claude-opus-4-8', codex: 'gpt-5' } })
+    expect(l.args).toEqual(['--ide', '--model', 'claude-opus-4-8'])
+  })
+  it('falls back to the tool defaultModel when the model map omits the active tool', () => {
+    const l = buildInteractiveLaunch(modelCfg, { model: { codex: 'gpt-5' } })
+    expect(l.args).toEqual(['--ide', '--model', 'claude-sonnet'])
+  })
+  it('does not re-assert a model flag when resuming', () => {
+    const l = buildInteractiveLaunch(modelCfg, { resume: { sessionId: 'abc-123' } })
+    expect(l.args).toEqual(['--ide', '--resume', 'abc-123'])
+  })
+  it('appends no model flag when the tool has neither modelArgs nor defaultModel (argv unchanged)', () => {
+    const l = buildInteractiveLaunch(cfg, { tool: 'claude', model: 'ignored-no-modelArgs' })
+    expect(l.args).toEqual([])
   })
 })

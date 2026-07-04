@@ -76,7 +76,7 @@ export function registerTerminalIpc(
     try {
       const config = requireConfig(deps.source)
       const expanded = await resolveExpandedPrompt(config, deps.source, req)
-      const launch = buildInteractiveLaunch(config, req, expanded, deps.resolveCommand)
+      const launch = buildInteractiveLaunch(config, { ...req, model: expanded?.model }, expanded?.prompt, deps.resolveCommand)
       manager.spawn(req.id, {
         file: launch.file,
         args: launch.args,

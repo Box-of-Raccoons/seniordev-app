@@ -27,6 +27,23 @@ describe('loadPrompts', () => {
     const dir = dirWith({ 'plain.md': 'just a body' })
     expect(loadPrompts(dir)[0]).toEqual({ name: 'plain', description: '', body: 'just a body' })
   })
+  it('loads an optional model key from frontmatter', () => {
+    const dir = dirWith({
+      'tl.md': '---\nname: tech-lead\ndescription: d\nmodel: claude-opus\n---\nDesign {{ticket.key}}.'
+    })
+    expect(loadPrompts(dir)[0]).toEqual({ name: 'tech-lead', description: 'd', model: 'claude-opus', body: 'Design {{ticket.key}}.' })
+  })
+  it('loads a per-tool model map from frontmatter', () => {
+    const dir = dirWith({
+      'tl.md': '---\nname: tech-lead\ndescription: d\nmodel:\n  claude: claude-opus-4-8\n  codex: gpt-5\n---\nDesign {{ticket.key}}.'
+    })
+    expect(loadPrompts(dir)[0]).toEqual({
+      name: 'tech-lead',
+      description: 'd',
+      model: { claude: 'claude-opus-4-8', codex: 'gpt-5' },
+      body: 'Design {{ticket.key}}.'
+    })
+  })
 })
 
 describe('findPrompt', () => {
@@ -45,5 +62,22 @@ describe('parseFrontmatter', () => {
   it('falls back to the given name when frontmatter has no name field', () => {
     const result = parseFrontmatter('just a body', 'fallback-name')
     expect(result).toEqual({ name: 'fallback-name', description: '', body: 'just a body' })
+  })
+  it('reads an optional model key when present', () => {
+    const result = parseFrontmatter('---\nname: p\ndescription: d\nmodel: gpt-5\n---\nBody', 'fb')
+    expect(result).toEqual({ name: 'p', description: 'd', model: 'gpt-5', body: 'Body' })
+  })
+  it('omits the model key entirely when frontmatter has none', () => {
+    const result = parseFrontmatter('---\nname: p\ndescription: d\n---\nBody', 'fb')
+    expect(result.model).toBeUndefined()
+    expect('model' in result).toBe(false)
+  })
+  it('reads a per-tool model map', () => {
+    const result = parseFrontmatter('---\nname: p\ndescription: d\nmodel:\n  claude: opus\n  codex: gpt-5\n---\nBody', 'fb')
+    expect(result.model).toEqual({ claude: 'opus', codex: 'gpt-5' })
+  })
+  it('omits a malformed model value rather than carrying it', () => {
+    const result = parseFrontmatter('---\nname: p\ndescription: d\nmodel:\n  - a\n  - b\n---\nBody', 'fb')
+    expect('model' in result).toBe(false)
   })
 })

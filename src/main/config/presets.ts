@@ -3,6 +3,8 @@ export const CLI_PRESETS = {
     command: 'claude',
     interactiveArgs: [],
     promptDelivery: 'stdin',
+    // claude takes `--model <id>`; the resolved model is substituted for {{model}}.
+    modelArgs: ['--model', '{{model}}'],
     headless: {
       // Verified against claude 2.1.191: stdin prompt + stream-json output;
       // session_id arrives in the system/init event.
@@ -16,6 +18,8 @@ export const CLI_PRESETS = {
     interactiveArgs: [],
     promptDelivery: 'arg',
     promptArg: '{{prompt}}',
+    // codex takes `-m/--model <id>`; the resolved model is substituted for {{model}}.
+    modelArgs: ['--model', '{{model}}'],
     headless: {
       // '-' = read the prompt from stdin (developers.openai.com/codex/noninteractive).
       args: ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '-'],
