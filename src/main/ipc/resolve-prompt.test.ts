@@ -16,7 +16,8 @@ const deps: PromptDeps = {
   getTicket: async () => ticket,
   prompts: [
     { name: 'tech-lead', description: '', model: 'claude-opus', body: 'Design {{ticket.key}}' },
-    { name: 'qa', description: '', body: 'Test it' }
+    { name: 'qa', description: '', body: 'Test it' },
+    { name: 'cross', description: '', model: { claude: 'claude-opus-4-8', codex: 'gpt-5' }, body: 'Do {{ticket.key}}' }
   ]
 }
 
@@ -25,6 +26,12 @@ describe('resolveExpandedPrompt', () => {
     const r = await resolveExpandedPrompt(config, deps, { prompt: { name: 'tech-lead' }, ticketKey: 'PROJ-1' })
     expect(r?.model).toBe('claude-opus')
     expect(r?.prompt).toBe('Design PROJ-1')
+  })
+
+  it("carries a named prompt's per-tool model map through unresolved", async () => {
+    const r = await resolveExpandedPrompt(config, deps, { prompt: { name: 'cross' }, ticketKey: 'PROJ-1' })
+    expect(r?.model).toEqual({ claude: 'claude-opus-4-8', codex: 'gpt-5' })
+    expect(r?.prompt).toBe('Do PROJ-1')
   })
 
   it('has no model for a named prompt that declares none', async () => {

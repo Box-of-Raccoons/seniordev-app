@@ -26,6 +26,16 @@ jira:
 #   codex:
 #     modelArgs: [--model, "{{model}}"]
 #     defaultModel: gpt-5
+#
+# A prompt's own `model:` (in its .md frontmatter) can be a single string OR a
+# per-tool map, so one prompt names the right model for whichever tool runs it:
+#   model: claude-opus-4-8          # applies to whatever tool runs the prompt
+#   # --- or, per tool ---
+#   model:
+#     claude: claude-opus-4-8       # used when the session runs claude
+#     codex: gpt-5                  # used when the session runs codex
+# A map that names no model for the active tool falls through to that tool's
+# `defaultModel`, then to nothing.
 
 # repos:
 #   - key: PROJ

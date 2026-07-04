@@ -1,5 +1,6 @@
 import type { Config } from '../config/schema'
 import type { Ticket } from '../../shared/types'
+import type { PromptModel } from '../config/model'
 import { type PromptTemplate, findPrompt } from '../prompts/library'
 import { buildPromptTicket, expandPrompt, resolveForge } from '../prompts/expand'
 
@@ -20,7 +21,7 @@ export interface PromptDeps {
 // resolved later, at launch (see resolveModelArgs).
 export interface ResolvedPrompt {
   prompt: string
-  model?: string
+  model?: PromptModel
 }
 
 export async function resolveExpandedPrompt(
@@ -30,7 +31,7 @@ export async function resolveExpandedPrompt(
 ): Promise<ResolvedPrompt | undefined> {
   if (!req.prompt) return undefined
   let body = req.prompt.text
-  let model: string | undefined
+  let model: PromptModel | undefined
   if (req.prompt.name) {
     const tmpl = findPrompt(deps.prompts, req.prompt.name)
     if (!tmpl) throw new Error(`Unknown prompt: ${req.prompt.name}`)

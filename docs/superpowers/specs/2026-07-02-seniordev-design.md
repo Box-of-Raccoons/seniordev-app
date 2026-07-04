@@ -180,12 +180,24 @@ Implement the fix, add tests, run the suite, then open a
 {{forge.term}} with `{{forge.prCommand}}`.
 ```
 
-The optional `model:` frontmatter key picks the model this prompt runs on.
-Resolution order (highest wins): the prompt's `model` → the tool's `defaultModel`
-→ nothing (the CLI's own default). The resolved model is substituted into the
-tool's `modelArgs` and appended to argv on **both** the interactive and
-headless/YOLO launch paths; with neither set, argv is unchanged. No allowlist —
-an unknown/incompatible model is left for the CLI to reject.
+The optional `model:` frontmatter key picks the model this prompt runs on. It is
+either a single string (applied to whichever tool runs the prompt) or a per-tool
+map keyed by tool name, so one prompt can name the right model for each tool a
+user might run it under:
+
+```yaml
+model:
+  claude: claude-opus-4-8
+  codex: gpt-5
+```
+
+Resolution order (highest wins): the prompt's `model` for the active tool (a map
+entry, or the bare string) → the tool's `defaultModel` → nothing (the CLI's own
+default). A map that names no model for the active tool falls through to that
+tool's `defaultModel`. The resolved model is substituted into the tool's
+`modelArgs` and appended to argv on **both** the interactive and headless/YOLO
+launch paths; with neither set, argv is unchanged. No allowlist — an
+unknown/incompatible model is left for the CLI to reject.
 
 Placeholders: `{{ticket.key|summary|description|acceptanceCriteria|comments|type|status}}`,
 `{{forge.prCommand|term}}`. `ticketContext` mode governs `{{ticket.*}}` expansion:

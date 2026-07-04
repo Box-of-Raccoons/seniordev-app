@@ -1,7 +1,7 @@
 import type { Config } from '../config/schema'
 import type { ResolvedCommand } from './resolve-command'
 import { resolveCwd } from './resolve'
-import { resolveModelArgs } from '../config/model'
+import { pickPromptModel, resolveModelArgs, type PromptModel } from '../config/model'
 
 export interface Launch {
   file: string
@@ -13,7 +13,7 @@ export interface Launch {
 
 export function buildInteractiveLaunch(
   config: Config,
-  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; resume?: { sessionId: string }; model?: string },
+  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; resume?: { sessionId: string }; model?: PromptModel },
   expandedPrompt?: string,
   resolveCommand?: (command: string) => ResolvedCommand | undefined
 ): Launch {
@@ -32,10 +32,11 @@ export function buildInteractiveLaunch(
     opts.resume && tool.resumeArgs
       ? tool.resumeArgs.map((a) => a.replace('{{sessionId}}', () => opts.resume!.sessionId))
       : []
-  // A fresh launch gets the resolved model (prompt frontmatter → tool
-  // defaultModel → nothing). A resume reconnects to a session that already has
-  // its model, so we leave its argv as-is rather than re-asserting a model flag.
-  const modelArgs = opts.resume ? [] : resolveModelArgs(tool, opts.model)
+  // A fresh launch gets the resolved model (prompt frontmatter — this tool's
+  // entry if a per-tool map — → tool defaultModel → nothing). A resume reconnects
+  // to a session that already has its model, so we leave its argv as-is rather
+  // than re-asserting a model flag.
+  const modelArgs = opts.resume ? [] : resolveModelArgs(tool, pickPromptModel(opts.model, toolName))
   const args = [...tool.interactiveArgs, ...resumeArgs, ...modelArgs]
   const resolved = resolveCommand?.(tool.command)
 

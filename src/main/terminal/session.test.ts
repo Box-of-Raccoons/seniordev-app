@@ -119,6 +119,14 @@ describe('buildInteractiveLaunch', () => {
     const l = buildInteractiveLaunch(modelCfg, {})
     expect(l.args).toEqual(['--ide', '--model', 'claude-sonnet'])
   })
+  it('picks the active tool\'s entry from a per-tool model map', () => {
+    const l = buildInteractiveLaunch(modelCfg, { model: { claude: 'claude-opus-4-8', codex: 'gpt-5' } })
+    expect(l.args).toEqual(['--ide', '--model', 'claude-opus-4-8'])
+  })
+  it('falls back to the tool defaultModel when the model map omits the active tool', () => {
+    const l = buildInteractiveLaunch(modelCfg, { model: { codex: 'gpt-5' } })
+    expect(l.args).toEqual(['--ide', '--model', 'claude-sonnet'])
+  })
   it('does not re-assert a model flag when resuming', () => {
     const l = buildInteractiveLaunch(modelCfg, { resume: { sessionId: 'abc-123' } })
     expect(l.args).toEqual(['--ide', '--resume', 'abc-123'])

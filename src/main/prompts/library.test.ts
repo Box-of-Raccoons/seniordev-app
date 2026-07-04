@@ -33,6 +33,17 @@ describe('loadPrompts', () => {
     })
     expect(loadPrompts(dir)[0]).toEqual({ name: 'tech-lead', description: 'd', model: 'claude-opus', body: 'Design {{ticket.key}}.' })
   })
+  it('loads a per-tool model map from frontmatter', () => {
+    const dir = dirWith({
+      'tl.md': '---\nname: tech-lead\ndescription: d\nmodel:\n  claude: claude-opus-4-8\n  codex: gpt-5\n---\nDesign {{ticket.key}}.'
+    })
+    expect(loadPrompts(dir)[0]).toEqual({
+      name: 'tech-lead',
+      description: 'd',
+      model: { claude: 'claude-opus-4-8', codex: 'gpt-5' },
+      body: 'Design {{ticket.key}}.'
+    })
+  })
 })
 
 describe('findPrompt', () => {
@@ -59,6 +70,14 @@ describe('parseFrontmatter', () => {
   it('omits the model key entirely when frontmatter has none', () => {
     const result = parseFrontmatter('---\nname: p\ndescription: d\n---\nBody', 'fb')
     expect(result.model).toBeUndefined()
+    expect('model' in result).toBe(false)
+  })
+  it('reads a per-tool model map', () => {
+    const result = parseFrontmatter('---\nname: p\ndescription: d\nmodel:\n  claude: opus\n  codex: gpt-5\n---\nBody', 'fb')
+    expect(result.model).toEqual({ claude: 'opus', codex: 'gpt-5' })
+  })
+  it('omits a malformed model value rather than carrying it', () => {
+    const result = parseFrontmatter('---\nname: p\ndescription: d\nmodel:\n  - a\n  - b\n---\nBody', 'fb')
     expect('model' in result).toBe(false)
   })
 })

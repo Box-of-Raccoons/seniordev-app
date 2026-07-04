@@ -1,13 +1,16 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from 'yaml'
+import { normalizePromptModel, type PromptModel } from '../config/model'
 
 export interface PromptTemplate {
   name: string
   description: string
-  // Optional model this prompt should run on (SD-5). Absent ⇒ fall back to the
-  // tool's defaultModel, then to nothing. Only set when present in frontmatter.
-  model?: string
+  // Optional model this prompt should run on (SD-5). Either a single string
+  // (applied to whatever tool runs it) or a per-tool map keyed by tool name.
+  // Absent ⇒ fall back to the tool's defaultModel, then to nothing. Only set
+  // when present in frontmatter.
+  model?: PromptModel
   body: string
 }
 
@@ -15,12 +18,13 @@ export function parseFrontmatter(raw: string, fallbackName: string): PromptTempl
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
   if (!m) return { name: fallbackName, description: '', body: raw.trim() }
   const fm = (parse(m[1]) ?? {}) as Record<string, unknown>
+  // Only carry `model` when it's a valid string or per-tool map, so prompts
+  // without it (or with a malformed value) stay shape-identical (no `model` key).
+  const model = normalizePromptModel(fm.model)
   return {
     name: typeof fm.name === 'string' ? fm.name : fallbackName,
     description: typeof fm.description === 'string' ? fm.description : '',
-    // Only carry `model` when actually declared, so prompts without it stay
-    // shape-identical to before (no `model` key).
-    ...(typeof fm.model === 'string' ? { model: fm.model } : {}),
+    ...(model !== undefined ? { model } : {}),
     body: m[2].trim()
   }
 }

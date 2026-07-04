@@ -76,4 +76,13 @@ describe('buildHeadlessLaunch', () => {
   it('appends no model flag when neither a prompt model nor a defaultModel is set (argv unchanged)', () => {
     expect(buildHeadlessLaunch(cfg(), {}, 'p').args).toEqual(['-p', '--output-format', 'stream-json'])
   })
+  it('picks the active tool\'s entry from a per-tool model map', () => {
+    const l = buildHeadlessLaunch(cfg(), { model: { claude: 'claude-opus-4-8', codex: 'gpt-5' } }, 'p')
+    expect(l.args).toEqual(['-p', '--output-format', 'stream-json', '--model', 'claude-opus-4-8'])
+  })
+  it('falls back to the tool defaultModel when the model map omits the active tool', () => {
+    const c = cfg()
+    c.cliTools.claude.defaultModel = 'claude-sonnet'
+    expect(buildHeadlessLaunch(c, { model: { codex: 'gpt-5' } }, 'p').args).toEqual(['-p', '--output-format', 'stream-json', '--model', 'claude-sonnet'])
+  })
 })
