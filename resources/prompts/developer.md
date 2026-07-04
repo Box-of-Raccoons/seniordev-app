@@ -29,13 +29,13 @@ Ticket type: {{ticket.type}} · Status: {{ticket.status}}
 Keep {{ticket.key}} in the workflow state that matches your progress. Use the Jira/Atlassian MCP tools: call `getTransitionsForJiraIssue` to find the transition whose **name** matches the target status, then `transitionJiraIssue` with that id — resolve the id by name every time rather than hardcoding a number, since ids differ per board.
 
 - **Branch created / implementation started →** move the ticket to **In Progress**.
-- **{{forge.term}} opened →** move the ticket to **In Review**.
-- **Blocked** — an acceptance criterion can't be met, or you're waiting on an external dependency → move the ticket to **Blocked**, then stop and report.
+- **{{forge.term}} opened →** move the ticket to **In Review**, and add a Jira comment (`addCommentToJiraIssue`) summarizing what you did — the changes made and how they map to each acceptance criterion — with the {{forge.term}} link.
+- **Blocked** — an acceptance criterion can't be met, or you're waiting on an external dependency → add a Jira comment (`addCommentToJiraIssue`) recording what you got done and exactly what's blocking (why the work stopped), then move the ticket to **Blocked** and stop.
 
-If the ticket is already in the target state, or the board has no transition with that name, skip the change — never fail the task over a status update.
+If the ticket is already in the target state, or the board has no transition with that name, skip the transition — but still leave the comment. Never fail the task over a status update.
 
 ## Guardrails
 - Never commit or push to `main`/`develop` directly, and never force-push.
 - Do not merge the {{forge.term}} — leave it open for review.
-- If the ticket is ambiguous or an acceptance criterion can't be met as written — or you're stuck waiting on an external dependency — move {{ticket.key}} to **Blocked** in Jira (see _Keeping Jira in sync_), then stop and report what's blocking rather than guessing.
+- If the ticket is ambiguous or an acceptance criterion can't be met as written — or you're stuck waiting on an external dependency — comment on {{ticket.key}} with what you did and what's blocking, then move it to **Blocked** in Jira (see _Keeping Jira in sync_) and stop rather than guessing.
 - Report honestly at the end: the branch name, the test pass/fail counts, and the {{forge.term}} link.

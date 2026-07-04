@@ -109,6 +109,8 @@ describe('shipped prompt library is valid (acceptance criteria)', () => {
       expect(body, name).toContain('In Progress')
       expect(body, name).toContain('In Review')
       expect(body, name).toContain('Blocked')
+      // On PR and on Blocked, the prompt must also record what was done / why it stopped.
+      expect(body, name).toContain('addCommentToJiraIssue')
     }
   })
 })

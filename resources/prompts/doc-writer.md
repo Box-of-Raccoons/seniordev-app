@@ -28,13 +28,13 @@ Ticket type: {{ticket.type}} · Status: {{ticket.status}}
 Keep {{ticket.key}} in the workflow state that matches your progress. Use the Jira/Atlassian MCP tools: call `getTransitionsForJiraIssue` to find the transition whose **name** matches the target status, then `transitionJiraIssue` with that id — resolve the id by name every time rather than hardcoding a number, since ids differ per board.
 
 - **Branch created / doc work started →** move the ticket to **In Progress**.
-- **{{forge.term}} opened →** move the ticket to **In Review**.
-- **Blocked** — you can't proceed without an external dependency or a blocking decision → move the ticket to **Blocked**, then stop and report.
+- **{{forge.term}} opened →** move the ticket to **In Review**, and add a Jira comment (`addCommentToJiraIssue`) summarizing what you did — the docs you updated and what changed — with the {{forge.term}} link.
+- **Blocked** — you can't proceed without an external dependency or a blocking decision → add a Jira comment (`addCommentToJiraIssue`) recording what you got done and exactly what's blocking (why the work stopped), then move the ticket to **Blocked** and stop.
 
-If the ticket is already in the target state, or the board has no transition with that name, skip the change — never fail the task over a status update.
+If the ticket is already in the target state, or the board has no transition with that name, skip the transition — but still leave the comment. Never fail the task over a status update.
 
 ## Guardrails
 - **Docs only — do not change product/feature code.** If you find a code bug while documenting, note it as a follow-up rather than fixing it here.
 - Never commit or push to `main`/`develop` directly, and never force-push. Do not merge the {{forge.term}} — leave it open for review.
-- If you're stuck waiting on an external dependency or a blocking decision, move {{ticket.key}} to **Blocked** in Jira (see _Keeping Jira in sync_), then stop and report what's blocking.
+- If you're stuck waiting on an external dependency or a blocking decision, comment on {{ticket.key}} with what you did and what's blocking, then move it to **Blocked** in Jira (see _Keeping Jira in sync_) and stop.
 - Report the branch name, the docs you changed, and the {{forge.term}} link.
