@@ -25,3 +25,34 @@ describe('headless config', () => {
     expect(t.command).toBe('x')
   })
 })
+
+describe('WatchSchema', () => {
+  it('fills defaults when watch is absent (disabled)', () => {
+    const cfg = ConfigSchema.parse({ jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' } })
+    expect(cfg.watch).toEqual({
+      enabled: false,
+      intervalSeconds: 300,
+      label: 'SeniorDev',
+      triggerStatusCategory: 'To Do',
+      transitionOnDispatch: 'In Progress',
+      autoMode: false
+    })
+  })
+
+  it('accepts overrides', () => {
+    const cfg = ConfigSchema.parse({
+      jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' },
+      watch: { enabled: true, intervalSeconds: 60, autoMode: true }
+    })
+    expect(cfg.watch.enabled).toBe(true)
+    expect(cfg.watch.intervalSeconds).toBe(60)
+    expect(cfg.watch.autoMode).toBe(true)
+    expect(cfg.watch.label).toBe('SeniorDev')
+  })
+
+  it('rejects a non-positive interval', () => {
+    expect(() =>
+      ConfigSchema.parse({ jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' }, watch: { intervalSeconds: 0 } })
+    ).toThrow()
+  })
+})

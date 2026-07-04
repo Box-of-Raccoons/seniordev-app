@@ -16,6 +16,12 @@ extraResources:
     to: prompts
     filter:
       - '**/*.md'
+  # Ship tray/app images so the SeniorDevWatch tray icon resolves at
+  # <resourcesPath>/assets in packaged builds (see assetPath in src/watch/main.ts).
+  - from: assets
+    to: assets
+    filter:
+      - '**/*.png'
 win:
   target: nsis
   icon: build/icon.png

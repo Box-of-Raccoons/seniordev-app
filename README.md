@@ -143,6 +143,49 @@ A confirm gate appears before any deep-link YOLO run — any webpage can navigat
 
 Customize the routing prompt via **Config → Prompt Config** → **Jira Orchestrator**. Saving writes `_jira-orchestrator.md` in your prompts directory (underscore-prefixed, so it never shows up as a launchable playbook); saving text identical to the built-in deletes the override and reverts to the default. The built-in cannot be deleted. Read-only behavior during classification is prompt-enforced — the classifier runs with the tool's normal headless flags and is only instructed not to modify files.
 
+## SeniorDevWatch (background tray poller)
+
+SeniorDevWatch is a separate system-tray process that watches Jira for your `SeniorDev`-labeled work. On each tick it runs the query:
+
+```
+assignee = currentUser() AND labels = SeniorDev AND statusCategory = "To Do"
+```
+
+and, for any ticket it hasn't seen before, **launches the SeniorDev app** on that ticket (`--orchestrate <KEY> --minimized`) so the Jira Orchestrator's classify → run happens in a **visible, watchable tab** — no invisible work. Dispatches are one at a time. The label, status category, and poll interval are configurable under the `watch` block in `config.yaml` (see `config.example.yaml`); watch is disabled unless you set `watch.enabled: true`.
+
+The app is single-instance, so each dispatch opens a **new orchestrator tab** in the running app (or starts the app if it's closed), minimized so it doesn't steal focus. You watch — and stop — runs in the app itself.
+
+### Run it
+
+```bash
+pnpm watch
+```
+
+This builds and launches the tray process. The watcher itself has no window — it lives in the system tray (the mascot icon). It reads the same `config.yaml` as the main app and keeps its own dedup/runtime state in `watch-state.json` next to your config.
+
+### Tray menu
+
+Right-click the tray icon:
+
+- **Pending approvals (N)** — in approve-first mode, a submenu of tickets awaiting approval; click one to dispatch it (so a missed notification isn't the only way to approve). Shown only when some are pending.
+- **Auto-dispatch** — a checkbox toggling between auto and approve-first mode (see below). The choice persists to `watch-state.json` and overrides the `watch.autoMode` config default at runtime.
+- **Pause polling / Resume polling** — stop or restart the poll timer without quitting.
+- **Poll now** — poll Jira immediately instead of waiting for the next interval (works even while paused).
+- **Open config** — open `config.yaml` in your default editor.
+- **Quit** — exit the watcher (running app tabs are unaffected — they live in the app).
+
+### Auto vs. approve
+
+- **Auto-dispatch on** — a newly matched ticket launches the app immediately.
+- **Auto-dispatch off (approve-first)** — a newly matched ticket raises a click-to-run notification and appears under **Pending approvals**; nothing launches until you approve. This is the default.
+
+Either way, when a ticket is dispatched it is transitioned to `In Progress` (configurable via `watch.transitionOnDispatch`) and recorded in `watch-state.json`, so it leaves the query and is never re-dispatched. If the transition itself fails, the launch still proceeds and you get a notification about the transition error.
+
+### Edge cases
+
+- **No matching repo** — a ticket whose project key has no entry in `repos` is skipped with a "no repo configured" notification (the app would otherwise resolve no working directory for it).
+- **Watching / stopping a run** — because dispatch opens the app, the run's live log, PR cards, and Stop button are all in the app tab. The watcher's job ends at launch; it doesn't track or kill runs.
+
 ## Develop
 
 ```bash

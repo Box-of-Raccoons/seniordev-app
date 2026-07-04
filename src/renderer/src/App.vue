@@ -16,6 +16,7 @@ const confirmReset = ref(false)
 const orchestratorAsk = ref<{ key: string; summary: string } | null>(null)
 let offMenu: (() => void) | null = null
 let offDeepLink: (() => void) | null = null
+let offOrchestrate: (() => void) | null = null
 
 function onMenu(action: MenuAction): void {
   if (action === 'new-session') {
@@ -63,9 +64,19 @@ async function handleDeepLink(link: DeepLink): Promise<void> {
   if (link.action === 'yolo') await requestOrchestrator(link.ticket)
 }
 
+// SeniorDevWatch (--orchestrate / warm ORCHESTRATOR.run): open the ticket and run
+// the orchestrator directly — NO confirm gate (the trigger is a trusted local CLI
+// arg, not a web deep link, and approval already happened in the watcher).
+async function runOrchestratorNow(key: string): Promise<void> {
+  await leftPanel.value?.openTickets([key])
+  activeTicketKey.value = key
+  rightPanel.value?.startOrchestrator(key)
+}
+
 onMounted(async () => {
   offMenu = window.api.onMenuAction(onMenu)
   offDeepLink = window.api.onDeepLink(handleDeepLink)
+  offOrchestrate = window.api.onOrchestrate(runOrchestratorNow)
   // Only now can main push deep links — anything sent earlier would be lost.
   window.api.deepLinkReady()
   try {
@@ -76,6 +87,7 @@ onMounted(async () => {
     }
     if (startup.session) rightPanel.value?.startStartupSession(startup.session)
     if (startup.deeplink) await requestOrchestrator(startup.deeplink.ticket)
+    if (startup.orchestrate) await runOrchestratorNow(startup.orchestrate)
   } catch (err) {
     // Startup is best-effort: fall back to an empty workbench the user drives manually.
     console.error('Startup load failed:', err)
@@ -85,6 +97,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   offMenu?.()
   offDeepLink?.()
+  offOrchestrate?.()
 })
 </script>
 

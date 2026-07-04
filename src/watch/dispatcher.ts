@@ -1,0 +1,126 @@
+import type { Config } from '../main/config/schema'
+import type { Ticket } from '../shared/types'
+import { buildJql } from './jql'
+import { findRepoForTicket } from './repo-map'
+import { SequentialQueue } from './queue'
+import type { WatchState } from './state'
+
+export interface WatchNotification {
+  title: string
+  body: string
+  ticketKey?: string
+  onClick?: () => void
+}
+
+export interface DispatcherDeps {
+  config: () => Config
+  search: (jql: string) => Promise<Ticket[]>
+  transition: (key: string, name: string) => Promise<void>
+  // Launch the SeniorDev app to run the Jira Orchestrator on this ticket in a
+  // visible, watchable tab. Fire-and-forget — the app owns the run ("no invisible
+  // work"). The app resolves the repo cwd from the same config.repos.
+  launch: (ticket: Ticket) => void
+  state: WatchState
+  notify: (n: WatchNotification) => void
+  isAuto: () => boolean
+  now: () => string
+}
+
+// Poll → filter (deduped by state + in-flight + pending) → enqueue (auto) or hold
+// for approval → launch the app. On launch the ticket is recorded + transitioned
+// so it leaves the query and is never re-dispatched.
+export class WatchDispatcher {
+  private readonly queue = new SequentialQueue()
+  private readonly inFlight = new Set<string>()
+  private readonly pending = new Map<string, Ticket>()
+  private polling = false
+
+  constructor(private readonly deps: DispatcherDeps) {}
+
+  get pendingCount(): number {
+    return this.pending.size
+  }
+
+  get inFlightCount(): number {
+    return this.inFlight.size
+  }
+
+  // Tickets awaiting manual approval (approve-first mode), for the tray submenu —
+  // so a missed notification isn't the only way to approve.
+  pendingApprovals(): { key: string; summary: string }[] {
+    return [...this.pending.values()].map((t) => ({ key: t.key, summary: t.summary }))
+  }
+
+  async poll(): Promise<void> {
+    if (this.polling) return // suppress overlapping ticks
+    this.polling = true
+    try {
+      const cfg = this.deps.config()
+      let tickets: Ticket[]
+      try {
+        tickets = await this.deps.search(buildJql(cfg.watch))
+      } catch (err) {
+        this.deps.notify({ title: 'Jira poll failed', body: this.msg(err) })
+        return
+      }
+      for (const t of tickets) {
+        const key = t.key
+        if (this.deps.state.has(key) || this.inFlight.has(key) || this.pending.has(key)) continue
+        const repo = findRepoForTicket(cfg, key)
+        if (!repo) {
+          this.deps.notify({ title: `${key}: no repo configured`, body: t.summary, ticketKey: key })
+          continue
+        }
+        if (this.deps.isAuto()) {
+          this.enqueue(t)
+        } else {
+          this.pending.set(key, t)
+          this.deps.notify({ title: `Approve ${key}?`, body: t.summary, ticketKey: key, onClick: () => this.approve(key) })
+        }
+      }
+    } finally {
+      this.polling = false
+    }
+  }
+
+  approve(key: string): void {
+    const ticket = this.pending.get(key)
+    if (!ticket) return
+    this.pending.delete(key)
+    this.enqueue(ticket)
+  }
+
+  private enqueue(ticket: Ticket): void {
+    // Reserve the key synchronously so a poll while this ticket waits in the queue
+    // can't re-dispatch it (it isn't recorded until dispatch runs).
+    this.inFlight.add(ticket.key)
+    this.queue.enqueue(() => this.dispatch(ticket))
+  }
+
+  private async dispatch(ticket: Ticket): Promise<void> {
+    const key = ticket.key
+    try {
+      // Defense-in-depth: never dispatch a ticket already recorded.
+      if (this.deps.state.has(key)) return
+      // Launch first, then commit (record + transition) so the ticket leaves the
+      // query. Recording after a successful launch call — launch is synchronous
+      // fire-and-forget; the app then runs it live.
+      this.deps.launch(ticket)
+      this.deps.state.record(key, 'spawned', this.deps.now())
+      try {
+        await this.deps.transition(key, this.deps.config().watch.transitionOnDispatch)
+      } catch (err) {
+        this.deps.notify({ title: `Transition failed: ${key}`, body: this.msg(err), ticketKey: key })
+      }
+      this.deps.notify({ title: `Dispatched ${key} → SeniorDev`, body: ticket.summary, ticketKey: key })
+    } catch (err) {
+      this.deps.notify({ title: `Dispatch error: ${key}`, body: this.msg(err), ticketKey: key })
+    } finally {
+      this.inFlight.delete(key)
+    }
+  }
+
+  private msg(err: unknown): string {
+    return err instanceof Error ? err.message : String(err)
+  }
+}
