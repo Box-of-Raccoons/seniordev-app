@@ -15,7 +15,12 @@ permissions:
 
 jobs:
   windows:
-    runs-on: windows-latest
+    # Pinned to VS 2022: windows-latest is now the VS 2026 image, whose Visual
+    # Studio layout @electron/rebuild's bundled node-gyp can't detect (it throws
+    # ERR_CHILD_PROCESS_STDIO_MAXBUFFER and reports "no VS 2017+"). VS 2022 builds
+    # node-pty for the Electron ABI cleanly. Revisit once @electron/rebuild ships
+    # a node-gyp that understands VS 2026.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
