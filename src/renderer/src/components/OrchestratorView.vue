@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import YoloView from './YoloView.vue'
-import { TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
+import { TERM_BG, TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
+
+// Shared console styling for every classify-log <pre> — one object so the three
+// phase branches can't drift from the terminal or each other.
+const logStyle = {
+  fontFamily: TERM_FONT_FAMILY,
+  fontSize: `${TERM_FONT_SIZE}px`,
+  backgroundColor: TERM_BG
+}
 
 const props = defineProps<{
   id: string
@@ -86,21 +94,21 @@ onBeforeUnmount(() => {
       <pre
         ref="logHost"
         class="orch-log"
-        :style="{ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE + 'px' }"
+        :style="logStyle"
       >{{ classifyLog.join('\n') }}</pre>
     </template>
     <template v-else-if="phase === 'cancelled'">
       <p class="orch-reason">Classification cancelled.</p>
       <pre
         class="orch-log"
-        :style="{ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE + 'px' }"
+        :style="logStyle"
       >{{ classifyLog.join('\n') }}</pre>
     </template>
     <template v-else-if="phase === 'failed'">
       <p class="orch-reason">No playbook selected — {{ failReason }}</p>
       <pre
         class="orch-log"
-        :style="{ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE + 'px' }"
+        :style="logStyle"
       >{{ classifyLog.join('\n') }}</pre>
     </template>
     <template v-else>
@@ -136,7 +144,8 @@ onBeforeUnmount(() => {
 .orch-cancel:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .orch-log {
   flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 8px 10px;
-  background: #1a1f1d; color: var(--ink); border-radius: var(--radius-sm);
+  /* background comes from TERM_BG via inline style, matching the terminal */
+  color: var(--ink); border-radius: var(--radius-sm);
   white-space: pre-wrap; word-break: break-word;
 }
 .orch-reason {

@@ -9,6 +9,9 @@
 
   --ink:       oklch(0.95 0.008 95);
   --ink-soft:  oklch(0.82 0.012 120);
+  /* --ink-muted is the muted text floor: ~5:1 on --surface-2 (the lightest
+     plane), so it clears WCAG AA body text. Don't lighten it or --surface-2
+     without re-checking that pair. */
   --ink-muted: oklch(0.70 0.014 140);
 
   --teal:  oklch(0.78 0.085 168);
@@ -20,4 +23,11 @@
   --radius: 12px;
   --radius-sm: 8px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Elevation — tone carries most depth; shadow lifts standalone surfaces and
+     floats overlays. See DESIGN.md §Elevation. */
+  --shadow-lift:    0 1px 3px oklch(0 0 0 / 0.3);   /* raised inline surfaces: cards */
+  --shadow-popover: 0 10px 30px oklch(0 0 0 / 0.35); /* menus / dropdowns */
+  --shadow-overlay: 0 20px 60px oklch(0 0 0 / 0.45); /* modals */
+  --scrim:          oklch(0 0 0 / 0.5);              /* dimmed backdrop behind modals */
 }

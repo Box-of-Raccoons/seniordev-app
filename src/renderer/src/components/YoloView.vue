@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import PrCard from './PrCard.vue'
-import { TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
+import { TERM_BG, TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
 import type { YoloExitEvent } from '../../../shared/ipc'
 
 const props = defineProps<{
@@ -97,7 +97,7 @@ onBeforeUnmount(() => {
     <pre
       ref="logHost"
       class="yolo-log"
-      :style="{ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE + 'px' }"
+      :style="{ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE + 'px', backgroundColor: TERM_BG }"
     >{{ lines.join('\n') }}</pre>
     <div v-if="!exit" class="yolo-footer">
       <span class="yolo-muted">running…</span>
@@ -121,7 +121,8 @@ onBeforeUnmount(() => {
 .yolo-wrap { display: flex; flex-direction: column; height: 100%; }
 .yolo-log {
   flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 8px 10px;
-  background: #1a1f1d; color: var(--ink); border-radius: var(--radius-sm);
+  /* background comes from TERM_BG via inline style, matching the terminal */
+  color: var(--ink); border-radius: var(--radius-sm);
   white-space: pre-wrap; word-break: break-word;
 }
 .yolo-footer {

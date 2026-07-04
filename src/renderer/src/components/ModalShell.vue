@@ -81,13 +81,15 @@ onBeforeUnmount(() => {
 <style scoped>
 .modal-overlay {
   position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
-  background: oklch(0 0 0 / 0.5);
+  padding: 16px; background: var(--scrim);
 }
 .modal {
-  display: flex; flex-direction: column; min-width: 420px; max-width: min(860px, 92vw);
+  display: flex; flex-direction: column;
+  /* min() so the dialog never exceeds a narrow window (min-width would overflow) */
+  min-width: min(420px, 100%); max-width: min(860px, 92vw);
   max-height: 88vh; background: var(--surface-2); color: var(--ink);
   border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm);
-  box-shadow: 0 20px 60px oklch(0 0 0 / 0.45);
+  box-shadow: var(--shadow-overlay);
 }
 .modal__head {
   display: flex; align-items: center; justify-content: space-between;
