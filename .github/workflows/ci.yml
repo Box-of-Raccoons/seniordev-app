@@ -1,8 +1,10 @@
 name: ci
 
 # The test gate the repo previously lacked: typecheck + full vitest suite on every
-# push to an integration branch and on every PR. Runs on Linux (tests are
-# cross-platform via jsdom); the packaged Windows build is exercised by release.yml.
+# push to an integration branch and on every PR. Runs on Windows (VS 2022 image):
+# SeniorDev is a Windows-targeted Electron app, and part of the suite assumes a
+# case-insensitive filesystem (e.g. prompt-file self-skip), so a Linux runner
+# reports false failures. Matches the platform the app actually ships for.
 on:
   push:
     branches: [develop, main]
@@ -10,7 +12,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
