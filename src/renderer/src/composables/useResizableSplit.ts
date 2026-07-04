@@ -1,4 +1,4 @@
-import { computed, ref, type Ref } from 'vue'
+import { computed, getCurrentScope, onScopeDispose, ref, watch, type Ref } from 'vue'
 
 export interface SplitOptions {
   /** Minimum width (px) the left panel may shrink to. */
@@ -64,6 +64,11 @@ export function useResizableSplit(container: Ref<HTMLElement | null>, opts: Spli
     leftWidth.value = clampLeftWidth(desired, containerWidth(), minLeft, minRight, dividerWidth)
   }
 
+  /** Re-apply the clamp to the current pinned width — e.g. after the container resizes. */
+  function reclamp(): void {
+    if (leftWidth.value != null) setLeft(leftWidth.value)
+  }
+
   let startX = 0
   let startWidth = 0
 
@@ -71,10 +76,15 @@ export function useResizableSplit(container: Ref<HTMLElement | null>, opts: Spli
     setLeft(startWidth + (e.clientX - startX))
   }
 
-  function onPointerUp(): void {
-    dragging.value = false
+  function stopDragListeners(): void {
     window.removeEventListener('pointermove', onPointerMove)
     window.removeEventListener('pointerup', onPointerUp)
+    window.removeEventListener('pointercancel', onPointerUp)
+  }
+
+  function onPointerUp(): void {
+    dragging.value = false
+    stopDragListeners()
   }
 
   function onPointerDown(e: PointerEvent): void {
@@ -84,6 +94,35 @@ export function useResizableSplit(container: Ref<HTMLElement | null>, opts: Spli
     dragging.value = true
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
+    // pointercancel (e.g. OS gesture, focus loss) fires instead of pointerup — treat it the same.
+    window.addEventListener('pointercancel', onPointerUp)
+  }
+
+  // Keep a pinned width within the panel minimums when the container resizes.
+  // Guarded for jsdom (no ResizeObserver in the unit-test environment).
+  let ro: ResizeObserver | null = null
+  if (typeof ResizeObserver !== 'undefined') {
+    watch(
+      container,
+      (el) => {
+        ro?.disconnect()
+        ro = null
+        if (el) {
+          ro = new ResizeObserver(() => reclamp())
+          ro.observe(el)
+        }
+      },
+      { immediate: true }
+    )
+  }
+
+  // Only register cleanup inside an active effect scope (component setup); calling
+  // the composable standalone in a unit test has no scope and needs no teardown.
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      stopDragListeners()
+      ro?.disconnect()
+    })
   }
 
   function onKeydown(e: KeyboardEvent): void {
@@ -104,7 +143,9 @@ export function useResizableSplit(container: Ref<HTMLElement | null>, opts: Spli
   /** Left share as a 0–100 integer for `aria-valuenow` (50 until measurable). */
   const leftPercent = computed(() => {
     const cw = containerWidth()
-    if (cw <= 0) return 50
+    // Guard the whole denominator (cw - dividerWidth), not just cw, to avoid
+    // divide-by-zero / negatives for a container no wider than the divider.
+    if (cw <= dividerWidth) return 50
     return Math.round((currentLeft() / (cw - dividerWidth)) * 100)
   })
 
@@ -120,6 +161,7 @@ export function useResizableSplit(container: Ref<HTMLElement | null>, opts: Spli
     onPointerUp,
     onKeydown,
     setLeft,
-    currentLeft
+    currentLeft,
+    reclamp
   }
 }

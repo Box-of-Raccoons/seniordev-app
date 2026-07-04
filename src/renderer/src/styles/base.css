@@ -14,29 +14,36 @@ body {
 .right-panel { flex: 1 1 50%; background: var(--surface); }
 .panel-empty { margin: auto; color: var(--ink-muted); }
 
-/* Draggable seam between the two panels (SD-1). The 6px element is the hit
-   area; a centred 1px line reads as the hairline the border-right used to be. */
+/* Draggable seam between the two panels (SD-1). The 6px element is only the
+   pointer hit-area; a centred 1px line carries the seam — the same hairline the
+   panels' border used to draw — and lifts to teal (thickening to 2px) on
+   hover / focus / drag. */
 .divider {
   flex: 0 0 6px;
   align-self: stretch;
   position: relative;
   cursor: col-resize;
-  background: var(--hairline);
-  transition: background 120ms var(--ease-out);
+  background: transparent;
 }
 .divider::before {
   content: "";
   position: absolute;
-  inset: 0 2px;
-  background: var(--teal);
-  opacity: 0;
-  transition: opacity 120ms var(--ease-out);
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--hairline);
+  transition: background 120ms var(--ease-out), width 120ms var(--ease-out);
 }
 .divider:hover::before,
 .divider:focus-visible::before,
-.shell--dragging .divider::before { opacity: 0.7; }
+.shell--dragging .divider::before { background: var(--teal); width: 2px; }
 .divider:focus-visible { outline: none; }
 /* Suppress text selection and pointer flicker in the panels while dragging. */
 .shell--dragging { cursor: col-resize; user-select: none; }
 .shell--dragging .left-panel,
 .shell--dragging .right-panel { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .divider::before { transition: none; }
+}

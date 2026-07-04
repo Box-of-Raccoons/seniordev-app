@@ -64,4 +64,47 @@ describe('useResizableSplit', () => {
     onKeydown(new KeyboardEvent('keydown', { key: 'ArrowRight' })) // +24 → 694, clamps to 674
     expect(leftWidth.value).toBe(674)
   })
+
+  it('drags: pointerdown then pointermove pins the left width to the delta, clamped', () => {
+    const container = withContainer(1000)
+    const { onPointerDown, dragging, leftWidth } = useResizableSplit(container)
+    // Start the drag at the even-split default (497px) from clientX 500.
+    onPointerDown({ clientX: 500, preventDefault() {} } as unknown as PointerEvent)
+    expect(dragging.value).toBe(true)
+    // Move +100px → 497 + 100 = 597, inside [320, 674].
+    window.dispatchEvent(Object.assign(new Event('pointermove'), { clientX: 600 }))
+    expect(leftWidth.value).toBe(597)
+  })
+
+  it('stops tracking after pointerup — a later move must not move the panel', () => {
+    const container = withContainer(1000)
+    const { onPointerDown, dragging, leftWidth } = useResizableSplit(container)
+    onPointerDown({ clientX: 500, preventDefault() {} } as unknown as PointerEvent)
+    window.dispatchEvent(Object.assign(new Event('pointermove'), { clientX: 600 }))
+    window.dispatchEvent(new Event('pointerup'))
+    expect(dragging.value).toBe(false)
+    // Listener removed: this move is ignored, width stays put.
+    window.dispatchEvent(Object.assign(new Event('pointermove'), { clientX: 900 }))
+    expect(leftWidth.value).toBe(597)
+  })
+
+  it('re-clamps a pinned width when the container later shrinks below both minimums', () => {
+    const el = document.createElement('div')
+    let width = 1000
+    el.getBoundingClientRect = () =>
+      ({ width, height: 0, top: 0, left: 0, right: width, bottom: 0, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    const container = ref<HTMLElement | null>(el)
+    const { setLeft, leftWidth, reclamp } = useResizableSplit(container)
+    setLeft(674) // max on a 1000px container
+    expect(leftWidth.value).toBe(674)
+    width = 600 // window shrank — 674 no longer fits with the right minimum
+    reclamp()
+    // Too narrow for both minimums → favour the left minimum rather than 674.
+    expect(leftWidth.value).toBe(DEFAULTS.minLeft)
+  })
+
+  it('reports 50% for a degenerate container no wider than the divider (no divide-by-zero)', () => {
+    const { leftPercent } = useResizableSplit(withContainer(DEFAULTS.dividerWidth))
+    expect(leftPercent.value).toBe(50)
+  })
 })
