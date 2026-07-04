@@ -42,7 +42,7 @@ export function registerYoloIpc(
       // in the catch) the live run's meta on its way to the runner's throw.
       if (runner.has(req.id)) throw new Error(`YOLO run ${req.id} already exists`)
       const expanded = await resolveExpandedPrompt(config, deps.source, req)
-      const launch = buildHeadlessLaunch(config, req, expanded ?? '', deps.resolveCommand)
+      const launch = buildHeadlessLaunch(config, { ...req, model: expanded?.model }, expanded?.prompt ?? '', deps.resolveCommand)
       meta.set(req.id, { cwd: launch.cwd, tool: launch.toolName, canResume: launch.canResume })
       runner.start(req.id, {
         file: launch.file,

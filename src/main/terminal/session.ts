@@ -1,6 +1,7 @@
 import type { Config } from '../config/schema'
 import type { ResolvedCommand } from './resolve-command'
 import { resolveCwd } from './resolve'
+import { resolveModelArgs } from '../config/model'
 
 export interface Launch {
   file: string
@@ -12,7 +13,7 @@ export interface Launch {
 
 export function buildInteractiveLaunch(
   config: Config,
-  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; resume?: { sessionId: string } },
+  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; resume?: { sessionId: string }; model?: string },
   expandedPrompt?: string,
   resolveCommand?: (command: string) => ResolvedCommand | undefined
 ): Launch {
@@ -31,7 +32,11 @@ export function buildInteractiveLaunch(
     opts.resume && tool.resumeArgs
       ? tool.resumeArgs.map((a) => a.replace('{{sessionId}}', () => opts.resume!.sessionId))
       : []
-  const args = [...tool.interactiveArgs, ...resumeArgs]
+  // A fresh launch gets the resolved model (prompt frontmatter → tool
+  // defaultModel → nothing). A resume reconnects to a session that already has
+  // its model, so we leave its argv as-is rather than re-asserting a model flag.
+  const modelArgs = opts.resume ? [] : resolveModelArgs(tool, opts.model)
+  const args = [...tool.interactiveArgs, ...resumeArgs, ...modelArgs]
   const resolved = resolveCommand?.(tool.command)
 
   // Deliver the prompt as a launch arg ONLY when it can't be re-parsed by cmd.exe.

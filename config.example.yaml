@@ -11,6 +11,22 @@ jira:
 # ticketContext: both        # key-only | both
 # defaultTool: claude
 # defaultForge: github
+
+# Per-tool model selection (optional). Each tool declares how it passes a model
+# on the command line via `modelArgs` (presets: claude/codex both use
+# ["--model", "{{model}}"]) and, optionally, a `defaultModel` used when a prompt
+# doesn't name one. Resolution order (highest wins):
+#   prompt frontmatter `model:`  →  tool `defaultModel`  →  nothing (CLI decides).
+# Leave both unset for today's behavior (no model flag added). The resolved model
+# is applied to BOTH interactive and headless/YOLO launches.
+# cliTools:
+#   claude:
+#     modelArgs: [--model, "{{model}}"]   # preset default; override only if needed
+#     defaultModel: claude-sonnet-4-5     # used when a prompt omits `model:`
+#   codex:
+#     modelArgs: [--model, "{{model}}"]
+#     defaultModel: gpt-5
+
 # repos:
 #   - key: PROJ
 #     path: C:/Users/you/code/backend

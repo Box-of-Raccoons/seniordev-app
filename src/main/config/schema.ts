@@ -11,6 +11,12 @@ export const CliToolSchema = z.object({
   interactiveArgs: z.array(z.string()).default([]),
   promptDelivery: z.enum(['stdin', 'arg']).default('stdin'),
   promptArg: z.string().optional(),
+  // How this tool expresses a model on argv, e.g. ["--model", "{{model}}"].
+  // Empty ⇒ the tool can't express a model, so none is ever appended.
+  modelArgs: z.array(z.string()).default([]),
+  // Fallback model when a prompt doesn't declare one. Empty/absent ⇒ append
+  // nothing (today's behavior — let the CLI pick its own default).
+  defaultModel: z.string().optional(),
   headless: HeadlessSchema.optional(),
   resumeArgs: z.array(z.string()).optional()
 })

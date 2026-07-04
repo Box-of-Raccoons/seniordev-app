@@ -125,11 +125,14 @@ cliTools:
     interactiveArgs: []
     yoloArgs: [--permission-mode, bypassPermissions]
     promptDelivery: stdin      # type prompt into the PTY
+    modelArgs: [--model, "{{model}}"]   # how this tool expresses a model on argv
+    defaultModel: claude-sonnet-4-5     # optional; used when a prompt omits `model:`
   codex:
     command: codex
     yoloArgs: [--yolo]
     promptDelivery: arg
     promptArg: "{{prompt}}"
+    modelArgs: [--model, "{{model}}"]
 
 defaultForge: github
 forges:
@@ -164,6 +167,7 @@ both interactive and yolo modes.
 ---
 name: fix-bug
 description: Implement a bug ticket, test, open a PR
+model: claude-opus-4-1        # optional; the model this prompt should run on
 ---
 Work Jira ticket {{ticket.key}}: "{{ticket.summary}}"
 
@@ -175,6 +179,13 @@ Acceptance criteria:
 Implement the fix, add tests, run the suite, then open a
 {{forge.term}} with `{{forge.prCommand}}`.
 ```
+
+The optional `model:` frontmatter key picks the model this prompt runs on.
+Resolution order (highest wins): the prompt's `model` → the tool's `defaultModel`
+→ nothing (the CLI's own default). The resolved model is substituted into the
+tool's `modelArgs` and appended to argv on **both** the interactive and
+headless/YOLO launch paths; with neither set, argv is unchanged. No allowlist —
+an unknown/incompatible model is left for the CLI to reject.
 
 Placeholders: `{{ticket.key|summary|description|acceptanceCriteria|comments|type|status}}`,
 `{{forge.prCommand|term}}`. `ticketContext` mode governs `{{ticket.*}}` expansion:

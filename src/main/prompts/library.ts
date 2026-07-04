@@ -5,6 +5,9 @@ import { parse } from 'yaml'
 export interface PromptTemplate {
   name: string
   description: string
+  // Optional model this prompt should run on (SD-5). Absent ⇒ fall back to the
+  // tool's defaultModel, then to nothing. Only set when present in frontmatter.
+  model?: string
   body: string
 }
 
@@ -15,6 +18,9 @@ export function parseFrontmatter(raw: string, fallbackName: string): PromptTempl
   return {
     name: typeof fm.name === 'string' ? fm.name : fallbackName,
     description: typeof fm.description === 'string' ? fm.description : '',
+    // Only carry `model` when actually declared, so prompts without it stay
+    // shape-identical to before (no `model` key).
+    ...(typeof fm.model === 'string' ? { model: fm.model } : {}),
     body: m[2].trim()
   }
 }
