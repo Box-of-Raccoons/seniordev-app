@@ -6,11 +6,14 @@ import AboutModal from './components/AboutModal.vue'
 import AppConfigModal from './components/AppConfigModal.vue'
 import PromptConfigModal from './components/PromptConfigModal.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
+import { useResizableSplit } from './composables/useResizableSplit'
 import type { MenuAction, DeepLink } from '../../shared/ipc'
 
 const activeTicketKey = ref<string | null>(null)
 const leftPanel = ref<InstanceType<typeof LeftPanel> | null>(null)
 const rightPanel = ref<InstanceType<typeof RightPanel> | null>(null)
+const shell = ref<HTMLElement | null>(null)
+const { leftStyle, leftPercent, dragging, onPointerDown, onKeydown } = useResizableSplit(shell)
 const modal = ref<'about' | 'app-config' | 'prompt-config' | null>(null)
 const confirmReset = ref(false)
 const orchestratorAsk = ref<{ key: string; summary: string } | null>(null)
@@ -102,9 +105,21 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="shell">
-    <LeftPanel ref="leftPanel" @active-ticket="activeTicketKey = $event" />
-    <RightPanel ref="rightPanel" :active-ticket-key="activeTicketKey" />
+  <div ref="shell" class="shell" :class="{ 'shell--dragging': dragging }">
+    <LeftPanel ref="leftPanel" :style="leftStyle" @active-ticket="activeTicketKey = $event" />
+    <div
+      class="divider"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize panels"
+      tabindex="0"
+      :aria-valuenow="leftPercent"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      @pointerdown="onPointerDown"
+      @keydown="onKeydown"
+    ></div>
+    <RightPanel ref="rightPanel" :active-ticket-key="activeTicketKey" :style="{ flex: '1 1 0' }" />
   </div>
   <AboutModal v-if="modal === 'about'" @close="modal = null" />
   <AppConfigModal v-if="modal === 'app-config'" @close="modal = null" />
