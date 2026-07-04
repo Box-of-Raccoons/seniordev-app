@@ -57,6 +57,7 @@ function requestClose(): void {
     <textarea
       v-model="text"
       class="cfg-editor"
+      aria-label="Config file contents"
       spellcheck="false"
       :style="{ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE + 'px' }"
     ></textarea>

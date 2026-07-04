@@ -147,7 +147,7 @@ async function doDelete(): Promise<void> {
              fires implicit form submission from a button click. Enter still
              works via the input's keyup handler. -->
         <div v-if="creating" class="pcfg-create-form">
-          <input v-model="newName" class="pcfg-name" placeholder="prompt-name" @keyup.enter="create" />
+          <input v-model="newName" class="pcfg-name" aria-label="New prompt name" placeholder="prompt-name" @keyup.enter="create" />
           <button class="pcfg-create" type="button" :disabled="!newName.trim()" @click="create">Create</button>
         </div>
       </aside>
@@ -159,6 +159,7 @@ async function doDelete(): Promise<void> {
           <textarea
             v-model="text"
             class="pcfg-editor"
+            aria-label="Prompt contents"
             spellcheck="false"
             :style="{ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE + 'px' }"
           ></textarea>

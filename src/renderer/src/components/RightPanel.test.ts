@@ -58,6 +58,14 @@ describe('RightPanel', () => {
     expect(w.findAll('.term-tab')).toHaveLength(1)
   })
 
+  it('gives each term tab a labeled button close control', async () => {
+    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs } })
+    await w.find('.new-session').trigger('click')
+    const close = w.find('.term-tab__close')
+    expect(close.element.tagName).toBe('BUTTON')
+    expect(close.attributes('aria-label')).toMatch(/^Close /)
+  })
+
   it('titles a prompt session by the prompt name', async () => {
     const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs: {
       TerminalView: stubs.TerminalView,

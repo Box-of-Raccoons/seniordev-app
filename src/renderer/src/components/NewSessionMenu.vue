@@ -82,7 +82,7 @@ function choose(payload: { prompt?: { name?: string; text?: string } }): void {
       </button>
       <button class="menu-item" @click="customOpen = !customOpen">Custom prompt…</button>
       <form v-if="customOpen" class="custom" @submit.prevent="choose({ prompt: { text: customText } })">
-        <textarea v-model="customText" rows="3" placeholder="Type a first prompt…"></textarea>
+        <textarea v-model="customText" rows="3" aria-label="First prompt" placeholder="Type a first prompt…"></textarea>
         <button class="custom__go" type="submit" :disabled="!customText.trim()">Start</button>
       </form>
     </div>
