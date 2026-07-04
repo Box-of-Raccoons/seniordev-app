@@ -1,0 +1,50 @@
+name: release
+
+# Cut a release by pushing a version tag, e.g.:
+#   git tag v0.1.0 && git push origin v0.1.0
+# Builds the Windows NSIS installer (UNSIGNED — no code-signing certs configured,
+# so users will see a SmartScreen warning) and attaches it to a GitHub Release for
+# that tag. macOS/Linux are intentionally omitted until signing is set up.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # create the Release and upload the installer asset
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4 # version comes from package.json "packageManager"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Gate the release on the same checks as CI before spending build minutes.
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      # electron-vite build → electron-builder NSIS. --publish never keeps
+      # electron-builder from trying to push assets itself; the upload step below
+      # owns publishing so there's a single, predictable path.
+      - run: pnpm build
+      - run: pnpm exec electron-builder --win nsis --publish never
+
+      - name: Attach the installer to the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.exe
+            release/latest.yml
+          fail_on_unmatched_files: false
+          generate_release_notes: true

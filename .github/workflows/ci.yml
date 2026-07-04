@@ -1,0 +1,28 @@
+name: ci
+
+# The test gate the repo previously lacked: typecheck + full vitest suite on every
+# push to an integration branch and on every PR. Runs on Linux (tests are
+# cross-platform via jsdom); the packaged Windows build is exercised by release.yml.
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4 # version comes from package.json "packageManager"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
