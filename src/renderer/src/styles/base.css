@@ -10,6 +10,33 @@ body {
 }
 .shell { display: flex; height: 100%; }
 .left-panel, .right-panel { height: 100%; overflow: hidden; display: flex; flex-direction: column; }
-.left-panel { flex: 1 1 50%; border-right: 1px solid var(--hairline); }
+.left-panel { flex: 1 1 50%; }
 .right-panel { flex: 1 1 50%; background: var(--surface); }
 .panel-empty { margin: auto; color: var(--ink-muted); }
+
+/* Draggable seam between the two panels (SD-1). The 6px element is the hit
+   area; a centred 1px line reads as the hairline the border-right used to be. */
+.divider {
+  flex: 0 0 6px;
+  align-self: stretch;
+  position: relative;
+  cursor: col-resize;
+  background: var(--hairline);
+  transition: background 120ms var(--ease-out);
+}
+.divider::before {
+  content: "";
+  position: absolute;
+  inset: 0 2px;
+  background: var(--teal);
+  opacity: 0;
+  transition: opacity 120ms var(--ease-out);
+}
+.divider:hover::before,
+.divider:focus-visible::before,
+.shell--dragging .divider::before { opacity: 0.7; }
+.divider:focus-visible { outline: none; }
+/* Suppress text selection and pointer flicker in the panels while dragging. */
+.shell--dragging { cursor: col-resize; user-select: none; }
+.shell--dragging .left-panel,
+.shell--dragging .right-panel { pointer-events: none; }
