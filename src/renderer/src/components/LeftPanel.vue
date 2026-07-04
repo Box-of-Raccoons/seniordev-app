@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import type { Ticket } from '../../../shared/types'
 import TicketView from './TicketView.vue'
+import EmptyState from './EmptyState.vue'
+import raccoonHardhatUrl from '../assets/raccoon-hardhat.png'
 
 const keyInput = ref('')
 const tabs = ref<Ticket[]>([])
@@ -93,7 +95,7 @@ const activeTicket = computed<Ticket | undefined>(() =>
 
     <div class="left-body">
       <TicketView v-if="activeTicket" :ticket="activeTicket!" />
-      <div v-else class="panel-empty">Open a ticket to start</div>
+      <EmptyState v-else :image="raccoonHardhatUrl" caption="Open a ticket to start" />
     </div>
   </section>
 </template>

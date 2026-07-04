@@ -4,6 +4,8 @@ import TerminalView from './TerminalView.vue'
 import YoloView from './YoloView.vue'
 import OrchestratorView from './OrchestratorView.vue'
 import NewSessionMenu from './NewSessionMenu.vue'
+import EmptyState from './EmptyState.vue'
+import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
 
 defineProps<{ activeTicketKey: string | null }>()
 
@@ -100,7 +102,7 @@ function markExited(id: string): void {
     </div>
 
     <div class="term-body">
-      <div v-if="!terms.length" class="panel-empty">No sessions — start one with "New session".</div>
+      <EmptyState v-if="!terms.length" :image="raccoonAsleepUrl" caption='No sessions — start one with "New session".' />
       <div
         v-for="t in terms"
         v-show="t.id === activeId"
