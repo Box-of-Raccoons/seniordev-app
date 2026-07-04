@@ -120,7 +120,7 @@ describe('shipped prompt expands end to end', () => {
     key: 'SD-4', type: 'Story', status: 'To Do', summary: 'Add role-based prompt templates',
     descriptionAdf: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'A doc.' }] }] },
     acceptanceCriteria: 'Each prompt is a valid .md file.',
-    comments: [{ author: 'Hardy', createdIso: '', bodyAdf: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'do it' }] }] } }],
+    comments: [{ author: 'Reviewer', createdIso: '', bodyAdf: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'do it' }] }] } }],
     url: 'https://x/browse/SD-4'
   }
 

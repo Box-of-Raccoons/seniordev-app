@@ -94,7 +94,8 @@ if (!app.requestSingleInstanceLock()) {
       state,
       notify,
       isAuto,
-      now: () => new Date().toISOString()
+      now: () => new Date().toISOString(),
+      onChange: () => refreshMenu()
     })
 
     const refreshMenu = (): void => {
@@ -107,7 +108,7 @@ if (!app.requestSingleInstanceLock()) {
               label: `Pending approvals (${pending.length})`,
               submenu: pending.map((p) => ({
                 label: `Approve ${p.key} — ${p.summary}`,
-                click: () => { dispatcher.approve(p.key); refreshMenu() }
+                click: () => dispatcher.approve(p.key) // approve() refreshes the tray via onChange
               }))
             }
           ]
@@ -141,6 +142,12 @@ if (!app.requestSingleInstanceLock()) {
     }
 
     if (!boot.ok) notify({ title: 'SeniorDevWatch: config error', body: boot.error })
+    if (state.corruptedBackupPath) {
+      notify({
+        title: 'SeniorDevWatch: watch state was corrupt',
+        body: `Started with clean dedup state; the old file was saved to ${state.corruptedBackupPath}. Tickets already in progress may re-dispatch.`
+      })
+    }
     refreshMenu()
 
     const intervalMs = (store.config?.watch.intervalSeconds ?? 300) * 1000

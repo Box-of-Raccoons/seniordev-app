@@ -13,6 +13,9 @@ export interface WatchStateData {
 // is misconfigured, a recorded key is not re-dispatched.
 export class WatchState {
   private data: WatchStateData = { dispatched: {} }
+  // Set when the on-disk state was corrupt and got renamed aside on boot, so the
+  // tray can surface it (a silent reset would re-dispatch every open ticket).
+  readonly corruptedBackupPath: string | null = null
 
   constructor(private readonly path: string) {
     if (existsSync(this.path)) {
@@ -20,7 +23,16 @@ export class WatchState {
         const parsed = JSON.parse(readFileSync(this.path, 'utf8')) as Partial<WatchStateData>
         this.data = { autoMode: parsed.autoMode, dispatched: parsed.dispatched ?? {} }
       } catch {
-        // Corrupt file → start clean rather than crash the tray on boot.
+        // Corrupt file → don't silently start clean (that would re-dispatch every
+        // still-open ticket). Rename it aside so it's recoverable and inspectable,
+        // then start clean; the caller reports corruptedBackupPath (SD-9 low #1).
+        const backup = `${this.path}.corrupt`
+        try {
+          renameSync(this.path, backup)
+          this.corruptedBackupPath = backup
+        } catch {
+          // Best effort: if even the rename fails, still boot with clean state.
+        }
         this.data = { dispatched: {} }
       }
     }

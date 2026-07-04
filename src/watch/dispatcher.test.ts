@@ -93,6 +93,33 @@ describe('WatchDispatcher', () => {
     expect(deps.launch).toHaveBeenCalledTimes(1)
   })
 
+  it('approve() fires onChange so the tray can refresh outside a poll (SD-9 low #2)', async () => {
+    const onChange = vi.fn()
+    const { deps } = makeDeps({ isAuto: () => false, onChange })
+    const d = new WatchDispatcher(deps)
+    await d.poll()
+    await settle()
+    onChange.mockClear()
+    d.approve('SD-1')
+    expect(onChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('prunes a pending approval once the ticket stops matching the query (SD-9 low #3)', async () => {
+    let results: Ticket[] = [ticket('SD-1')]
+    const { deps } = makeDeps({ isAuto: () => false, search: async () => results })
+    const d = new WatchDispatcher(deps)
+    await d.poll()
+    await settle()
+    expect(d.pendingApprovals()).toEqual([{ key: 'SD-1', summary: 'sum SD-1' }])
+    // Next poll no longer returns SD-1 → the stale approval is dropped, not left
+    // to dispatch something no longer wanted.
+    results = []
+    await d.poll()
+    await settle()
+    expect(d.pendingApprovals()).toEqual([])
+    expect(deps.launch).not.toHaveBeenCalled()
+  })
+
   it('search failure: notify, no crash', async () => {
     const { deps, notes } = makeDeps({ search: async () => { throw new Error('boom') } })
     await new WatchDispatcher(deps).poll()

@@ -26,6 +26,9 @@ export interface DispatcherDeps {
   notify: (n: WatchNotification) => void
   isAuto: () => boolean
   now: () => string
+  // Called when the pending-approval set changes outside a poll (e.g. an approval
+  // from a notification click) so the tray menu can refresh (SD-9 low #2).
+  onChange?: () => void
 }
 
 // Poll → filter (deduped by state + in-flight + pending) → enqueue (auto) or hold
@@ -65,6 +68,14 @@ export class WatchDispatcher {
         this.deps.notify({ title: 'Jira poll failed', body: this.msg(err) })
         return
       }
+      // Prune approvals for tickets that no longer match the query — they were
+      // handled, reassigned, or moved out of the trigger status elsewhere, so a
+      // stale "Approve X?" entry would dispatch something no longer wanted
+      // (SD-9 low #3). runPoll refreshes the tray right after this poll.
+      const present = new Set(tickets.map((t) => t.key))
+      for (const key of [...this.pending.keys()]) {
+        if (!present.has(key)) this.pending.delete(key)
+      }
       for (const t of tickets) {
         const key = t.key
         if (this.deps.state.has(key) || this.inFlight.has(key) || this.pending.has(key)) continue
@@ -90,6 +101,9 @@ export class WatchDispatcher {
     if (!ticket) return
     this.pending.delete(key)
     this.enqueue(ticket)
+    // A notification-click approval happens outside a poll; nudge the tray so its
+    // pending count/submenu don't go stale (SD-9 low #2).
+    this.deps.onChange?.()
   }
 
   private enqueue(ticket: Ticket): void {

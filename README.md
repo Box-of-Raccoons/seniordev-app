@@ -65,6 +65,8 @@ yoloRecap: |
 
 A fresh install seeds a set of role-based prompts into `promptsDir` on first launch (from the copies committed under `resources/prompts/`, bundled into the installer). Seeding is non-destructive — it only fills in files you don't already have, so your edits and deletions are never clobbered. Each covers one SDLC role against a Jira ticket:
 
+> The shipped prompts ask the agent to comment back on the Jira issue (e.g. `addCommentToJiraIssue`), which expects the optional [Atlassian MCP server](https://www.atlassian.com/platform/remote-mcp-server) to be configured in your CLI tool. Without it the agents still run and code — they just skip the Jira write-backs.
+
 | Prompt | Role | What it does |
 | --- | --- | --- |
 | `business-analyst` | BA | Breaks the source documentation on a ticket into a Jira epic + child stories with acceptance criteria. |
@@ -139,7 +141,7 @@ Both work on issue detail pages (`/browse/KEY`) and board/backlog views (`?selec
 
 ### Jira Orchestrator
 
-A confirm gate appears before any deep-link YOLO run — any webpage can navigate to `seniordev://yolo`, so the app always asks first. Confirming runs the orchestrator in two stages: **classify** reads your ticket and prompt library, outputs a JSON object naming the best playbook, then **spawn** launches that prompt verbatim as a normal YOLO run (tab title shows `Jira Orchestrator → <name>`). If the classifier fails — exits non-zero, returns malformed output, names a nonexistent prompt, or answers null — no stage 2 runs; the tab shows the classifier log and reason instead. Never guess-and-run.
+A confirm gate appears before any deep-link YOLO run — any webpage can navigate to `seniordev://yolo`, so the app always asks first. The dialog announces that the run was **triggered by an external link**, names the tool and the resolved repository, and **refuses outright** if the ticket's project maps to no configured repo (no guess-and-run in a fallback directory). See [SECURITY.md](SECURITY.md) for the full deep-link threat model. Confirming runs the orchestrator in two stages: **classify** reads your ticket and prompt library, outputs a JSON object naming the best playbook, then **spawn** launches that prompt verbatim as a normal YOLO run (tab title shows `Jira Orchestrator → <name>`). If the classifier fails — exits non-zero, returns malformed output, names a nonexistent prompt, or answers null — no stage 2 runs; the tab shows the classifier log and reason instead. Never guess-and-run.
 
 Customize the routing prompt via **Config → Prompt Config** → **Jira Orchestrator**. Saving writes `_jira-orchestrator.md` in your prompts directory (underscore-prefixed, so it never shows up as a launchable playbook); saving text identical to the built-in deletes the override and reverts to the default. The built-in cannot be deleted. Read-only behavior during classification is prompt-enforced — the classifier runs with the tool's normal headless flags and is only instructed not to modify files.
 
@@ -161,7 +163,7 @@ The app is single-instance, so each dispatch opens a **new orchestrator tab** in
 pnpm watch
 ```
 
-This builds and launches the tray process. The watcher itself has no window — it lives in the system tray (the mascot icon). It reads the same `config.yaml` as the main app and keeps its own dedup/runtime state in `watch-state.json` next to your config.
+This builds and launches the tray process. The watcher itself has no window — it lives in the system tray (the mascot icon). It reads the same `config.yaml` as the main app and keeps its own dedup/runtime state in `watch-state.json` in the default config directory — note that this stays in the default location even when you point `SENIORDEV_CONFIG` at a config file elsewhere.
 
 ### Tray menu
 
@@ -199,8 +201,14 @@ pnpm typecheck
 
 ## Command line
 
+These arguments are passed to the **installed app executable** — there is no
+`seniordev` command on your `PATH` (the installer doesn't add one). Invoke the
+platform executable directly (e.g. `SeniorDev.exe …` on Windows, `open -a SeniorDev
+--args …` on macOS), or in development pass them after `pnpm dev --`. `seniordev`
+below is shorthand for "the app executable".
+
 ```
-seniordev [tickets...] [--interactive] [--yolo <prompt>] [--prompt <text|@file>] [--tool <name>]
+<app-executable> [tickets...] [--interactive] [--yolo <prompt>] [--prompt <text|@file>] [--tool <name>]
 ```
 
 - `seniordev PROJ-123 PROJ-124` — open both tickets.
