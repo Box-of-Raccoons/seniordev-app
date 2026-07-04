@@ -17,9 +17,11 @@ export interface DispatcherDeps {
   search: (jql: string) => Promise<Ticket[]>
   transition: (key: string, name: string) => Promise<void>
   // Launch the SeniorDev app to run the Jira Orchestrator on this ticket in a
-  // visible, watchable tab. Fire-and-forget — the app owns the run ("no invisible
-  // work"). The app resolves the repo cwd from the same config.repos.
-  launch: (ticket: Ticket) => void
+  // visible, watchable tab. The app owns the run ("no invisible work") and
+  // resolves the repo cwd from the same config.repos. Resolves once the child
+  // has spawned; REJECTS if it fails to spawn (ENOENT/EPERM/AV) so the dispatcher
+  // can avoid recording a run that never started (SD-9 B1).
+  launch: (ticket: Ticket) => void | Promise<void>
   state: WatchState
   notify: (n: WatchNotification) => void
   isAuto: () => boolean
@@ -102,10 +104,16 @@ export class WatchDispatcher {
     try {
       // Defense-in-depth: never dispatch a ticket already recorded.
       if (this.deps.state.has(key)) return
-      // Launch first, then commit (record + transition) so the ticket leaves the
-      // query. Recording after a successful launch call — launch is synchronous
-      // fire-and-forget; the app then runs it live.
-      this.deps.launch(ticket)
+      // Launch and wait for the child to actually spawn before committing. If it
+      // fails to spawn, nothing is recorded or transitioned, so the ticket stays
+      // in the query and the next poll re-dispatches it — no stranded ticket, no
+      // uncaught 'error' crashing the tray (SD-9 B1).
+      try {
+        await this.deps.launch(ticket)
+      } catch (err) {
+        this.deps.notify({ title: `Launch failed: ${key}`, body: this.msg(err), ticketKey: key })
+        return
+      }
       this.deps.state.record(key, 'spawned', this.deps.now())
       try {
         await this.deps.transition(key, this.deps.config().watch.transitionOnDispatch)

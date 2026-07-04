@@ -114,4 +114,25 @@ describe('WatchDispatcher', () => {
     await settle()
     expect(notes.some((n) => n.body.includes('spawn failed'))).toBe(true)
   })
+
+  it('launch rejecting (async spawn error) is notified, not recorded, and re-dispatches next poll (SD-9 B1)', async () => {
+    // First attempt fails to spawn (ENOENT), second succeeds — mirrors an AV/EPERM
+    // hiccup clearing on retry. The failed attempt must strand nothing.
+    const launch = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('ENOENT'))
+      .mockResolvedValueOnce(undefined)
+    const { deps, notes } = makeDeps({ launch })
+    const d = new WatchDispatcher(deps)
+    await d.poll()
+    await settle()
+    expect(notes.some((n) => n.title.includes('Launch failed'))).toBe(true)
+    expect(deps.state.has('SD-1')).toBe(false) // not recorded → still in the query
+    expect(deps.transition).not.toHaveBeenCalled() // never transitioned on failure
+
+    await d.poll()
+    await settle()
+    expect(launch).toHaveBeenCalledTimes(2) // re-dispatched on the next poll
+    expect(deps.state.has('SD-1')).toBe(true) // the successful retry committed
+  })
 })

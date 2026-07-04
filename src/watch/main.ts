@@ -26,12 +26,23 @@ function assetPath(file: string): string {
 // entry (out/main/index.js) as its first arg; in a packaged build the exe's
 // default entry IS index.js, so no entry arg. The app is single-instance, so a
 // second launch becomes a new orchestrator tab in the running app.
-function launchApp(ticketKey: string): void {
+function launchApp(ticketKey: string): Promise<void> {
   const entry = app.isPackaged ? [] : [join(__dirname, 'index.js')]
-  spawn(process.execPath, [...entry, '--orchestrate', ticketKey, '--minimized'], {
-    detached: true,
-    stdio: 'ignore'
-  }).unref()
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, [...entry, '--orchestrate', ticketKey, '--minimized'], {
+      detached: true,
+      stdio: 'ignore'
+    })
+    // A detached spawn reports failure (ENOENT/EPERM/AV) via an async 'error'
+    // event — with no listener it becomes an uncaught exception that kills the
+    // tray. Reject so the dispatcher never records a run that didn't start; on a
+    // clean spawn, unref and resolve so the tray doesn't keep the child alive.
+    child.once('error', reject)
+    child.once('spawn', () => {
+      child.unref()
+      resolve()
+    })
+  })
 }
 
 // Single instance: a second tray launch just exits.
@@ -39,6 +50,9 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.setName('SeniorDevWatch')
+  // B3 (SD-9): match the installed shortcut's AppUserModelID so Windows actually
+  // shows the tray's notifications (config errors, approvals, poll failures).
+  app.setAppUserModelId('com.boxofraccoons.seniordev')
   // No dock icon on macOS; this is a background agent.
   app.dock?.hide()
 
@@ -115,7 +129,12 @@ if (!app.requestSingleInstanceLock()) {
 
     const runPoll = async (force = false): Promise<void> => {
       // "Poll now" (force) bypasses the paused flag; the interval tick does not.
-      if ((paused && !force) || !store.config) return
+      if (paused && !force) return
+      // B4 (SD-9): re-read config each tick so "Open config" edits take effect
+      // without a relaunch, and so "Poll now" after a bad boot can pick up a
+      // corrected config (store keeps last-good on a failed read).
+      store.reload()
+      if (!store.config) return
       await dispatcher.poll()
       lastPoll = new Date().toLocaleTimeString()
       refreshMenu()
