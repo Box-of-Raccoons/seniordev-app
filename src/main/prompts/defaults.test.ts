@@ -98,6 +98,21 @@ describe('shipped prompt library is valid (acceptance criteria)', () => {
       expect(body, name).toMatch(/main.*develop|develop.*main/)
     }
   })
+
+  it('dev / qa / doc prompts drive Jira status: In Progress on start, In Review on PR, Blocked when stuck', () => {
+    for (const name of ['developer', 'qa', 'doc-writer']) {
+      const body = parsed.find((p) => p.name === name)!.body
+      // Mechanism: resolve the transition by name, then apply it (mirrors JiraClient.transition).
+      expect(body, name).toContain('getTransitionsForJiraIssue')
+      expect(body, name).toContain('transitionJiraIssue')
+      // The three workflow states the ticket requires.
+      expect(body, name).toContain('In Progress')
+      expect(body, name).toContain('In Review')
+      expect(body, name).toContain('Blocked')
+      // On PR and on Blocked, the prompt must also record what was done / why it stopped.
+      expect(body, name).toContain('addCommentToJiraIssue')
+    }
+  })
 })
 
 describe('shipped prompt expands end to end', () => {
