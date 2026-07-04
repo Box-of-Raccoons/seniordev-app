@@ -4,10 +4,10 @@
   "description": "SeniorDev — Jira ticket workbench + tabbed interactive CLI multiplexer",
   "license": "MIT",
   "author": "Box of Raccoons <hardy.spry@boxofraccoons.dev>",
-  "homepage": "https://github.com/boxofraccoons/seniordev-app#readme",
+  "homepage": "https://github.com/Box-of-Raccoons/seniordev-app#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/boxofraccoons/seniordev-app.git"
+    "url": "git+https://github.com/Box-of-Raccoons/seniordev-app.git"
   },
   "main": "./out/main/index.js",
   "type": "module",
