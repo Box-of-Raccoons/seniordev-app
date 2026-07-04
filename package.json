@@ -27,8 +27,9 @@
     "test": "vitest run",
     "watch": "electron-vite build && electron out/main/watch.js",
     "watch:build": "electron-vite build",
-    "dist": "electron-vite build && electron-builder",
-    "dist:dir": "electron-vite build && electron-builder --dir"
+    "rebuild": "electron-rebuild -f",
+    "dist": "electron-vite build && electron-rebuild -f && electron-builder",
+    "dist:dir": "electron-vite build && electron-rebuild -f && electron-builder --dir"
   },
   "dependencies": {
     "node-pty": "^1.1.0",
@@ -36,6 +37,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
     "@types/node": "^26.1.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",

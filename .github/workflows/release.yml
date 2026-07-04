@@ -34,10 +34,11 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
-      # electron-vite build → electron-builder NSIS. --publish never keeps
-      # electron-builder from trying to push assets itself; the upload step below
-      # owns publishing so there's a single, predictable path.
+      # electron-vite build → @electron/rebuild (node-pty for the Electron ABI) →
+      # electron-builder NSIS. --publish never keeps electron-builder from pushing
+      # assets itself; the upload step below owns publishing (single path).
       - run: pnpm build
+      - run: pnpm exec electron-rebuild -f
       - run: pnpm exec electron-builder --win nsis --publish never
 
       - name: Attach the installer to the GitHub Release

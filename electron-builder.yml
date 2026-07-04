@@ -6,6 +6,11 @@ protocols:
 directories:
   buildResources: build
   output: release
+# node-pty is rebuilt for the Electron ABI by @electron/rebuild (see the `dist`
+# script) via node-gyp. electron-builder's own `npm rebuild` path instead runs
+# node-pty's `build` script (`tsc -b`), which fails compiling node-pty's bundled
+# test files — so disable it here and let @electron/rebuild own native rebuilds.
+npmRebuild: false
 files:
   - out/**
   - package.json
