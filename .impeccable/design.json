@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-04T00:00:00.000Z",
+  "title": "Design System: SeniorDev",
+  "extensions": {
+    "colorMeta": {
+      "teal": { "role": "primary", "displayName": "Courier Teal", "canonical": "oklch(0.78 0.085 168)", "tonalRamp": ["oklch(0.30 0.05 168)", "oklch(0.40 0.065 168)", "oklch(0.50 0.075 168)", "oklch(0.60 0.082 168)", "oklch(0.70 0.085 168)", "oklch(0.78 0.085 168)", "oklch(0.86 0.06 168)", "oklch(0.94 0.03 168)"] },
+      "green": { "role": "secondary", "displayName": "Signal Green", "canonical": "oklch(0.79 0.11 155)", "tonalRamp": ["oklch(0.30 0.06 155)", "oklch(0.40 0.08 155)", "oklch(0.50 0.095 155)", "oklch(0.60 0.105 155)", "oklch(0.70 0.11 155)", "oklch(0.79 0.11 155)", "oklch(0.87 0.075 155)", "oklch(0.94 0.035 155)"] },
+      "amber": { "role": "secondary", "displayName": "Attention Amber", "canonical": "oklch(0.80 0.115 68)", "tonalRamp": ["oklch(0.32 0.06 68)", "oklch(0.42 0.08 68)", "oklch(0.52 0.10 68)", "oklch(0.62 0.11 68)", "oklch(0.72 0.115 68)", "oklch(0.80 0.115 68)", "oklch(0.88 0.08 68)", "oklch(0.95 0.04 68)"] },
+      "tan": { "role": "tertiary", "displayName": "Worn Tan", "canonical": "oklch(0.77 0.045 78)", "tonalRamp": ["oklch(0.32 0.025 78)", "oklch(0.42 0.03 78)", "oklch(0.52 0.035 78)", "oklch(0.62 0.04 78)", "oklch(0.70 0.045 78)", "oklch(0.77 0.045 78)", "oklch(0.86 0.03 78)", "oklch(0.94 0.015 78)"] },
+      "rust": { "role": "tertiary", "displayName": "Alarm Rust", "canonical": "oklch(0.68 0.15 38)", "tonalRamp": ["oklch(0.28 0.08 38)", "oklch(0.38 0.10 38)", "oklch(0.48 0.12 38)", "oklch(0.58 0.14 38)", "oklch(0.68 0.15 38)", "oklch(0.76 0.13 38)", "oklch(0.85 0.09 38)", "oklch(0.93 0.045 38)"] },
+      "bg": { "role": "neutral", "displayName": "Room Charcoal", "canonical": "oklch(0.21 0.012 165)", "tonalRamp": ["oklch(0.16 0.010 165)", "oklch(0.21 0.012 165)", "oklch(0.255 0.014 165)", "oklch(0.305 0.016 165)", "oklch(0.42 0.014 165)", "oklch(0.58 0.012 140)", "oklch(0.75 0.010 130)", "oklch(0.95 0.008 95)"] },
+      "ink": { "role": "neutral", "displayName": "Bright Ink", "canonical": "oklch(0.95 0.008 95)", "tonalRamp": ["oklch(0.55 0.014 140)", "oklch(0.62 0.014 140)", "oklch(0.70 0.014 140)", "oklch(0.78 0.012 125)", "oklch(0.82 0.012 120)", "oklch(0.88 0.010 105)", "oklch(0.92 0.009 98)", "oklch(0.95 0.008 95)"] }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "Title", "purpose": "Modal and section headers; the size ceiling (15px)." },
+      "body": { "displayName": "Body", "purpose": "Default UI text and ticket prose (14px / 1.55)." },
+      "label": { "displayName": "Label", "purpose": "Buttons, tab labels, status lines (13px / 600)." },
+      "mono": { "displayName": "Mono", "purpose": "Terminals, YOLO log, tool one-liners (Consolas 13px)." }
+    },
+    "shadows": [
+      { "name": "ambient-lift", "value": "0 1px 3px oklch(0 0 0 / 0.3)", "purpose": "Subtle lift on raised-but-inline elements: active tabs, success cards." },
+      { "name": "overlay", "value": "0 20px 60px oklch(0 0 0 / 0.45)", "purpose": "Modals only — floats the dialog above a dimmed room." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Default easing for all state transitions (the --ease-out token)." },
+      { "name": "state-feedback", "value": "120ms", "purpose": "Duration for interactive state changes (seam lift, hover)." },
+      { "name": "empty-enter", "value": "0.45s", "purpose": "Fade-up on empty-state entry; disabled under prefers-reduced-motion." }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single key action per surface (Open, Resume). Teal fill, dark ink.",
+      "html": "<button class=\"ds-btn-primary\">Open</button>",
+      "css": ".ds-btn-primary { background: var(--teal, oklch(0.78 0.085 168)); color: var(--bg, oklch(0.21 0.012 165)); border: 0; border-radius: 8px; padding: 6px 14px; font: 600 13px \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; cursor: pointer; transition: filter 120ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-primary:hover { filter: brightness(1.06); } .ds-btn-primary:focus-visible { outline: 2px solid var(--ink, oklch(0.95 0.008 95)); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Lower-priority / destructive-adjacent action (Stop). Ghost with hairline border.",
+      "html": "<button class=\"ds-btn-secondary\">Stop</button>",
+      "css": ".ds-btn-secondary { background: transparent; color: var(--ink-soft, oklch(0.82 0.012 120)); border: 1px solid var(--hairline-strong, oklch(1 0 0 / 0.14)); border-radius: 8px; padding: 6px 14px; font: 600 13px \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; cursor: pointer; transition: color 120ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-secondary:hover { color: var(--ink, oklch(0.95 0.008 95)); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--ink, oklch(0.95 0.008 95)); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "The ticket-key opener and config fields. Surface fill, teal focus ring.",
+      "html": "<input class=\"ds-input\" placeholder=\"PROJ-123\" />",
+      "css": ".ds-input { background: var(--surface, oklch(0.255 0.014 165)); color: var(--ink, oklch(0.95 0.008 95)); border: 1px solid var(--hairline-strong, oklch(1 0 0 / 0.14)); border-radius: 8px; padding: 6px 10px; font: 400 14px \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; } .ds-input::placeholder { color: var(--ink-muted, oklch(0.70 0.014 140)); } .ds-input:focus-visible { outline: 2px solid var(--teal, oklch(0.78 0.085 168)); outline-offset: 1px; border-color: transparent; }"
+    },
+    {
+      "name": "Tab",
+      "kind": "nav",
+      "refersTo": "tab",
+      "description": "Ticket / session tabs. Top-rounded, sits into the panel below; active lifts to surface-2.",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab ds-tab--active\">SD-5<span class=\"ds-tab__x\">×</span></button><button class=\"ds-tab\">SD-6<span class=\"ds-tab__x\">×</span></button></div>",
+      "css": ".ds-tabs { display: flex; gap: 4px; } .ds-tab { display: inline-flex; align-items: center; gap: 6px; background: var(--surface, oklch(0.255 0.014 165)); color: var(--ink-soft, oklch(0.82 0.012 120)); border: 1px solid var(--hairline, oklch(1 0 0 / 0.08)); border-bottom: 0; border-radius: 8px 8px 0 0; padding: 5px 10px; font: 600 13px \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; cursor: pointer; } .ds-tab--active { background: var(--surface-2, oklch(0.305 0.016 165)); color: var(--ink, oklch(0.95 0.008 95)); box-shadow: 0 1px 3px oklch(0 0 0 / 0.3); } .ds-tab__x { color: var(--ink-muted, oklch(0.70 0.014 140)); } .ds-tab:hover .ds-tab__x { color: var(--ink, oklch(0.95 0.008 95)); }"
+    },
+    {
+      "name": "Success (PR) Card",
+      "kind": "card",
+      "refersTo": "success-card",
+      "description": "Surfaced when a YOLO run opens a PR/MR. The one place green tints a surface.",
+      "html": "<div class=\"ds-pr-card\"><span class=\"ds-pr-card__label\">✅ PR ready</span><button class=\"ds-pr-card__open\">Open</button></div>",
+      "css": ".ds-pr-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; background: color-mix(in oklch, var(--green, oklch(0.79 0.11 155)) 14%, var(--surface, oklch(0.255 0.014 165))); border: 1px solid color-mix(in oklch, var(--green, oklch(0.79 0.11 155)) 40%, var(--hairline-strong, oklch(1 0 0 / 0.14))); border-radius: 8px; box-shadow: 0 1px 3px oklch(0 0 0 / 0.3); } .ds-pr-card__label { color: var(--ink, oklch(0.95 0.008 95)); font: 600 13px \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; } .ds-pr-card__open { background: var(--teal, oklch(0.78 0.085 168)); color: var(--bg, oklch(0.21 0.012 165)); border: 0; border-radius: 8px; padding: 5px 14px; font: 600 13px \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; cursor: pointer; } .ds-pr-card__open:focus-visible { outline: 2px solid var(--ink, oklch(0.95 0.008 95)); outline-offset: 2px; }"
+    },
+    {
+      "name": "Modal",
+      "kind": "custom",
+      "refersTo": "modal",
+      "description": "Config editors, About, confirm gates. surface-2 dialog with Overlay shadow over a scrim.",
+      "html": "<div class=\"ds-modal\"><header class=\"ds-modal__head\"><h2>About SeniorDev</h2><button class=\"ds-modal__x\" aria-label=\"Close\">×</button></header><div class=\"ds-modal__body\">Application name, version, and credits.</div></div>",
+      "css": ".ds-modal { display: flex; flex-direction: column; min-width: 420px; max-width: min(860px, 92vw); max-height: 88vh; background: var(--surface-2, oklch(0.305 0.016 165)); color: var(--ink, oklch(0.95 0.008 95)); border: 1px solid var(--hairline-strong, oklch(1 0 0 / 0.14)); border-radius: 8px; box-shadow: 0 20px 60px oklch(0 0 0 / 0.45); } .ds-modal__head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--hairline, oklch(1 0 0 / 0.08)); } .ds-modal__head h2 { margin: 0; font: 600 15px \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; } .ds-modal__x { background: transparent; border: 0; color: var(--ink-muted, oklch(0.70 0.014 140)); font-size: 18px; cursor: pointer; } .ds-modal__x:hover { color: var(--ink, oklch(0.95 0.008 95)); } .ds-modal__body { padding: 14px 16px; font: 400 14px \"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif; }"
+    },
+    {
+      "name": "YOLO Log Line",
+      "kind": "custom",
+      "refersTo": "mono",
+      "description": "The machine's voice — headless agent output and tool one-liners in Consolas mono.",
+      "html": "<pre class=\"ds-log\">▸ Edit src/foo.ts\n▸ Bash pnpm test\n✅ PR ready — https://github.com/org/repo/pull/42</pre>",
+      "css": ".ds-log { margin: 0; padding: 8px 10px; background: #1a1f1d; color: var(--ink, oklch(0.95 0.008 95)); border-radius: 8px; font: 400 13px Consolas, monospace; line-height: 1.4; white-space: pre-wrap; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Control Room",
+    "overview": "SeniorDev is a dark, legible operations surface where a developer supervises machine work. Two tabbed panels — a Jira ticket reader and a live CLI-agent terminal multiplexer — sit side by side, and every autonomous run is watchable and traceable: a scrolling log, tool one-liners, PR cards, a structured recap. The room is dim so the work is bright. Surfaces are a warm near-neutral charcoal, text is a warm off-white, and a single restrained teal accent marks the one action that matters on any surface. The system reads as capable, quietly confident, and transparent — a senior teammate, not a control panel. It rejects the enterprise dashboard, the toy, the maximal IDE, and the flashy. Components carry a tactile, confident weight without ever raising their voice. Depth is built from tone before shadow: three flat charcoal planes stack by lightness, hairlines draw the seams, and a soft ambient shadow lifts genuinely-raised elements.",
+    "keyCharacteristics": [
+      "Dark warm-charcoal canvas, warm off-white ink, one rare teal accent.",
+      "OKLCH throughout — the palette is authored and reasoned in OKLCH, not hex.",
+      "Flat tonal layering (bg/surface/surface-2) plus hairlines; shadow used sparingly for lift.",
+      "Semantic color vocabulary: teal (primary/active), green (success), amber (attention), rust (error).",
+      "Consumer sans for UI (Segoe UI Variable), Consolas mono for all terminal/log surfaces.",
+      "Density where the task earns it; calm everywhere else."
+    ],
+    "rules": [
+      { "name": "The One Signal Rule", "body": "Teal marks exactly one primary action per surface. If two teal buttons compete on a screen, one is wrong — demote it to the secondary (ghost) treatment.", "section": "colors" },
+      { "name": "The Color-Is-State Rule", "body": "Green, amber, and rust may only appear as state (success / attention / error), never as decoration or brand flavor. State is never conveyed by color alone — always pair it with text, icon, or shape.", "section": "colors" },
+      { "name": "The Fixed-Scale Rule", "body": "Type sizes are fixed px/rem, never clamp(). Users view at consistent DPI; a fluid heading that shrinks in a panel is a regression, not a feature.", "section": "typography" },
+      { "name": "The One-Family Rule", "body": "Segoe UI Variable for everything the human reads; Consolas for everything the machine emits. No third face, no display font in UI chrome.", "section": "typography" },
+      { "name": "The Tone-First Rule", "body": "Reach for a lighter plane before a shadow. Shadow is for lift and overlay, not for separating adjacent panels — that's the hairline's job.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do author every color in OKLCH; the frontmatter values are the source of truth.",
+      "Do keep teal to one primary action per surface (The One Signal Rule).",
+      "Do convey depth with the tonal planes (bg/surface/surface-2) and hairlines first; reach for Ambient Lift only to raise a card or active tab.",
+      "Do give every interactive element a visible outline focus state — the tool is keyboard-first.",
+      "Do honor prefers-reduced-motion on every animation with a crossfade or instant fallback.",
+      "Do pair state color with text/icon/shape; never rely on color alone.",
+      "Do keep type at fixed px sizes and a single sans; Consolas for machine output.",
+      "Do verify ink-muted body/placeholder text clears 4.5:1 on its plane."
+    ],
+    "donts": [
+      "Don't build a generic SaaS dashboard: no card grids, hero-metric tiles, or gradient accents.",
+      "Don't make it consumer-cute or toy-like — the raccoon is a moment, not a theme.",
+      "Don't pile on heavy IDE chrome: no cluttered toolbars, deeply nested panels, or config-overload.",
+      "Don't add flashy or over-animated flourishes: no choreographed page loads, decorative motion, or glassmorphism.",
+      "Don't use background-clip: text gradient text, or a colored border-left/border-right > 1px as a stripe accent.",
+      "Don't use green/amber/rust as decoration — they are state only.",
+      "Don't use clamp() / fluid type or a display font anywhere in UI chrome.",
+      "Don't reach for a modal first; exhaust inline and progressive alternatives."
+    ]
+  }
+}
