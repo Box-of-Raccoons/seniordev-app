@@ -37,6 +37,16 @@ function bundledPromptsDir(): string {
     : join(app.getAppPath(), 'resources', 'prompts')
 }
 
+// The app logo for the running window/taskbar. electron-builder sets the packaged
+// installer/exe icon from build/icon.png, but a BrowserWindow with no `icon` shows
+// Electron's default at runtime (notably in dev and on Linux) — so point it at the
+// same logo, shipped to <resourcesPath>/assets in packaged builds (extraResources).
+function appIconPath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'assets', 'icon.png')
+    : join(app.getAppPath(), 'assets', 'icon.png')
+}
+
 const store = new ConfigStore(resolveConfigPath())
 
 let terminals: TerminalManager | null = null
@@ -58,6 +68,14 @@ function createWindow(minimized = false): void {
     width: 1400,
     height: 900,
     show: false,
+    // Show the SeniorDev logo (not Electron's default) on the window/taskbar at
+    // runtime. Ignored on macOS (the .app bundle icon wins); matters on Windows
+    // dev and Linux. See SD-2.
+    icon: appIconPath(),
+    // Paint the dark theme background (--bg) behind the renderer so any uncovered
+    // frame between launch and first paint matches the UI instead of flashing
+    // white. #131a17 is the sRGB form of oklch(0.21 0.012 165). See SD-2.
+    backgroundColor: '#131a17',
     // sandbox:false is required for the ESM (.mjs) preload — sandboxed preloads
     // must be CJS. Don't "fix" this to true without also converting the preload.
     webPreferences: { preload: join(__dirname, '../preload/index.mjs'), sandbox: false }

@@ -18,6 +18,9 @@ export default defineConfig({
   renderer: {
     root: 'src/renderer',
     resolve: { alias: { '@': resolve('src/renderer/src') } },
+    // The copyright/build year, frozen at compile time so "built {year}" is literally
+    // the year this bundle was produced (see Splash.vue / AboutModal.vue).
+    define: { __BUILD_YEAR__: JSON.stringify(String(new Date().getFullYear())) },
     build: { rollupOptions: { input: resolve('src/renderer/index.html') } },
     plugins: [vue()]
   }

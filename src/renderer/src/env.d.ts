@@ -5,6 +5,8 @@ declare global {
   interface Window {
     api: Api
   }
+  /** Copyright/build year, injected at build time via Vite `define`. */
+  const __BUILD_YEAR__: string
 }
 
 export {}

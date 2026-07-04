@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import App from './App.vue'
 import type { DeepLink, MenuAction } from '../../shared/ipc'
@@ -146,6 +146,23 @@ describe('App menu wiring', () => {
     menuCb('about') // ignored while confirm is open
     await flushPromises()
     expect(w.findComponent({ name: 'AboutModal' }).exists()).toBe(false)
+  })
+})
+
+describe('App boot splash', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('shows the splash on mount, then dismisses it after startup settles', async () => {
+    const w = mountApp()
+    // Present from the first paint, before startup has resolved.
+    expect(w.findComponent({ name: 'Splash' }).exists()).toBe(true)
+    // Startup resolves → the finally-block calls splashReady(); run out the
+    // minimum-visible timer (and the transition-leave fallback) to dismiss it.
+    await flushPromises()
+    vi.runAllTimers()
+    await flushPromises()
+    expect(w.findComponent({ name: 'Splash' }).exists()).toBe(false)
   })
 })
 
