@@ -6,6 +6,8 @@ import mascotUrl from '../assets/mascot.png'
 import type { AppInfo } from '../../../shared/ipc'
 const emit = defineEmits<{ (e: 'close'): void }>()
 const info = ref<AppInfo | null>(null)
+// Same build-time year as the boot splash, so the two credit lines never drift.
+const buildYear = __BUILD_YEAR__
 onMounted(async () => {
   try { info.value = await window.api.getAppInfo() } catch { info.value = { name: 'SeniorDev', version: '?' } }
 })
@@ -17,7 +19,7 @@ onMounted(async () => {
       <div class="about__text">
         <p class="about__name">{{ info?.name ?? '…' }}</p>
         <p class="about__version">v{{ info?.version ?? '…' }}</p>
-        <p class="about__credit">By Box of Raccoons LLC, 2026</p>
+        <p class="about__credit">By Box of Raccoons LLC, {{ buildYear }}</p>
       </div>
       <img class="about__mascot" :src="mascotUrl" alt="Box of Raccoons mascot" />
     </div>

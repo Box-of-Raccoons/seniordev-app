@@ -15,7 +15,7 @@ export interface SplashOptions {
   now?: () => number
 }
 
-export const SPLASH_DEFAULTS = { minVisibleMs: 600, maxVisibleMs: 8000 } as const
+export const SPLASH_DEFAULTS = { minVisibleMs: 3000, maxVisibleMs: 8000 } as const
 
 /**
  * Drives the boot splash lifecycle. The splash starts visible (it is part of the

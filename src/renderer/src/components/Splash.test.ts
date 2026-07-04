@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
 import Splash from './Splash.vue'
+
+beforeEach(() => {
+  ;(window as unknown as { api: unknown }).api = {
+    getAppInfo: vi.fn().mockResolvedValue({ name: 'SeniorDev', version: '1.2.3' })
+  }
+})
 
 describe('Splash', () => {
   it('renders the branded art with its natural aspect ratio declared', () => {
@@ -18,5 +24,21 @@ describe('Splash', () => {
     const root = mount(Splash).get('.splash')
     expect(root.attributes('role')).toBe('status')
     expect(root.attributes('aria-label')).toContain('starting')
+  })
+
+  it('overlays the wordmark, version, and build-year credit on the art', async () => {
+    const w = mount(Splash)
+    expect(w.get('.splash__wordmark').text()).toBe('SeniorDev')
+    // Version fills in from getAppInfo once it resolves.
+    await flushPromises()
+    expect(w.get('.splash__version').text()).toBe('version 1.2.3')
+    // __BUILD_YEAR__ is frozen to '2026' under test (see vitest.config.ts).
+    expect(w.get('.splash__credit').text()).toBe('Box of Raccoons LLC, 2026')
+  })
+
+  it('shows a placeholder version until app info resolves', () => {
+    // Before flushPromises the getAppInfo promise is still pending.
+    const w = mount(Splash)
+    expect(w.get('.splash__version').text()).toBe('version …')
   })
 })
