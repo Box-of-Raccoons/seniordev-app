@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Ticket } from '../../../shared/types'
-import { renderAdfToHtml } from '../adf/renderToHtml'
+import { renderAdfToHtml, isWebOrMailUrl } from '../adf/renderToHtml'
 
 const props = defineProps<{ ticket: Ticket }>()
 const bodyHtml = computed(() => renderAdfToHtml(props.ticket.descriptionAdf))
+// Defense in depth: ticket.url is config-derived today, but guard the scheme
+// anyway so a bad value can't become a javascript: link (SD-9 low #6).
+const safeTicketUrl = computed(() => (isWebOrMailUrl(props.ticket.url) ? props.ticket.url : '#'))
 </script>
 
 <template>
   <article class="ticket">
     <header class="ticket__head">
-      <a class="ticket__key" :href="ticket.url" target="_blank" rel="noreferrer noopener">{{ ticket.key }}</a>
+      <a class="ticket__key" :href="safeTicketUrl" target="_blank" rel="noreferrer noopener">{{ ticket.key }}</a>
       <span class="ticket__type">{{ ticket.type }}</span>
       <span class="ticket__status">{{ ticket.status }}</span>
     </header>

@@ -17,13 +17,18 @@ export interface DispatcherDeps {
   search: (jql: string) => Promise<Ticket[]>
   transition: (key: string, name: string) => Promise<void>
   // Launch the SeniorDev app to run the Jira Orchestrator on this ticket in a
-  // visible, watchable tab. Fire-and-forget — the app owns the run ("no invisible
-  // work"). The app resolves the repo cwd from the same config.repos.
-  launch: (ticket: Ticket) => void
+  // visible, watchable tab. The app owns the run ("no invisible work") and
+  // resolves the repo cwd from the same config.repos. Resolves once the child
+  // has spawned; REJECTS if it fails to spawn (ENOENT/EPERM/AV) so the dispatcher
+  // can avoid recording a run that never started (SD-9 B1).
+  launch: (ticket: Ticket) => void | Promise<void>
   state: WatchState
   notify: (n: WatchNotification) => void
   isAuto: () => boolean
   now: () => string
+  // Called when the pending-approval set changes outside a poll (e.g. an approval
+  // from a notification click) so the tray menu can refresh (SD-9 low #2).
+  onChange?: () => void
 }
 
 // Poll → filter (deduped by state + in-flight + pending) → enqueue (auto) or hold
@@ -63,6 +68,14 @@ export class WatchDispatcher {
         this.deps.notify({ title: 'Jira poll failed', body: this.msg(err) })
         return
       }
+      // Prune approvals for tickets that no longer match the query — they were
+      // handled, reassigned, or moved out of the trigger status elsewhere, so a
+      // stale "Approve X?" entry would dispatch something no longer wanted
+      // (SD-9 low #3). runPoll refreshes the tray right after this poll.
+      const present = new Set(tickets.map((t) => t.key))
+      for (const key of [...this.pending.keys()]) {
+        if (!present.has(key)) this.pending.delete(key)
+      }
       for (const t of tickets) {
         const key = t.key
         if (this.deps.state.has(key) || this.inFlight.has(key) || this.pending.has(key)) continue
@@ -88,6 +101,9 @@ export class WatchDispatcher {
     if (!ticket) return
     this.pending.delete(key)
     this.enqueue(ticket)
+    // A notification-click approval happens outside a poll; nudge the tray so its
+    // pending count/submenu don't go stale (SD-9 low #2).
+    this.deps.onChange?.()
   }
 
   private enqueue(ticket: Ticket): void {
@@ -102,10 +118,16 @@ export class WatchDispatcher {
     try {
       // Defense-in-depth: never dispatch a ticket already recorded.
       if (this.deps.state.has(key)) return
-      // Launch first, then commit (record + transition) so the ticket leaves the
-      // query. Recording after a successful launch call — launch is synchronous
-      // fire-and-forget; the app then runs it live.
-      this.deps.launch(ticket)
+      // Launch and wait for the child to actually spawn before committing. If it
+      // fails to spawn, nothing is recorded or transitioned, so the ticket stays
+      // in the query and the next poll re-dispatches it — no stranded ticket, no
+      // uncaught 'error' crashing the tray (SD-9 B1).
+      try {
+        await this.deps.launch(ticket)
+      } catch (err) {
+        this.deps.notify({ title: `Launch failed: ${key}`, body: this.msg(err), ticketKey: key })
+        return
+      }
       this.deps.state.record(key, 'spawned', this.deps.now())
       try {
         await this.deps.transition(key, this.deps.config().watch.transitionOnDispatch)

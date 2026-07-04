@@ -23,3 +23,7 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Local AI-session state
+.claude/
+.superpowers/

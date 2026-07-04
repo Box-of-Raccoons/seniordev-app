@@ -93,6 +93,33 @@ describe('WatchDispatcher', () => {
     expect(deps.launch).toHaveBeenCalledTimes(1)
   })
 
+  it('approve() fires onChange so the tray can refresh outside a poll (SD-9 low #2)', async () => {
+    const onChange = vi.fn()
+    const { deps } = makeDeps({ isAuto: () => false, onChange })
+    const d = new WatchDispatcher(deps)
+    await d.poll()
+    await settle()
+    onChange.mockClear()
+    d.approve('SD-1')
+    expect(onChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('prunes a pending approval once the ticket stops matching the query (SD-9 low #3)', async () => {
+    let results: Ticket[] = [ticket('SD-1')]
+    const { deps } = makeDeps({ isAuto: () => false, search: async () => results })
+    const d = new WatchDispatcher(deps)
+    await d.poll()
+    await settle()
+    expect(d.pendingApprovals()).toEqual([{ key: 'SD-1', summary: 'sum SD-1' }])
+    // Next poll no longer returns SD-1 → the stale approval is dropped, not left
+    // to dispatch something no longer wanted.
+    results = []
+    await d.poll()
+    await settle()
+    expect(d.pendingApprovals()).toEqual([])
+    expect(deps.launch).not.toHaveBeenCalled()
+  })
+
   it('search failure: notify, no crash', async () => {
     const { deps, notes } = makeDeps({ search: async () => { throw new Error('boom') } })
     await new WatchDispatcher(deps).poll()
@@ -113,5 +140,26 @@ describe('WatchDispatcher', () => {
     await new WatchDispatcher(deps).poll()
     await settle()
     expect(notes.some((n) => n.body.includes('spawn failed'))).toBe(true)
+  })
+
+  it('launch rejecting (async spawn error) is notified, not recorded, and re-dispatches next poll (SD-9 B1)', async () => {
+    // First attempt fails to spawn (ENOENT), second succeeds — mirrors an AV/EPERM
+    // hiccup clearing on retry. The failed attempt must strand nothing.
+    const launch = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('ENOENT'))
+      .mockResolvedValueOnce(undefined)
+    const { deps, notes } = makeDeps({ launch })
+    const d = new WatchDispatcher(deps)
+    await d.poll()
+    await settle()
+    expect(notes.some((n) => n.title.includes('Launch failed'))).toBe(true)
+    expect(deps.state.has('SD-1')).toBe(false) // not recorded → still in the query
+    expect(deps.transition).not.toHaveBeenCalled() // never transitioned on failure
+
+    await d.poll()
+    await settle()
+    expect(launch).toHaveBeenCalledTimes(2) // re-dispatched on the next poll
+    expect(deps.state.has('SD-1')).toBe(true) // the successful retry committed
   })
 })

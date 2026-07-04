@@ -13,6 +13,11 @@ let fit: FitAddon | null = null
 let offData: (() => void) | null = null
 let offExit: (() => void) | null = null
 let ro: ResizeObserver | null = null
+// The tab can close during the awaited spawn round-trip below; onBeforeUnmount
+// then disposes term and nulls host. This flag lets the async onMounted bail
+// before touching a disposed terminal or a gone host (SD-9 B2; same guard as
+// OrchestratorView).
+let unmounted = false
 
 onMounted(async () => {
   term = new Terminal({ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE, cursorBlink: true, theme: { background: TERM_BG } })
@@ -44,19 +49,26 @@ onMounted(async () => {
       resume: props.resume ? { sessionId: props.resume.sessionId } : undefined,
       tool: props.tool
     })
+    // Closed mid-spawn → term is already disposed; don't write to it.
+    if (unmounted) return
     if (!res.ok) term.write(`\r\n[failed to start: ${res.error}]\r\n`)
   } catch (err) {
+    if (unmounted) return
     term.write(`\r\n[failed to start: ${err instanceof Error ? err.message : String(err)}]\r\n`)
   }
 
+  // Same guard before wiring the observer: a null host would throw and a late
+  // observer would leak past unmount.
+  if (unmounted || !host.value) return
   ro = new ResizeObserver(() => {
     fit?.fit()
     if (term) window.api.resizeTerminal(props.id, term.cols, term.rows)
   })
-  ro.observe(host.value!)
+  ro.observe(host.value)
 })
 
 onBeforeUnmount(() => {
+  unmounted = true
   offData?.()
   offExit?.()
   ro?.disconnect()

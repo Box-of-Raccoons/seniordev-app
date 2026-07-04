@@ -2,7 +2,11 @@ import type { Ticket } from './types'
 
 export type GetTicketResult = { ok: true; ticket: Ticket } | { ok: false; error: string }
 
-export const IPC = { getTicket: 'jira:getTicket' } as const
+// The configured repo a ticket's project maps to, or null when nothing maps —
+// used by the deep-link YOLO confirm gate to refuse "guess-and-run" (SD-9 S2).
+export type RepoResolution = { key: string; path: string; tool: string } | null
+
+export const IPC = { getTicket: 'jira:getTicket', resolveRepo: 'jira:resolveRepo' } as const
 
 export interface SpawnTerminalRequest {
   id: string

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { WatchState } from './state'
@@ -39,6 +39,17 @@ describe('WatchState', () => {
     s.record('SD-3', 'spawned', 'now')
     require('node:fs').writeFileSync(path, 'not json', 'utf8')
     expect(new WatchState(path).has('SD-3')).toBe(false)
+  })
+
+  it('renames a corrupt file aside and reports the backup path (SD-9 low #1)', () => {
+    writeFileSync(path, '{ broken json', 'utf8')
+    const s = new WatchState(path)
+    expect(s.corruptedBackupPath).toBe(`${path}.corrupt`)
+    expect(existsSync(`${path}.corrupt`)).toBe(true)
+    expect(readFileSync(`${path}.corrupt`, 'utf8')).toBe('{ broken json')
+    expect(s.has('anything')).toBe(false)
+    // The corrupt original was moved aside, so a subsequent boot is clean.
+    expect(new WatchState(path).corruptedBackupPath).toBeNull()
   })
 
   it('writes valid JSON', () => {

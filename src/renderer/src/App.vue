@@ -9,7 +9,7 @@ import ConfirmDialog from './components/ConfirmDialog.vue'
 import Splash from './components/Splash.vue'
 import { useResizableSplit } from './composables/useResizableSplit'
 import { useSplash } from './composables/useSplash'
-import type { MenuAction, DeepLink } from '../../shared/ipc'
+import type { MenuAction, DeepLink, RepoResolution } from '../../shared/ipc'
 
 const activeTicketKey = ref<string | null>(null)
 const leftPanel = ref<InstanceType<typeof LeftPanel> | null>(null)
@@ -20,7 +20,13 @@ const { leftStyle, leftPercent, dragging, onPointerDown, onKeydown } = useResiza
 const { visible: splashVisible, ready: splashReady } = useSplash()
 const modal = ref<'about' | 'app-config' | 'prompt-config' | null>(null)
 const confirmReset = ref(false)
-const orchestratorAsk = ref<{ key: string; summary: string } | null>(null)
+const orchestratorAsk = ref<{
+  key: string
+  summary: string
+  fromDeepLink: boolean
+  repo: RepoResolution
+  blocked?: string
+} | null>(null)
 let offMenu: (() => void) | null = null
 let offDeepLink: (() => void) | null = null
 let offOrchestrate: (() => void) | null = null
@@ -48,27 +54,45 @@ function doReset(): void {
 }
 
 const orchestratorMessage = computed(() => {
-  if (!orchestratorAsk.value) return ''
-  const { key, summary } = orchestratorAsk.value
-  return `Run Jira Orchestrator on ${key}${summary ? ` — "${summary}"` : ''}? It will pick a playbook and run it autonomously.`
+  const a = orchestratorAsk.value
+  if (!a) return ''
+  if (a.blocked) return a.blocked
+  // Provenance first: a YOLO run started by an external link must announce itself
+  // so the developer never confirms one thinking they initiated it (SD-9 S2).
+  const provenance = a.fromDeepLink ? '⚠ Triggered by an external link.\n\n' : ''
+  const where = a.repo ? `\n\nTool: ${a.repo.tool} · Repo: ${a.repo.path}` : ''
+  return `${provenance}Run Jira Orchestrator on ${a.key}${a.summary ? ` — "${a.summary}"` : ''}? It will pick a playbook and run it autonomously.${where}`
 })
 
-async function requestOrchestrator(key: string): Promise<void> {
+async function requestOrchestrator(key: string, fromDeepLink = false): Promise<void> {
   const r = await window.api.getTicket(key)
   const summary = r.ok ? r.ticket.summary : ''
-  orchestratorAsk.value = { key, summary }
+  const repo = await window.api.resolveRepo(key)
+  // Refuse a deep-link YOLO whose project maps to no configured repo — running it
+  // would fall back to the home dir. Confirm or refuse with a reason, never
+  // guess-and-run (SD-9 S2; design principle #2).
+  if (fromDeepLink && !repo) {
+    const project = key.split('-')[0]
+    orchestratorAsk.value = {
+      key, summary, fromDeepLink, repo: null,
+      blocked: `No configured repo maps to project ${project}, so SeniorDev won't run an autonomous session for ${key} triggered by an external link. Add a repo for ${project} in config, then retry.`
+    }
+    return
+  }
+  orchestratorAsk.value = { key, summary, fromDeepLink, repo }
 }
 
 function confirmOrchestrator(): void {
-  if (!orchestratorAsk.value) return
-  rightPanel.value?.startOrchestrator(orchestratorAsk.value.key)
+  const a = orchestratorAsk.value
+  if (!a || a.blocked) return
+  rightPanel.value?.startOrchestrator(a.key)
   orchestratorAsk.value = null
 }
 
 async function handleDeepLink(link: DeepLink): Promise<void> {
   await leftPanel.value?.openTickets([link.ticket])
   activeTicketKey.value = link.ticket
-  if (link.action === 'yolo') await requestOrchestrator(link.ticket)
+  if (link.action === 'yolo') await requestOrchestrator(link.ticket, true)
 }
 
 // SeniorDevWatch (--orchestrate / warm ORCHESTRATOR.run): open the ticket and run
@@ -93,7 +117,7 @@ onMounted(async () => {
       activeTicketKey.value = startup.tickets[0]
     }
     if (startup.session) rightPanel.value?.startStartupSession(startup.session)
-    if (startup.deeplink) await requestOrchestrator(startup.deeplink.ticket)
+    if (startup.deeplink) await requestOrchestrator(startup.deeplink.ticket, true)
     if (startup.orchestrate) await runOrchestratorNow(startup.orchestrate)
   } catch (err) {
     // Startup is best-effort: fall back to an empty workbench the user drives manually.
@@ -143,8 +167,9 @@ onBeforeUnmount(() => {
   />
   <ConfirmDialog
     v-if="orchestratorAsk !== null"
-    title="Jira Orchestrator"
+    :title="orchestratorAsk.blocked ? 'YOLO refused' : 'Jira Orchestrator'"
     :message="orchestratorMessage"
+    :hide-confirm="!!orchestratorAsk.blocked"
     confirm-label="Run"
     @confirm="confirmOrchestrator"
     @cancel="orchestratorAsk = null"

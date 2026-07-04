@@ -3,8 +3,10 @@
 ## Design Context
 
 SeniorDev's strategic design brief lives in [PRODUCT.md](PRODUCT.md); the visual
-system lives in [DESIGN.md](DESIGN.md). Read both before doing UI work. The
-`/impeccable` skill uses them automatically.
+system lives in [DESIGN.md](DESIGN.md). Read both before doing UI work. (The
+maintainer additionally drives these through an internal `/impeccable` design
+skill that isn't part of this repo — PRODUCT.md and DESIGN.md are the source of
+truth and stand on their own.)
 
 **Register:** product (a developer workbench — design serves the task).
 

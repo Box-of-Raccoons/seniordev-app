@@ -8,11 +8,17 @@ function esc(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-// Only allow web/mail schemes in emitted hrefs. Neutralize javascript:, data:,
-// vbscript:, etc. to '#' so a hostile ticket can't run script via v-html.
+// The only URL schemes we allow in emitted/bound hrefs. Blocks javascript:,
+// data:, vbscript:, etc. so a hostile ticket can't run script.
+export function isWebOrMailUrl(raw: unknown): boolean {
+  return /^(https?:|mailto:)/i.test(String(raw ?? '').trim())
+}
+
+// Neutralize disallowed schemes to '#' for hrefs built into v-html strings
+// (also HTML-escapes the URL for that string context).
 function safeUrl(raw: unknown): string {
   const url = String(raw ?? '').trim()
-  return /^(https?:|mailto:)/i.test(url) ? esc(url) : '#'
+  return isWebOrMailUrl(url) ? esc(url) : '#'
 }
 
 function renderMarks(text: string, marks: AdfNode['marks']): string {
@@ -46,7 +52,8 @@ function renderNode(node: AdfNode): string {
     case 'hardBreak': return '<br>'
     case 'heading': {
       const lvl = Number(node.attrs?.level)
-      const level = Number.isFinite(lvl) ? Math.min(Math.max(lvl, 1), 6) : 1
+      // Round before clamping: a fractional level would otherwise emit <h2.5>.
+      const level = Number.isFinite(lvl) ? Math.min(Math.max(Math.round(lvl), 1), 6) : 1
       return `<h${level}>${renderNodes(node.content)}</h${level}>`
     }
     case 'bulletList': return `<ul>${renderNodes(node.content)}</ul>`

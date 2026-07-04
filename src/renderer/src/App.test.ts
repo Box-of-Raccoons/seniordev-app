@@ -42,7 +42,7 @@ const stubs = {
   PromptConfigModal: { name: 'PromptConfigModal', template: '<div class="promptcfg-stub" />' },
   ConfirmDialog: {
     name: 'ConfirmDialog',
-    props: ['title', 'message', 'confirmLabel'],
+    props: ['title', 'message', 'confirmLabel', 'hideConfirm'],
     emits: ['confirm', 'cancel'],
     template:
       '<div class="confirm-stub"><button class="confirm-yes" @click="$emit(\'confirm\')" /><button class="confirm-no" @click="$emit(\'cancel\')" /></div>'
@@ -68,6 +68,7 @@ beforeEach(() => {
       return () => {}
     }),
     getTicket: vi.fn().mockResolvedValue({ ok: true, ticket: { key: 'SD-6', summary: 'Fix the thing' } }),
+    resolveRepo: vi.fn().mockResolvedValue({ key: 'SD', path: '/repos/seniordev', tool: 'claude' }),
     getAppInfo: vi.fn().mockResolvedValue({ name: 'SeniorDev', version: '1.0.0' })
   }
 })
@@ -203,6 +204,34 @@ describe('App deep link flow', () => {
     await flushPromises()
     expect(rightStartOrchestrator).toHaveBeenCalledWith('SD-6')
     expect(w.findComponent({ name: 'ConfirmDialog' }).exists()).toBe(false)
+  })
+
+  it('yolo confirm shows external-link provenance and the resolved repo (SD-9 S2)', async () => {
+    const w = mountApp()
+    await flushPromises()
+    deepLinkCb({ action: 'yolo', ticket: 'SD-6' })
+    await flushPromises()
+    const dialog = w.findComponent({ name: 'ConfirmDialog' })
+    expect(dialog.props('message')).toContain('external link')
+    expect(dialog.props('message')).toContain('/repos/seniordev')
+    expect(dialog.props('hideConfirm')).toBeFalsy()
+    expect(window.api.resolveRepo).toHaveBeenCalledWith('SD-6')
+  })
+
+  it('refuses a deep-link yolo whose project maps to no configured repo (SD-9 S2)', async () => {
+    ;(window.api.resolveRepo as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+    const w = mountApp()
+    await flushPromises()
+    deepLinkCb({ action: 'yolo', ticket: 'SD-6' })
+    await flushPromises()
+    const dialog = w.findComponent({ name: 'ConfirmDialog' })
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.props('hideConfirm')).toBe(true)
+    expect(dialog.props('message')).toContain('No configured repo')
+    // Even if a confirm somehow fires, a blocked ask must never start a run.
+    await w.find('.confirm-yes').trigger('click')
+    await flushPromises()
+    expect(rightStartOrchestrator).not.toHaveBeenCalled()
   })
 
   it('declining the confirm runs nothing and keeps the ticket open', async () => {

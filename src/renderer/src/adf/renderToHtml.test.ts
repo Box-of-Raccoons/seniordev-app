@@ -82,6 +82,14 @@ describe('renderAdfToHtml', () => {
     expect(html).not.toContain('hNaN')
   })
 
+  it('rounds a fractional heading level instead of emitting <h2.5> (SD-9 low #5)', () => {
+    const html = renderAdfToHtml(
+      doc([{ type: 'heading', attrs: { level: 2.5 }, content: [{ type: 'text', text: 'T' }] }])
+    )
+    expect(html).toContain('<h3>T</h3>') // 2.5 rounds to 3
+    expect(html).not.toContain('h2.5')
+  })
+
   it('falls back to rendering children for unknown node types', () => {
     const html = renderAdfToHtml(
       doc([{ type: 'someFutureNode', content: [{ type: 'text', text: 'still shown' }] }])

@@ -35,6 +35,19 @@ describe('headless config', () => {
   })
 })
 
+describe('JiraSchema baseUrl (SD-9 S5)', () => {
+  const jira = (baseUrl: string) => ({ jira: { baseUrl, email: 'a@b.co', apiToken: 't' } })
+  it('accepts an https baseUrl', () => {
+    expect(ConfigSchema.parse(jira('https://x.atlassian.net')).jira.baseUrl).toBe('https://x.atlassian.net')
+  })
+  it('rejects an http baseUrl (would leak the token in cleartext)', () => {
+    expect(() => ConfigSchema.parse(jira('http://x.atlassian.net'))).toThrow(/https/)
+  })
+  it('still rejects a non-URL baseUrl', () => {
+    expect(() => ConfigSchema.parse(jira('not-a-url'))).toThrow()
+  })
+})
+
 describe('WatchSchema', () => {
   it('fills defaults when watch is absent (disabled)', () => {
     const cfg = ConfigSchema.parse({ jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' } })
