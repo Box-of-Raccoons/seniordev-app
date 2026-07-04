@@ -25,7 +25,7 @@ Ticket type: {{ticket.type}} · Status: {{ticket.status}}
 
 ## Keeping Jira in sync
 
-Keep {{ticket.key}} in the workflow state that matches your progress. Use the Jira/Atlassian MCP tools: call `getTransitionsForJiraIssue` to find the transition whose **name** matches the target status, then `transitionJiraIssue` with that id — resolve the id by name every time rather than hardcoding a number, since ids differ per board.
+Keep {{ticket.key}} in the workflow state that matches your progress. Use the Jira/Atlassian MCP tools: call `getTransitionsForJiraIssue` to find the transition whose **name** matches the target status, then `transitionJiraIssue` with that id — resolve the id by name every time rather than hardcoding a number, since ids differ per board. These tools need your site's `cloudId`; if you don't already have it, call `getAccessibleAtlassianResources` once and reuse it for every call.
 
 - **Branch created / doc work started →** move the ticket to **In Progress**.
 - **{{forge.term}} opened →** move the ticket to **In Review**, and add a Jira comment (`addCommentToJiraIssue`) summarizing what you did — the docs you updated and what changed — with the {{forge.term}} link.
