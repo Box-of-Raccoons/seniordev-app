@@ -82,7 +82,7 @@ function choose(payload: { prompt?: { name?: string; text?: string } }): void {
       </button>
       <button class="menu-item" @click="customOpen = !customOpen">Custom prompt…</button>
       <form v-if="customOpen" class="custom" @submit.prevent="choose({ prompt: { text: customText } })">
-        <textarea v-model="customText" rows="3" placeholder="Type a first prompt…"></textarea>
+        <textarea v-model="customText" rows="3" aria-label="First prompt" placeholder="Type a first prompt…"></textarea>
         <button class="custom__go" type="submit" :disabled="!customText.trim()">Start</button>
       </form>
     </div>
@@ -100,7 +100,7 @@ function choose(payload: { prompt?: { name?: string; text?: string } }): void {
   position: absolute; right: 0; top: calc(100% + 4px); z-index: 20;
   min-width: 240px; background: var(--surface-2); border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-sm); padding: 4px; display: flex; flex-direction: column; gap: 2px;
-  box-shadow: 0 10px 30px oklch(0 0 0 / 0.35);
+  box-shadow: var(--shadow-popover);
 }
 .menu-item {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px;

@@ -87,16 +87,15 @@ function markExited(id: string): void {
   <section class="right-panel">
     <div class="term-bar">
       <nav class="term-tabs">
-        <button
+        <div
           v-for="t in terms"
           :key="t.id"
           class="term-tab"
           :class="{ 'term-tab--active': t.id === activeId, 'term-tab--dead': t.exited }"
-          @click="activeId = t.id"
         >
-          {{ t.title }}
-          <span class="term-tab__close" @click.stop="closeTerm(t.id)">×</span>
-        </button>
+          <button class="term-tab__label" @click="activeId = t.id">{{ t.title }}</button>
+          <button class="term-tab__close" :aria-label="`Close ${t.title}`" @click="closeTerm(t.id)">×</button>
+        </div>
       </nav>
       <NewSessionMenu @start="startSession" />
     </div>
@@ -146,13 +145,24 @@ function markExited(id: string): void {
 .term-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--hairline); }
 .term-tabs { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
 .term-tab {
+  display: inline-flex; align-items: center;
   background: var(--surface); color: var(--ink-soft);
   border: 1px solid var(--hairline); border-radius: var(--radius-sm);
-  padding: 5px 10px; cursor: pointer;
 }
 .term-tab--active { background: var(--surface-2); color: var(--ink); }
-.term-tab--dead { color: var(--ink-muted); text-decoration: line-through; }
-.term-tab__close { margin-left: 6px; color: var(--ink-muted); }
+.term-tab--dead .term-tab__label { color: var(--ink-muted); text-decoration: line-through; }
+.term-tab__label {
+  background: transparent; border: 0; color: inherit; font: inherit;
+  padding: 5px 4px 5px 10px; cursor: pointer;
+}
+.term-tab__close {
+  background: transparent; border: 0; color: var(--ink-muted); font: inherit; line-height: 1;
+  padding: 5px 8px; cursor: pointer;
+}
+.term-tab__close:hover { color: var(--ink); }
+.term-tab__label:focus-visible, .term-tab__close:focus-visible {
+  outline: 2px solid var(--teal); outline-offset: -2px; border-radius: var(--radius-sm);
+}
 .term-body { flex: 1; position: relative; overflow: hidden; }
 .term-slot { position: absolute; inset: 0; padding: 6px; }
 </style>

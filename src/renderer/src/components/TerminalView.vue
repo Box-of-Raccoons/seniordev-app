@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import { TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
+import { TERM_BG, TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
 
 const props = defineProps<{ id: string; ticketKey: string | null; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string }>()
 const emit = defineEmits<{ (e: 'exited', code: number): void }>()
@@ -15,7 +15,7 @@ let offExit: (() => void) | null = null
 let ro: ResizeObserver | null = null
 
 onMounted(async () => {
-  term = new Terminal({ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE, cursorBlink: true, theme: { background: '#1a1f1d' } })
+  term = new Terminal({ fontFamily: TERM_FONT_FAMILY, fontSize: TERM_FONT_SIZE, cursorBlink: true, theme: { background: TERM_BG } })
   fit = new FitAddon()
   term.loadAddon(fit)
   term.open(host.value!)

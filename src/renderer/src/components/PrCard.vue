@@ -18,7 +18,7 @@ function open(): void {
   display: flex; align-items: center; gap: 10px; justify-content: space-between;
   padding: 8px 12px; background: color-mix(in oklch, var(--green) 14%, var(--surface));
   border: 1px solid color-mix(in oklch, var(--green) 40%, var(--hairline-strong));
-  border-radius: var(--radius-sm); margin: 0 0 6px;
+  border-radius: var(--radius-sm); margin: 0 0 6px; box-shadow: var(--shadow-lift);
 }
 .pr-card__label { color: var(--ink); font-weight: 600; }
 .pr-card__open {

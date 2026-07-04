@@ -73,24 +73,24 @@ const activeTicket = computed<Ticket | undefined>(() =>
     <div class="opener">
       <input
         v-model="keyInput"
+        aria-label="Ticket key"
         placeholder="Ticket key (e.g. PROJ-123)"
         @keyup.enter="openTicket"
       />
       <button @click="openTicket">Open</button>
     </div>
-    <p v-if="error" class="opener__error">{{ error }}</p>
+    <p v-if="error" class="opener__error" role="alert">{{ error }}</p>
 
     <nav class="tabs">
-      <button
+      <div
         v-for="t in tabs"
         :key="t.key"
         class="tab"
         :class="{ 'tab--active': t.key === activeKey }"
-        @click="activeKey = t.key"
       >
-        {{ t.key }}
-        <span class="tab__close" @click.stop="closeTab(t.key)">×</span>
-      </button>
+        <button class="tab__label" @click="activeKey = t.key">{{ t.key }}</button>
+        <button class="tab__close" :aria-label="`Close ${t.key}`" @click="closeTab(t.key)">×</button>
+      </div>
     </nav>
 
     <div class="left-body">
@@ -115,11 +115,23 @@ const activeTicket = computed<Ticket | undefined>(() =>
 .opener__error { color: var(--rust); margin: 6px 10px 0; font-size: 13px; }
 .tabs { display: flex; gap: 4px; padding: 8px 10px 0; flex-wrap: wrap; }
 .tab {
+  display: inline-flex; align-items: center;
   background: var(--surface); color: var(--ink-soft);
   border: 1px solid var(--hairline); border-bottom: 0;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0; padding: 5px 10px; cursor: pointer;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
 .tab--active { background: var(--surface-2); color: var(--ink); }
-.tab__close { margin-left: 6px; color: var(--ink-muted); }
+.tab__label {
+  background: transparent; border: 0; color: inherit; font: inherit;
+  padding: 5px 4px 5px 10px; cursor: pointer;
+}
+.tab__close {
+  background: transparent; border: 0; color: var(--ink-muted); font: inherit; line-height: 1;
+  padding: 5px 8px; cursor: pointer;
+}
+.tab__close:hover { color: var(--ink); }
+.tab__label:focus-visible, .tab__close:focus-visible {
+  outline: 2px solid var(--teal); outline-offset: -2px; border-radius: var(--radius-sm);
+}
 .left-body { flex: 1; overflow: auto; }
 </style>

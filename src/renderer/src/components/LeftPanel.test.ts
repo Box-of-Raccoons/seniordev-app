@@ -82,6 +82,21 @@ describe('LeftPanel', () => {
     expect(w.find('.tab--active').text()).toContain('PROJ-2')
   })
 
+  it('labels the ticket-key input for assistive tech', () => {
+    const w = mount(LeftPanel)
+    expect(w.find('input').attributes('aria-label')).toBe('Ticket key')
+  })
+
+  it('gives each tab a keyboard-operable, labeled close button', async () => {
+    const w = mount(LeftPanel)
+    await open(w, 'PROJ-1')
+    const close = w.find('.tab__close')
+    expect(close.element.tagName).toBe('BUTTON')
+    expect(close.attributes('aria-label')).toBe('Close PROJ-1')
+    await close.trigger('click')
+    expect(w.findAll('.tab')).toHaveLength(0)
+  })
+
   it('shows mascot empty state before any ticket is opened', () => {
     const w = mount(LeftPanel)
     expect(w.text()).toContain('Open a ticket to start')
