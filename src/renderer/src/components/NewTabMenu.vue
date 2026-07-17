@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
-const emit = defineEmits<{ (e: 'pick', payload: { variant: 'agent' | 'terminal'; tool?: string }): void }>()
+const emit = defineEmits<{ (e: 'pick', payload: { variant: 'agent' | 'terminal' }): void }>()
 
 const open = ref(false)
-const tools = ref<string[]>([])
 const wrap = ref<HTMLElement | null>(null)
 const menu = ref<HTMLElement | null>(null)
-let offConfig: (() => void) | null = null
 
 async function toggle(): Promise<void> {
   open.value = !open.value
@@ -32,18 +30,6 @@ function onMenuKeydown(e: KeyboardEvent): void {
   else if (e.key === 'End') { e.preventDefault(); list[list.length - 1]?.focus() }
 }
 
-function cap(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1)
-}
-
-async function refetch(): Promise<void> {
-  try {
-    tools.value = await window.api.listTools()
-  } catch {
-    tools.value = []
-  }
-}
-
 function onPointerDown(e: PointerEvent): void {
   if (open.value && wrap.value && !wrap.value.contains(e.target as Node)) open.value = false
 }
@@ -51,21 +37,20 @@ function onKeyDown(e: KeyboardEvent): void {
   if (e.key === 'Escape') open.value = false
 }
 
-onMounted(async () => {
+onMounted(() => {
   document.addEventListener('pointerdown', onPointerDown)
   document.addEventListener('keydown', onKeyDown)
-  offConfig = window.api.onConfigChanged(() => void refetch())
-  await refetch()
 })
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onPointerDown)
   document.removeEventListener('keydown', onKeyDown)
-  offConfig?.()
 })
 
-function pickTool(tool: string): void {
+// The menu only picks the KIND of session — an AI agent or a raw shell. Which
+// agent CLI (Claude, Codex, …) is chosen later, in the composer's tool picker.
+function pickAgent(): void {
   open.value = false
-  emit('pick', { variant: 'agent', tool })
+  emit('pick', { variant: 'agent' })
 }
 function pickTerminal(): void {
   open.value = false
@@ -77,7 +62,7 @@ function pickTerminal(): void {
   <div ref="wrap" class="newtab">
     <button class="new-session" aria-haspopup="menu" :aria-expanded="open" aria-label="New session" title="New session" @click="toggle">+</button>
     <div v-if="open" ref="menu" class="menu" role="menu" @keydown="onMenuKeydown">
-      <button v-for="t in tools" :key="t" class="menu-item" role="menuitem" @click="pickTool(t)">{{ cap(t) }}</button>
+      <button class="menu-item" role="menuitem" @click="pickAgent">AI</button>
       <div class="sep" role="separator"></div>
       <button class="menu-item" role="menuitem" @click="pickTerminal">Terminal</button>
     </div>
