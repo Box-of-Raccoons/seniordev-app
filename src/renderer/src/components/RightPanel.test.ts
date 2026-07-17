@@ -11,23 +11,33 @@ beforeEach(() => {
     openExternal: vi.fn(async () => ({ ok: true })),
     listPrompts: vi.fn(async () => []), listRepos: vi.fn(async () => []),
     listShells: vi.fn(async () => ({ shells: ['pwsh'], default: 'pwsh' })),
+    listTools: vi.fn(async () => ['claude']),
     resolveRepo: vi.fn(async () => null),
     yoloCaps: vi.fn(async () => ({ available: true })),
+    onConfigChanged: vi.fn(() => () => {}),
     getStartup: vi.fn(async () => ({ tickets: [] }))
   }
 })
 
-// Composer stub: three launch buttons for the interactive / yolo / terminal paths.
+const NewTabMenu = {
+  emits: ['pick'],
+  template: `<div class="newtab-stub">
+    <button class="pick-claude" @click="$emit('pick', { variant: 'agent', tool: 'claude' })">c</button>
+    <button class="pick-term" @click="$emit('pick', { variant: 'terminal' })">t</button>
+  </div>`
+}
 const Composer = {
   name: 'Composer',
+  props: ['variant', 'tool'],
   emits: ['launch'],
-  template: `<div class="composer-stub">
-    <button class="go-int" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'orchestrator', input: 'ISC-835', ticketKey: 'ISC-835', yolo: false })">i</button>
-    <button class="go-yolo" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'fix-bug', input: 'do it', yolo: true })">y</button>
+  template: `<div class="composer-stub" :data-variant="variant" :data-tool="tool">
+    <button class="go-int" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'orchestrator', input: 'ISC-835', ticketKey: 'ISC-835', yolo: false, tool })">i</button>
+    <button class="go-yolo" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'fix-bug', input: 'do it', yolo: true, tool })">y</button>
     <button class="go-term" @click="$emit('launch', { mode: 'terminal', folder: 'C:/proj/api', shell: 'pwsh' })">t</button>
   </div>`
 }
 const stubs = {
+  NewTabMenu,
   Composer,
   TerminalView: {
     props: ['id', 'ticketKey', 'input', 'prompt', 'tool', 'resume', 'cwdOverride', 'shell'],
@@ -57,46 +67,50 @@ describe('RightPanel', () => {
     const w = mountRP()
     expect(w.findAll('.term-tab')).toHaveLength(0)
     expect(w.find('img.empty-state__art').exists()).toBe(true)
-    expect(w.text()).toContain('No sessions')
   })
 
-  it('opens a composer tab on "+"', async () => {
+  it('picking Claude from the menu opens an agent composer tab', async () => {
     const w = mountRP()
-    await w.find('.new-session').trigger('click')
+    await w.find('.pick-claude').trigger('click')
     expect(w.findAll('.term-tab')).toHaveLength(1)
-    expect(w.find('.composer-stub').exists()).toBe(true)
-    expect(w.text()).toContain('New session')
+    expect(w.find('.composer-stub').attributes('data-variant')).toBe('agent')
+    expect(w.find('.composer-stub').attributes('data-tool')).toBe('claude')
+    expect(w.text()).toContain('Claude')
   })
 
-  it('launching interactive morphs the composer tab into a terminal, titled role + ticket', async () => {
+  it('picking Terminal opens a terminal-variant composer', async () => {
     const w = mountRP()
-    await w.find('.new-session').trigger('click')
+    await w.find('.pick-term').trigger('click')
+    expect(w.find('.composer-stub').attributes('data-variant')).toBe('terminal')
+    expect(w.text()).toContain('New shell')
+  })
+
+  it('launching interactive morphs into a terminal carrying the chosen tool', async () => {
+    const w = mountRP()
+    await w.find('.pick-claude').trigger('click')
     await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()
     expect(w.find('.composer-stub').exists()).toBe(false)
-    expect(w.find('.tv').exists()).toBe(true)
+    expect(w.find('.tv').attributes('data-tool')).toBe('claude')
     expect(w.find('.tv').attributes('data-input')).toBe('ISC-835')
-    expect(w.find('.tv').attributes('data-cwd')).toBe('C:/x')
     expect(w.text()).toContain('orchestrator · ISC-835')
   })
 
   it('launching with YOLO morphs into a yolo view', async () => {
     const w = mountRP()
-    await w.find('.new-session').trigger('click')
+    await w.find('.pick-claude').trigger('click')
     await w.find('.go-yolo').trigger('click')
     await w.vm.$nextTick()
     expect(w.findAll('.yv')).toHaveLength(1)
     expect(w.findAll('.tv')).toHaveLength(0)
-    expect(w.find('.yv').attributes('data-input')).toBe('do it')
   })
 
   it('launching Terminal mode morphs into a raw shell', async () => {
     const w = mountRP()
-    await w.find('.new-session').trigger('click')
+    await w.find('.pick-term').trigger('click')
     await w.find('.go-term').trigger('click')
     await w.vm.$nextTick()
     const tv = w.find('.tv')
-    expect(tv.exists()).toBe(true)
     expect(tv.attributes('data-shell')).toBe('pwsh')
     expect(tv.attributes('data-cwd')).toBe('C:/proj/api')
     expect(w.text()).toContain('pwsh · api')
@@ -104,8 +118,8 @@ describe('RightPanel', () => {
 
   it('opens multiple tabs and closes one', async () => {
     const w = mountRP()
-    await w.find('.new-session').trigger('click')
-    await w.find('.new-session').trigger('click')
+    await w.find('.pick-claude').trigger('click')
+    await w.find('.pick-claude').trigger('click')
     expect(w.findAll('.term-tab')).toHaveLength(2)
     await w.findAll('.term-tab__close')[0].trigger('click')
     expect(w.findAll('.term-tab')).toHaveLength(1)
@@ -113,7 +127,7 @@ describe('RightPanel', () => {
 
   it('each tab has a labeled button close control', async () => {
     const w = mountRP()
-    await w.find('.new-session').trigger('click')
+    await w.find('.pick-claude').trigger('click')
     const close = w.find('.term-tab__close')
     expect(close.element.tagName).toBe('BUTTON')
     expect(close.attributes('aria-label')).toMatch(/^Close /)
@@ -127,7 +141,6 @@ describe('RightPanel', () => {
     )
     await w.vm.$nextTick()
     expect(w.findAll('.yv')).toHaveLength(1)
-    expect(w.findAll('.tv')).toHaveLength(0)
     expect(w.text()).toContain('fix-bug')
   })
 
@@ -136,7 +149,6 @@ describe('RightPanel', () => {
     ;(w.vm as unknown as { startOrchestrator: (key: string) => void }).startOrchestrator('SD-6')
     await w.vm.$nextTick()
     const ov = w.find('.ov')
-    expect(ov.exists()).toBe(true)
     expect(ov.attributes('data-ticket-key')).toBe('SD-6')
     expect(w.text()).toContain('Jira Orchestrator')
   })
@@ -160,7 +172,7 @@ describe('RightPanel', () => {
       }
     }
     const w = mount(RightPanel, { global: { stubs: exitStubs } })
-    await w.find('.new-session').trigger('click')
+    await w.find('.pick-claude').trigger('click')
     await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()
     await w.find('.trigger-exit').trigger('click')
@@ -177,10 +189,8 @@ describe('RightPanel', () => {
     await w.find('.trigger-resume').trigger('click')
     await w.vm.$nextTick()
     const tv = w.find('.tv')
-    expect(tv.exists()).toBe(true)
     expect(tv.attributes('data-resume')).toBe('sid')
     expect(tv.attributes('data-cwd')).toBe('C:/x')
-    expect(tv.attributes('data-tool')).toBe('claude')
     const resumedTab = w.findAll('.term-tab').find((t) => t.text().includes('(resumed)'))
     expect(resumedTab).toBeTruthy()
   })

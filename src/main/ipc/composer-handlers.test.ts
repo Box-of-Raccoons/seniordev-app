@@ -8,10 +8,18 @@ vi.mock('electron', () => ({
   BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }
 }))
 
-import { registerComposerIpc } from './composer-handlers'
+import { registerComposerIpc, agentTools } from './composer-handlers'
 import type { Config } from '../config/schema'
+import type { ResolvedCommand } from '../terminal/resolve-command'
+
+const resolved = { kind: 'exe' } as unknown as ResolvedCommand
 
 const config = {
+  defaultTool: 'claude',
+  cliTools: {
+    claude: { command: 'claude' },
+    codex: { command: 'codex' }
+  },
   repos: [
     { key: 'SD', path: 'C:/repos/seniordev', branchPrefix: 'feature/' },
     { key: 'MP', path: 'C:/repos/mashpad', branchPrefix: 'feature/' }
@@ -55,5 +63,26 @@ describe('registerComposerIpc', () => {
     expect(Array.isArray(res.shells)).toBe(true)
     expect(res.shells.length).toBeGreaterThan(0)
     expect(res.shells).toContain(res.default)
+  })
+
+  it('tools:list returns the resolvable agent tools (default always included)', async () => {
+    // Only claude resolves on PATH → codex is dropped, but the default stays.
+    registerComposerIpc({ getConfig: () => config, resolveCommand: (c) => (c === 'claude' ? resolved : undefined) })
+    expect(await handlers.get('tools:list')!({})).toEqual(['claude'])
+  })
+})
+
+describe('agentTools', () => {
+  it('lists the default tool first', () => {
+    expect(agentTools(config)[0]).toBe('claude')
+  })
+
+  it('includes a non-default tool only when its command resolves', () => {
+    expect(agentTools(config, (c) => (c === 'codex' ? resolved : undefined))).toEqual(['claude', 'codex'])
+    expect(agentTools(config, () => undefined)).toEqual(['claude'])
+  })
+
+  it('keeps the default tool even if it does not resolve', () => {
+    expect(agentTools(config, () => undefined)).toContain('claude')
   })
 })

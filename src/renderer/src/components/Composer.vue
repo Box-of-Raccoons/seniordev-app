@@ -4,9 +4,12 @@ import { isTicketKey } from '../../../shared/ticket-key'
 import type { PromptSummary, RepoInfo } from '../../../shared/ipc'
 import type { ComposerLaunch } from './composer-types'
 
+// variant is fixed by the New-tab menu choice: 'agent' runs a CLI agent (Claude,
+// Codex, …) with a role + prompt; 'terminal' opens a raw shell. tool names the
+// agent CLI for the 'agent' variant.
+const props = defineProps<{ variant: 'agent' | 'terminal'; tool?: string }>()
 const emit = defineEmits<{ (e: 'launch', payload: ComposerLaunch): void }>()
 
-const mode = ref<'interactive' | 'terminal'>('interactive')
 const folder = ref('')
 // Once the user picks/edits the folder, stop auto-prefilling it from the ticket.
 const folderTouched = ref(false)
@@ -20,6 +23,8 @@ const repos = ref<RepoInfo[]>([])
 const shells = ref<string[]>([])
 const yoloAvailable = ref(false)
 
+const isTerminal = computed(() => props.variant === 'terminal')
+
 // A ticket key (e.g. ISC-835) vs free text. Detection drives the hint and the
 // folder prefill; the app hands the agent the key, which reads it via its MCP.
 const detectedTicket = computed(() => {
@@ -29,38 +34,37 @@ const detectedTicket = computed(() => {
 
 const canLaunch = computed(() => {
   if (!folder.value.trim()) return false
-  if (mode.value === 'terminal') return !!shell.value
-  return true
+  return isTerminal.value ? !!shell.value : true
 })
 
-const launchLabel = computed(() =>
-  mode.value === 'terminal' ? 'Open shell' : yolo.value ? 'Launch YOLO' : 'Launch'
-)
+const launchLabel = computed(() => (isTerminal.value ? 'Open shell' : yolo.value ? 'Launch YOLO' : 'Launch'))
 
 onMounted(async () => {
-  try {
-    prompts.value = await window.api.listPrompts()
-  } catch {
-    prompts.value = []
+  if (!isTerminal.value) {
+    try {
+      prompts.value = await window.api.listPrompts()
+    } catch {
+      prompts.value = []
+    }
+    role.value = prompts.value.find((p) => p.name === 'orchestrator')?.name ?? prompts.value[0]?.name ?? ''
+    try {
+      yoloAvailable.value = (await window.api.yoloCaps()).available
+    } catch {
+      yoloAvailable.value = false
+    }
+  } else {
+    try {
+      const s = await window.api.listShells()
+      shells.value = s.shells
+      shell.value = s.default
+    } catch {
+      shells.value = []
+    }
   }
-  // Default to the orchestrator role when present, else the first listed prompt.
-  role.value = prompts.value.find((p) => p.name === 'orchestrator')?.name ?? prompts.value[0]?.name ?? ''
   try {
     repos.value = await window.api.listRepos()
   } catch {
     repos.value = []
-  }
-  try {
-    const s = await window.api.listShells()
-    shells.value = s.shells
-    shell.value = s.default
-  } catch {
-    shells.value = []
-  }
-  try {
-    yoloAvailable.value = (await window.api.yoloCaps()).available
-  } catch {
-    yoloAvailable.value = false
   }
 })
 
@@ -92,9 +96,17 @@ function onFolderInput(): void {
   folderTouched.value = true
 }
 
+function onInputKeydown(e: KeyboardEvent): void {
+  // Enter makes a newline in the multi-line box; Cmd/Ctrl+Enter launches.
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault()
+    launch()
+  }
+}
+
 function launch(): void {
   if (!canLaunch.value) return
-  if (mode.value === 'terminal') {
+  if (isTerminal.value) {
     emit('launch', { mode: 'terminal', folder: folder.value.trim(), shell: shell.value })
     return
   }
@@ -104,7 +116,8 @@ function launch(): void {
     role: role.value || undefined,
     input: input.value.trim() || undefined,
     ticketKey: detectedTicket.value ?? undefined,
-    yolo: yolo.value
+    yolo: yolo.value,
+    tool: props.tool
   })
 }
 </script>
@@ -112,56 +125,35 @@ function launch(): void {
 <template>
   <form class="composer" @submit.prevent="launch">
     <div class="composer__inner">
-      <!-- Universals: where + what kind -->
-      <div class="toprow">
-        <div class="field folder">
-          <label class="flabel" for="composer-folder">Folder</label>
-          <div class="folder-row">
-            <input
-              id="composer-folder"
-              v-model="folder"
-              class="control"
-              type="text"
-              placeholder="~/code/…"
-              autocomplete="off"
-              spellcheck="false"
-              @input="onFolderInput"
-            />
-            <button type="button" class="btn-ghost" @click="browse">Browse…</button>
-          </div>
-          <div v-if="repos.length" class="repos" role="group" aria-label="Configured repos">
-            <button
-              v-for="r in repos"
-              :key="r.key"
-              type="button"
-              class="chip"
-              :title="r.path"
-              @click="pickRepo(r.path)"
-            >{{ r.key }}</button>
-          </div>
+      <div class="field">
+        <label class="flabel" for="composer-folder">Folder</label>
+        <div class="folder-row">
+          <input
+            id="composer-folder"
+            v-model="folder"
+            class="control"
+            type="text"
+            placeholder="~/code/…"
+            autocomplete="off"
+            spellcheck="false"
+            @input="onFolderInput"
+          />
+          <button type="button" class="btn-ghost" @click="browse">Browse…</button>
         </div>
-
-        <div class="field mode">
-          <span class="flabel">Mode</span>
-          <div class="modeswitch" role="group" aria-label="Session mode">
-            <button
-              type="button"
-              class="seg"
-              :class="{ 'seg--on': mode === 'interactive' }"
-              @click="mode = 'interactive'"
-            >Interactive</button>
-            <button
-              type="button"
-              class="seg"
-              :class="{ 'seg--on': mode === 'terminal' }"
-              @click="mode = 'terminal'"
-            >Terminal</button>
-          </div>
+        <div v-if="repos.length" class="repos" role="group" aria-label="Configured repos">
+          <button
+            v-for="r in repos"
+            :key="r.key"
+            type="button"
+            class="chip"
+            :title="r.path"
+            @click="pickRepo(r.path)"
+          >{{ r.key }}</button>
         </div>
       </div>
 
-      <!-- Interactive: a Claude session -->
-      <template v-if="mode === 'interactive'">
+      <!-- Agent: a CLI-agent session -->
+      <template v-if="!isTerminal">
         <div class="field">
           <label class="flabel" for="composer-role">Role</label>
           <select id="composer-role" v-model="role" class="control select">
@@ -171,14 +163,15 @@ function launch(): void {
 
         <div class="field">
           <label class="flabel" for="composer-input">Ticket or description</label>
-          <input
+          <textarea
             id="composer-input"
             v-model="input"
-            class="control"
-            type="text"
+            class="control textarea"
+            rows="3"
             placeholder="ISC-835, or describe the task…"
             autocomplete="off"
-          />
+            @keydown="onInputKeydown"
+          ></textarea>
           <span v-if="detectedTicket" class="hint">detected ticket {{ detectedTicket }} · the agent reads it via its MCP</span>
           <span v-else-if="input.trim()" class="hint hint--muted">free text · used as the task description</span>
         </div>
@@ -194,7 +187,6 @@ function launch(): void {
 
       <!-- Terminal: a raw shell -->
       <template v-else>
-        <p class="gated-note">Role and prompt are not used for a raw shell.</p>
         <div class="field">
           <label class="flabel" for="composer-shell">Shell</label>
           <select id="composer-shell" v-model="shell" class="control select">
@@ -204,10 +196,11 @@ function launch(): void {
       </template>
 
       <div class="launch-row">
+        <span v-if="!isTerminal" class="kbd">⌘⏎</span>
         <button
           type="submit"
           class="btn-primary"
-          :class="{ 'btn-primary--yolo': mode === 'interactive' && yolo }"
+          :class="{ 'btn-primary--yolo': !isTerminal && yolo }"
           :disabled="!canLaunch"
         >{{ launchLabel }}</button>
       </div>
@@ -217,13 +210,9 @@ function launch(): void {
 
 <style scoped>
 .composer { height: 100%; overflow-y: auto; display: flex; justify-content: center; padding: 24px 20px; }
-.composer__inner { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 15px; }
+.composer__inner { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 15px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .flabel { font-size: 12px; font-weight: 600; color: var(--ink-soft); }
-
-.toprow { display: flex; gap: 12px; align-items: flex-start; }
-.toprow .folder { flex: 1 1 42%; min-width: 0; }
-.toprow .mode { flex: 1 1 58%; min-width: 0; }
 
 .control {
   background: var(--surface); color: var(--ink);
@@ -233,6 +222,7 @@ function launch(): void {
 .control::placeholder { color: var(--ink-muted); }
 .control:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; border-color: transparent; }
 .select { appearance: none; cursor: pointer; }
+.textarea { resize: vertical; min-height: 64px; line-height: 1.5; }
 
 .folder-row { display: flex; gap: 8px; }
 .folder-row .control { flex: 1; min-width: 0; }
@@ -246,18 +236,8 @@ function launch(): void {
 .chip:hover { color: var(--ink); border-color: var(--hairline-strong); }
 .chip:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
 
-.modeswitch { display: flex; gap: 0; background: var(--surface); border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); padding: 3px; }
-.seg {
-  flex: 1; text-align: center; padding: 7px 6px; border: 0; background: transparent;
-  color: var(--ink-muted); font: inherit; font-size: 12.5px; font-weight: 600; border-radius: 6px; cursor: pointer;
-}
-.seg--on { background: var(--surface-2); color: var(--ink); }
-.seg:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
-
 .hint { font-size: 12px; color: var(--teal); }
 .hint--muted { color: var(--ink-muted); }
-
-.gated-note { margin: 0; font-size: 12px; color: var(--ink-muted); text-align: center; }
 
 .yolo { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
 .yolo input { accent-color: var(--amber); }
@@ -266,7 +246,8 @@ function launch(): void {
 .yolo__desc { color: var(--ink-muted); font-size: 11px; margin-left: 4px; }
 .yolo--off { cursor: default; opacity: 0.7; }
 
-.launch-row { display: flex; justify-content: flex-end; margin-top: 2px; }
+.launch-row { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 2px; }
+.kbd { font-family: var(--font-mono, Consolas, monospace); font-size: 11px; color: var(--ink-muted); }
 .btn-primary {
   background: var(--teal); color: var(--bg); border: 0; border-radius: var(--radius-sm);
   padding: 8px 18px; font: inherit; font-weight: 600; font-size: 13.5px; cursor: pointer;

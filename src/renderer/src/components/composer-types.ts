@@ -3,11 +3,12 @@
 export interface ComposerLaunch {
   mode: 'interactive' | 'terminal'
   folder: string
-  // interactive only:
+  // interactive (agent) only:
   role?: string
   input?: string
   ticketKey?: string
   yolo?: boolean
+  tool?: string
   // terminal only:
   shell?: string
 }

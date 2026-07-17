@@ -199,7 +199,7 @@ if (!gotLock) {
       return repo ? { key: repo.key, path: repo.path, tool: cfg.defaultTool } : null
     })
     registerShellIpc()
-    registerComposerIpc({ getConfig: () => store.config })
+    registerComposerIpc({ getConfig: () => store.config, resolveCommand: systemResolveCommand })
     const startup = parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8'))
     for (const w of startup.warnings ?? []) console.error('[startup]', w)
 

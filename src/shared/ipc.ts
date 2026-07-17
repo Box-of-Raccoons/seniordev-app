@@ -58,6 +58,9 @@ export const SHELL = { openExternal: 'shell:openExternal' } as const
 export interface RepoInfo { key: string; path: string }
 export const REPOS = { list: 'repos:list' } as const
 export const DIALOG = { pickFolder: 'dialog:pickFolder' } as const
+// Agent CLI tools offered in the New-tab menu (claude, codex, …) — the default
+// tool plus any others whose command resolves on PATH. Returns tool names.
+export const TOOLS = { list: 'tools:list' } as const
 
 export interface StartupSession {
   mode: 'interactive' | 'yolo'
