@@ -8,6 +8,9 @@ export interface Launch {
   args: string[]
   cwd: string
   stdinPrompt?: string
+  // When stdinPrompt is typed into the TUI, wrap it in bracketed-paste markers
+  // (tool opts in via config.bracketedPaste) so a multi-line prompt stays one block.
+  bracketedPaste?: boolean
   resolved?: ResolvedCommand
 }
 
@@ -64,6 +67,7 @@ export function buildInteractiveLaunch(
     args,
     cwd,
     stdinPrompt: deliverViaStdin ? expandedPrompt : undefined,
+    bracketedPaste: tool.bracketedPaste,
     resolved
   }
 }

@@ -18,7 +18,10 @@ const ticket: Ticket = { key: 'PROJ-1', type: 'Bug', status: 'Open', summary: 's
 const cfg = {
   defaultTool: 'claude',
   ticketContext: 'both',
-  cliTools: { claude: { command: 'claude', interactiveArgs: [], promptDelivery: 'stdin' } },
+  cliTools: {
+    claude: { command: 'claude', interactiveArgs: [], promptDelivery: 'stdin' },
+    codex: { command: 'codex', interactiveArgs: [], promptDelivery: 'stdin', bracketedPaste: true }
+  },
   defaultForge: 'github',
   forges: { github: { prCommand: 'gh pr create', term: 'PR', urlPattern: 'x' } },
   repos: []
@@ -111,6 +114,21 @@ describe('registerTerminalIpc', () => {
     expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
     // Guard the regression: no write may contain an ESC (it acts as the Escape key).
     for (const call of pty.write.mock.calls) expect(call[0]).not.toContain('\x1b')
+    vi.useRealTimers()
+  })
+
+  it('wraps a multi-line prompt in bracketed-paste markers for a tool that opts in (codex)', async () => {
+    vi.useFakeTimers()
+    const pty = fakePty()
+    registerTerminalIpc(() => undefined, () => pty as unknown as PtyProcess, { source })
+    await handleMap.get('pty:spawn')!({}, { id: 'a', tool: 'codex', ticketKey: 'PROJ-1', prompt: { name: 'p' }, cols: 80, rows: 24 })
+    pty.emitData('boot screen')
+    await vi.advanceTimersByTimeAsync(800)
+    // The prompt goes out wrapped so codex takes it as one composer block…
+    expect(pty.write).toHaveBeenNthCalledWith(1, '\x1b[200~Do PROJ-1\x1b[201~')
+    // …and Enter follows as its own, UNwrapped keystroke to submit.
+    await vi.advanceTimersByTimeAsync(300)
+    expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
     vi.useRealTimers()
   })
 

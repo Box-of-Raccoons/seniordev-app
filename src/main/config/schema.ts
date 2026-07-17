@@ -17,6 +17,11 @@ export const CliToolSchema = z.object({
   // Fallback model when a prompt doesn't declare one. Empty/absent ⇒ append
   // nothing (today's behavior — let the CLI pick its own default).
   defaultModel: z.string().optional(),
+  // Wrap a typed-in prompt in bracketed-paste markers (ESC[200~ … ESC[201~) so a
+  // multi-line prompt lands as one composer block instead of submitting per line.
+  // Set for TUIs that HONOR bracketed paste (codex); must stay off for TUIs that
+  // don't consume the markers (claude), where the raw ESC acts as the Escape key.
+  bracketedPaste: z.boolean().optional(),
   headless: HeadlessSchema.optional(),
   resumeArgs: z.array(z.string()).optional()
 })
