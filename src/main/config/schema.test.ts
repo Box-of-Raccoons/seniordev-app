@@ -13,12 +13,17 @@ describe('headless config', () => {
   it('accepts resumeArgs and yoloRecap', () => {
     const t = CliToolSchema.parse({ command: 'x', resumeArgs: ['--resume', '{{sessionId}}'] })
     expect(t.resumeArgs).toEqual(['--resume', '{{sessionId}}'])
-    const c = ConfigSchema.parse({ jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' }, yoloRecap: 'recap' })
+    const c = ConfigSchema.parse({ yoloRecap: 'recap' })
     expect(c.yoloRecap).toBe('recap')
   })
   it('accepts yoloPreamble', () => {
-    const c = ConfigSchema.parse({ jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' }, yoloPreamble: 'be autonomous' })
+    const c = ConfigSchema.parse({ yoloPreamble: 'be autonomous' })
     expect(c.yoloPreamble).toBe('be autonomous')
+  })
+  it('parses a bracketedPaste flag on a tool', () => {
+    const t = CliToolSchema.parse({ command: 'codex', bracketedPaste: true })
+    expect(t.bracketedPaste).toBe(true)
+    expect(CliToolSchema.parse({ command: 'claude' }).bracketedPaste).toBeUndefined()
   })
   it('still accepts configs carrying legacy yoloArgs', () => {
     const t = CliToolSchema.parse({ command: 'x', yoloArgs: ['--old'] })
@@ -35,46 +40,10 @@ describe('headless config', () => {
   })
 })
 
-describe('JiraSchema baseUrl (SD-9 S5)', () => {
-  const jira = (baseUrl: string) => ({ jira: { baseUrl, email: 'a@b.co', apiToken: 't' } })
-  it('accepts an https baseUrl', () => {
-    expect(ConfigSchema.parse(jira('https://x.atlassian.net')).jira.baseUrl).toBe('https://x.atlassian.net')
-  })
-  it('rejects an http baseUrl (would leak the token in cleartext)', () => {
-    expect(() => ConfigSchema.parse(jira('http://x.atlassian.net'))).toThrow(/https/)
-  })
-  it('still rejects a non-URL baseUrl', () => {
-    expect(() => ConfigSchema.parse(jira('not-a-url'))).toThrow()
-  })
-})
-
-describe('WatchSchema', () => {
-  it('fills defaults when watch is absent (disabled)', () => {
-    const cfg = ConfigSchema.parse({ jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' } })
-    expect(cfg.watch).toEqual({
-      enabled: false,
-      intervalSeconds: 300,
-      label: 'SeniorDev',
-      triggerStatusCategory: 'To Do',
-      transitionOnDispatch: 'In Progress',
-      autoMode: false
-    })
-  })
-
-  it('accepts overrides', () => {
-    const cfg = ConfigSchema.parse({
-      jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' },
-      watch: { enabled: true, intervalSeconds: 60, autoMode: true }
-    })
-    expect(cfg.watch.enabled).toBe(true)
-    expect(cfg.watch.intervalSeconds).toBe(60)
-    expect(cfg.watch.autoMode).toBe(true)
-    expect(cfg.watch.label).toBe('SeniorDev')
-  })
-
-  it('rejects a non-positive interval', () => {
-    expect(() =>
-      ConfigSchema.parse({ jira: { baseUrl: 'https://x.atlassian.net', email: 'a@b.co', apiToken: 't' }, watch: { intervalSeconds: 0 } })
-    ).toThrow()
+describe('ConfigSchema', () => {
+  it('parses an empty config with preset-mergeable defaults', () => {
+    const c = ConfigSchema.parse({})
+    expect(c.defaultTool).toBe('claude')
+    expect(c.repos).toEqual([])
   })
 })

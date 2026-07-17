@@ -1,12 +1,8 @@
-import type { Ticket } from './types'
-
-export type GetTicketResult = { ok: true; ticket: Ticket } | { ok: false; error: string }
-
 // The configured repo a ticket's project maps to, or null when nothing maps —
-// used by the deep-link YOLO confirm gate to refuse "guess-and-run" (SD-9 S2).
+// the composer uses it to prefill the Folder from a detected ticket key.
 export type RepoResolution = { key: string; path: string; tool: string } | null
 
-export const IPC = { getTicket: 'jira:getTicket', resolveRepo: 'jira:resolveRepo' } as const
+export const IPC = { resolveRepo: 'repos:resolve' } as const
 
 export interface SpawnTerminalRequest {
   id: string
@@ -77,10 +73,6 @@ export interface StartupOptions {
   session?: StartupSession
   warnings?: string[]
   deeplink?: DeepLink
-  // `--orchestrate <TICKET>`: run the Jira Orchestrator on this ticket with NO
-  // confirm gate (CLI-only, not web-reachable — used by SeniorDevWatch).
-  orchestrate?: string
-  minimized?: boolean
 }
 export const STARTUP = { get: 'startup:get' } as const
 
@@ -102,17 +94,6 @@ export interface YoloCaps { available: boolean }
 export const YOLO = {
   start: 'yolo:start', log: 'yolo:log', pr: 'yolo:pr',
   exit: 'yolo:exit', kill: 'yolo:kill', caps: 'yolo:caps'
-} as const
-
-export interface OrchestratorPromptInfo { text: string; isDefault: boolean }
-export interface ClassifyRequest { id: string; ticketKey: string; tool?: string }
-export type ClassifyResult = { ok: true; prompt: string } | { ok: false; reason: string }
-export const ORCHESTRATOR = {
-  classify: 'orchestrator:classify', kill: 'orchestrator:kill',
-  readPrompt: 'orchestrator:readPrompt', savePrompt: 'orchestrator:savePrompt',
-  // Warm-launch signal: a second `--orchestrate` invocation forwards to the
-  // running app, which pushes this (no confirm gate) to open an orchestrator tab.
-  run: 'orchestrator:run'
 } as const
 
 export type MenuAction = 'new-session' | 'app-config' | 'prompt-config' | 'about'

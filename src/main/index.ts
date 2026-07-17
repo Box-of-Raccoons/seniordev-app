@@ -5,10 +5,9 @@ import { defaultConfigDir } from './config/paths'
 import { parseStartupArgs } from './cli/parse-args'
 import { registerStartupIpc } from './ipc/startup-handlers'
 import { ConfigStore } from './config/store'
-import { registerIpc } from './ipc/handlers'
+import { registerReposIpc } from './ipc/handlers'
 import { registerTerminalIpc } from './ipc/terminal-handlers'
 import { registerYoloIpc } from './ipc/yolo-handlers'
-import { registerOrchestratorIpc } from './ipc/orchestrator-handlers'
 import { registerPromptsIpc } from './ipc/prompts-handlers'
 import { seedDefaultPrompts } from './prompts/defaults'
 import { registerShellIpc } from './ipc/shell-handlers'
@@ -23,7 +22,7 @@ import { systemResolveCommand } from './terminal/resolve-command'
 import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './deeplink/parse'
 import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery } from './deeplink/delivery'
-import { DEEPLINK, ORCHESTRATOR } from '../shared/ipc'
+import { DEEPLINK } from '../shared/ipc'
 import type { TerminalManager } from './terminal/manager'
 import type { YoloRunner } from './headless/runner'
 
@@ -53,7 +52,6 @@ const store = new ConfigStore(resolveConfigPath())
 
 let terminals: TerminalManager | null = null
 let yolo: YoloRunner | null = null
-let orchestrator: import('./orchestrator/run').ClassifyEngine | null = null
 let mainWindow: BrowserWindow | null = null
 
 // Warm links are queued until the renderer says it's listening (DEEPLINK.ready);
@@ -65,7 +63,7 @@ const deepLinks = new DeepLinkDelivery({
   }
 })
 
-function createWindow(minimized = false): void {
+function createWindow(): void {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -94,12 +92,7 @@ function createWindow(minimized = false): void {
   win.webContents.on('will-navigate', (e, url) => {
     if (url !== win.webContents.getURL()) e.preventDefault()
   })
-  // A watcher-launched run starts minimized (visible in the taskbar, not stealing
-  // focus); a normal launch shows and focuses.
-  win.on('ready-to-show', () => {
-    if (minimized) { win.showInactive(); win.minimize() }
-    else win.show()
-  })
+  win.on('ready-to-show', () => win.show())
   win.on('closed', () => {
     mainWindow = null
     deepLinks.windowClosed()
@@ -138,21 +131,8 @@ if (!gotLock) {
   // (`seniordev PROJ-123` while running) are forwarded as open links — before
   // the single-instance lock they opened in their own instance.
   app.on('second-instance', (_e, argv) => {
-    // A warm `--orchestrate <ticket>` (from SeniorDevWatch): run it in a new tab
-    // with no confirm gate. CLI-only, so it's not a web-reachable bypass.
-    const argvLinks = linksFromArgv(argv)
-    const opts = parseStartupArgs(argv.slice(1), () => '')
-    // S3 (SD-9): the no-confirm orchestrate path assumes a trusted CLI argv. If
-    // this same argv also carries a deep link (a web-reachable `seniordev://…`),
-    // a lost-quoting quirk could smuggle `--orchestrate` past the confirm gate —
-    // so if any deep link is present, ignore orchestrate and take the gated path.
-    if (opts.orchestrate && argvLinks.length === 0) {
-      if (!opts.minimized) focusMainWindow()
-      mainWindow?.webContents.send(ORCHESTRATOR.run, opts.orchestrate)
-      return
-    }
     focusMainWindow()
-    for (const link of argvLinks) deepLinks.deliver(link)
+    for (const link of linksFromArgv(argv)) deepLinks.deliver(link)
   })
 
   // macOS: the OS delivers the URL here (can fire before the window exists,
@@ -192,7 +172,7 @@ if (!gotLock) {
       }
     }
 
-    registerIpc(store.getTicket, (key) => {
+    registerReposIpc((key) => {
       const cfg = store.config
       if (!cfg) return null
       const repo = findRepoForTicket(cfg, key)
@@ -203,15 +183,15 @@ if (!gotLock) {
     const startup = parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8'))
     for (const w of startup.warnings ?? []) console.error('[startup]', w)
 
-    // Cold start: the deep link arrives in argv (Windows/Linux) or via a
-    // pre-ready open-url (macOS, queued in deepLinks). Ensure its ticket is
-    // loaded; a yolo action also gets carried through so the renderer can run
-    // the confirm gate + orchestrator.
+    // Cold start: a deep link may arrive in argv (Windows/Linux) or via a
+    // pre-ready open-url (macOS, queued in deepLinks). Carry the first one through
+    // as startup.deeplink so the renderer prefills a composer for it.
     const rawLink = findDeepLinkArg(process.argv.slice(1))
     const argvLink = rawLink ? parseDeepLink(rawLink) : null
-    for (const coldLink of [...(argvLink ? [argvLink] : []), ...deepLinks.drainPending()]) {
+    const coldLink = argvLink ?? deepLinks.drainPending()[0]
+    if (coldLink) {
       if (!startup.tickets.includes(coldLink.ticket)) startup.tickets = [...startup.tickets, coldLink.ticket]
-      if (coldLink.action === 'yolo') startup.deeplink = coldLink
+      startup.deeplink = coldLink
     }
     registerStartupIpc(startup)
     // Renderer listener attached → flush any queued warm links from now on.
@@ -221,13 +201,12 @@ if (!gotLock) {
       BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents
     terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand })
     yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand })
-    orchestrator = registerOrchestratorIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand, promptsDir: () => store.promptsDir() })
     registerAppIpc()
     registerConfigIpc(store, getSender)
     registerPromptConfigIpc(store, getSender)
     installMenu(getSender)
 
-    createWindow(startup.minimized)
+    createWindow()
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
@@ -236,12 +215,10 @@ if (!gotLock) {
   app.on('before-quit', () => {
     terminals?.killAll()
     yolo?.killAll()
-    orchestrator?.killAll()
   })
   app.on('window-all-closed', () => {
     terminals?.killAll()
     yolo?.killAll()
-    orchestrator?.killAll()
     if (process.platform !== 'darwin') app.quit()
   })
 }
