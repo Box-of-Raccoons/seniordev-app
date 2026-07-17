@@ -2,14 +2,11 @@
 #   Windows: %APPDATA%\SeniorDev\config.yaml
 #   macOS/Linux: ~/.config/SeniorDev/config.yaml
 # Override path with SENIORDEV_CONFIG env var.
-jira:
-  baseUrl: https://yoursite.atlassian.net   # must be https:// — the token is sent as Basic auth
-
-  email: you@company.com
-  apiToken: paste-token-from-id.atlassian.net
+#
+# SeniorDev does not read Jira itself: it hands the ticket key to the agent, which
+# reads the issue through its own Atlassian MCP. No Jira credentials are needed here.
 
 # Everything below is optional; presets for claude/codex + github/gitlab apply automatically.
-# ticketContext: both        # key-only | both
 # defaultTool: claude
 # defaultForge: github
 
@@ -38,17 +35,10 @@ jira:
 # A map that names no model for the active tool falls through to that tool's
 # `defaultModel`, then to nothing.
 
+# repos: ticket-prefix → folder map. When you give the composer a ticket key, its
+# project prefix resolves to the matching repo so the Folder is prefilled for you.
 # repos:
 #   - key: PROJ
 #     path: C:/Users/you/code/backend
 #     branchPrefix: feature/
 #     forge: github
-
-# SeniorDevWatch — background tray poller (separate process: `pnpm watch`).
-# watch:
-#   enabled: true
-#   intervalSeconds: 300          # how often to poll Jira
-#   label: SeniorDev              # the trigger label
-#   triggerStatusCategory: "To Do"
-#   transitionOnDispatch: "In Progress"   # moved here after dispatch
-#   autoMode: false               # initial default; the tray checkbox overrides at runtime
