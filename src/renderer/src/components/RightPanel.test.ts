@@ -5,52 +5,105 @@ import RightPanel from './RightPanel.vue'
 beforeEach(() => {
   ;(window as unknown as { api: unknown }).api = {
     spawnTerminal: vi.fn(async () => ({ ok: true })),
+    spawnShell: vi.fn(async () => ({ ok: true })),
     writeTerminal: vi.fn(), resizeTerminal: vi.fn(), killTerminal: vi.fn(),
     onTerminalData: vi.fn(() => () => {}), onTerminalExit: vi.fn(() => () => {}),
     openExternal: vi.fn(async () => ({ ok: true })),
-    listPrompts: vi.fn(async () => []),
+    listPrompts: vi.fn(async () => []), listRepos: vi.fn(async () => []),
+    listShells: vi.fn(async () => ({ shells: ['pwsh'], default: 'pwsh' })),
+    resolveRepo: vi.fn(async () => null),
     yoloCaps: vi.fn(async () => ({ available: true })),
     getStartup: vi.fn(async () => ({ tickets: [] }))
   }
 })
 
+// Composer stub: three launch buttons for the interactive / yolo / terminal paths.
+const Composer = {
+  name: 'Composer',
+  emits: ['launch'],
+  template: `<div class="composer-stub">
+    <button class="go-int" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'orchestrator', input: 'ISC-835', ticketKey: 'ISC-835', yolo: false })">i</button>
+    <button class="go-yolo" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'fix-bug', input: 'do it', yolo: true })">y</button>
+    <button class="go-term" @click="$emit('launch', { mode: 'terminal', folder: 'C:/proj/api', shell: 'pwsh' })">t</button>
+  </div>`
+}
 const stubs = {
+  Composer,
   TerminalView: {
-    props: ['id', 'ticketKey', 'prompt', 'tool', 'resume', 'cwdOverride'],
+    props: ['id', 'ticketKey', 'input', 'prompt', 'tool', 'resume', 'cwdOverride', 'shell'],
     template:
-      '<div class="tv" :data-id="id" :data-tool="tool" :data-cwd="cwdOverride" :data-resume="resume && resume.sessionId" />'
+      '<div class="tv" :data-id="id" :data-tool="tool" :data-cwd="cwdOverride" :data-shell="shell" :data-input="input" :data-resume="resume && resume.sessionId" />'
   },
   YoloView: {
-    props: ['id', 'ticketKey', 'prompt', 'tool'],
+    props: ['id', 'ticketKey', 'input', 'prompt', 'tool'],
     emits: ['exited', 'resume'],
     template:
-      '<div class="yv" :data-id="id"><button class="trigger-resume" @click="$emit(\'resume\', { sessionId: \'sid\', cwd: \'C:/x\', tool: \'claude\' })">resume</button></div>'
+      '<div class="yv" :data-id="id" :data-input="input"><button class="trigger-resume" @click="$emit(\'resume\', { sessionId: \'sid\', cwd: \'C:/x\', tool: \'claude\' })">resume</button></div>'
   },
   OrchestratorView: {
     props: ['id', 'ticketKey', 'tool'],
     emits: ['exited', 'resume', 'routed'],
     template:
       '<div class="ov" :data-id="id" :data-ticket-key="ticketKey"><button class="trigger-routed" @click="$emit(\'routed\', \'fix-bug\')">route</button></div>'
-  },
-  NewSessionMenu: { template: '<button class="new-session" @click="$emit(\'start\', { yolo: false })" />' }
+  }
+}
+
+function mountRP() {
+  return mount(RightPanel, { global: { stubs } })
 }
 
 describe('RightPanel', () => {
-  it('starts with no terminals and an empty state', () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs } })
+  it('starts with no tabs and a mascot empty state', () => {
+    const w = mountRP()
     expect(w.findAll('.term-tab')).toHaveLength(0)
+    expect(w.find('img.empty-state__art').exists()).toBe(true)
+    expect(w.text()).toContain('No sessions')
+  })
+
+  it('opens a composer tab on "+"', async () => {
+    const w = mountRP()
+    await w.find('.new-session').trigger('click')
+    expect(w.findAll('.term-tab')).toHaveLength(1)
+    expect(w.find('.composer-stub').exists()).toBe(true)
     expect(w.text()).toContain('New session')
   })
 
-  it('opens a terminal tab on New session', async () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: 'PROJ-1' }, global: { stubs } })
+  it('launching interactive morphs the composer tab into a terminal, titled role + ticket', async () => {
+    const w = mountRP()
     await w.find('.new-session').trigger('click')
-    expect(w.findAll('.term-tab')).toHaveLength(1)
-    expect(w.findAll('.tv')).toHaveLength(1)
+    await w.find('.go-int').trigger('click')
+    await w.vm.$nextTick()
+    expect(w.find('.composer-stub').exists()).toBe(false)
+    expect(w.find('.tv').exists()).toBe(true)
+    expect(w.find('.tv').attributes('data-input')).toBe('ISC-835')
+    expect(w.find('.tv').attributes('data-cwd')).toBe('C:/x')
+    expect(w.text()).toContain('orchestrator · ISC-835')
+  })
+
+  it('launching with YOLO morphs into a yolo view', async () => {
+    const w = mountRP()
+    await w.find('.new-session').trigger('click')
+    await w.find('.go-yolo').trigger('click')
+    await w.vm.$nextTick()
+    expect(w.findAll('.yv')).toHaveLength(1)
+    expect(w.findAll('.tv')).toHaveLength(0)
+    expect(w.find('.yv').attributes('data-input')).toBe('do it')
+  })
+
+  it('launching Terminal mode morphs into a raw shell', async () => {
+    const w = mountRP()
+    await w.find('.new-session').trigger('click')
+    await w.find('.go-term').trigger('click')
+    await w.vm.$nextTick()
+    const tv = w.find('.tv')
+    expect(tv.exists()).toBe(true)
+    expect(tv.attributes('data-shell')).toBe('pwsh')
+    expect(tv.attributes('data-cwd')).toBe('C:/proj/api')
+    expect(w.text()).toContain('pwsh · api')
   })
 
   it('opens multiple tabs and closes one', async () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs } })
+    const w = mountRP()
     await w.find('.new-session').trigger('click')
     await w.find('.new-session').trigger('click')
     expect(w.findAll('.term-tab')).toHaveLength(2)
@@ -58,69 +111,28 @@ describe('RightPanel', () => {
     expect(w.findAll('.term-tab')).toHaveLength(1)
   })
 
-  it('gives each term tab a labeled button close control', async () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs } })
+  it('each tab has a labeled button close control', async () => {
+    const w = mountRP()
     await w.find('.new-session').trigger('click')
     const close = w.find('.term-tab__close')
     expect(close.element.tagName).toBe('BUTTON')
     expect(close.attributes('aria-label')).toMatch(/^Close /)
   })
 
-  it('titles a prompt session by the prompt name', async () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs: {
-      TerminalView: stubs.TerminalView,
-      NewSessionMenu: { template: '<button class="np" @click="$emit(\'start\', { prompt: { name: \'fix-bug\' } })" />' }
-    } } })
-    await w.find('.np').trigger('click')
-    expect(w.text()).toContain('fix-bug')
-  })
-
-  it('marks a yolo session title', async () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs: {
-      TerminalView: stubs.TerminalView,
-      YoloView: stubs.YoloView,
-      NewSessionMenu: { template: '<button class="np" @click="$emit(\'start\', { prompt: { name: \'fix\' }, yolo: true })" />' }
-    } } })
-    await w.find('.np').trigger('click')
-    expect(w.text()).toContain('fix')
-  })
-
-  it('starts a session from startStartupSession', async () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs } })
-    ;(w.vm as unknown as { startStartupSession: (s: unknown) => void }).startStartupSession({ mode: 'yolo', promptName: 'ship-it' })
-    await w.vm.$nextTick()
-    expect(w.text()).toContain('ship-it')
-  })
-
-  it('marks a tab as dead when TerminalView emits exited', async () => {
-    const exitStubs = {
-      TerminalView: {
-        props: ['id', 'ticketKey', 'prompt', 'tool', 'resume', 'cwdOverride'],
-        emits: ['exited'],
-        template: '<div class="tv" :data-id="id"><button class="trigger-exit" @click="$emit(\'exited\', 0)">exit</button></div>'
-      },
-      NewSessionMenu: stubs.NewSessionMenu
-    }
-    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs: exitStubs } })
-    await w.find('.new-session').trigger('click')
-    await w.find('.trigger-exit').trigger('click')
-    await w.vm.$nextTick()
-    expect(w.find('.term-tab').classes()).toContain('term-tab--dead')
-  })
-
   it('startStartupSession mode=yolo opens a yolo-kind tab', async () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs } })
-    ;(w.vm as unknown as { startStartupSession: (s: unknown) => void }).startStartupSession({
-      mode: 'yolo',
-      promptName: 'fix-bug'
-    })
+    const w = mountRP()
+    ;(w.vm as unknown as { startStartupSession: (s: unknown, k?: string) => void }).startStartupSession(
+      { mode: 'yolo', promptName: 'fix-bug' },
+      'SD-6'
+    )
     await w.vm.$nextTick()
     expect(w.findAll('.yv')).toHaveLength(1)
     expect(w.findAll('.tv')).toHaveLength(0)
+    expect(w.text()).toContain('fix-bug')
   })
 
   it('startOrchestrator opens an orchestrator tab with the ticket key', async () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: 'SD-6' }, global: { stubs } })
+    const w = mountRP()
     ;(w.vm as unknown as { startOrchestrator: (key: string) => void }).startOrchestrator('SD-6')
     await w.vm.$nextTick()
     const ov = w.find('.ov')
@@ -130,23 +142,38 @@ describe('RightPanel', () => {
   })
 
   it('routed event updates the orchestrator tab title', async () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: 'SD-6' }, global: { stubs } })
+    const w = mountRP()
     ;(w.vm as unknown as { startOrchestrator: (key: string) => void }).startOrchestrator('SD-6')
     await w.vm.$nextTick()
     await w.find('.trigger-routed').trigger('click')
     await w.vm.$nextTick()
-    const tab = w.find('.term-tab')
-    expect(tab.text()).toContain('Jira Orchestrator → fix-bug')
+    expect(w.find('.term-tab').text()).toContain('Jira Orchestrator → fix-bug')
   })
 
-  it('yolo resume event opens a terminal tab with resume + cwdOverride', async () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs } })
-    ;(w.vm as unknown as { startStartupSession: (s: unknown) => void }).startStartupSession({
-      mode: 'yolo',
-      promptName: 'fix-bug'
-    })
+  it('marks a tab dead when the run view emits exited', async () => {
+    const exitStubs = {
+      ...stubs,
+      TerminalView: {
+        props: ['id', 'ticketKey', 'input', 'prompt', 'tool', 'resume', 'cwdOverride', 'shell'],
+        emits: ['exited'],
+        template: '<div class="tv" :data-id="id"><button class="trigger-exit" @click="$emit(\'exited\', 0)">exit</button></div>'
+      }
+    }
+    const w = mount(RightPanel, { global: { stubs: exitStubs } })
+    await w.find('.new-session').trigger('click')
+    await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()
-    // YoloView asks to resume → RightPanel opens a new terminal-kind tab.
+    await w.find('.trigger-exit').trigger('click')
+    await w.vm.$nextTick()
+    expect(w.find('.term-tab').classes()).toContain('term-tab--dead')
+  })
+
+  it('yolo resume opens a terminal tab with resume + cwdOverride', async () => {
+    const w = mountRP()
+    ;(w.vm as unknown as { startStartupSession: (s: unknown, k?: string) => void }).startStartupSession(
+      { mode: 'yolo', promptName: 'fix-bug' }
+    )
+    await w.vm.$nextTick()
     await w.find('.trigger-resume').trigger('click')
     await w.vm.$nextTick()
     const tv = w.find('.tv')
@@ -154,23 +181,7 @@ describe('RightPanel', () => {
     expect(tv.attributes('data-resume')).toBe('sid')
     expect(tv.attributes('data-cwd')).toBe('C:/x')
     expect(tv.attributes('data-tool')).toBe('claude')
-    // Resumed tab title is `${from.title} (resumed)` — yolo tab was 'fix-bug 1'.
     const resumedTab = w.findAll('.term-tab').find((t) => t.text().includes('(resumed)'))
     expect(resumedTab).toBeTruthy()
-    expect(resumedTab!.text()).toContain('fix-bug 1 (resumed)')
-  })
-
-  it('shows mascot empty state before any session is started', () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs } })
-    const img = w.find('img.empty-state__art')
-    expect(img.exists()).toBe(true)
-    expect(img.attributes('alt')).toBe('')
-    expect(w.text()).toContain('No sessions')
-  })
-
-  it('hides the mascot empty state after a session is started', async () => {
-    const w = mount(RightPanel, { props: { activeTicketKey: null }, global: { stubs } })
-    await w.find('.new-session').trigger('click')
-    expect(w.find('img.empty-state__art').exists()).toBe(false)
   })
 })

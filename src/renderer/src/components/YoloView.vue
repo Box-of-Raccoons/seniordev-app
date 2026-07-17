@@ -7,7 +7,8 @@ import type { YoloExitEvent } from '../../../shared/ipc'
 
 const props = defineProps<{
   id: string
-  ticketKey: string | null
+  ticketKey?: string | null
+  input?: string
   prompt?: { name?: string; text?: string }
   tool?: string
 }>()
@@ -52,6 +53,7 @@ onMounted(async () => {
     const res = await window.api.startYolo({
       id: props.id,
       ticketKey: props.ticketKey ?? undefined,
+      input: props.input,
       prompt: props.prompt ? { name: props.prompt.name, text: props.prompt.text } : undefined,
       tool: props.tool
     })

@@ -3,19 +3,20 @@ import { ref } from 'vue'
 import TerminalView from './TerminalView.vue'
 import YoloView from './YoloView.vue'
 import OrchestratorView from './OrchestratorView.vue'
-import NewSessionMenu from './NewSessionMenu.vue'
+import Composer from './Composer.vue'
 import EmptyState from './EmptyState.vue'
 import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
-
-defineProps<{ activeTicketKey: string | null }>()
+import type { ComposerLaunch } from './composer-types'
 
 interface Term {
   id: string
   title: string
-  kind: 'terminal' | 'yolo' | 'orchestrator'
+  kind: 'composer' | 'terminal' | 'yolo' | 'shell' | 'orchestrator'
   prompt?: { name?: string; text?: string }
+  input?: string
   tool?: string
   ticketKey?: string
+  shell?: string
   exited?: boolean
   resume?: { sessionId: string }
   cwdOverride?: string
@@ -31,19 +32,49 @@ function addTerm(t: Omit<Term, 'id'>): void {
   activeId.value = id
 }
 
-function startSession(payload: { prompt?: { name?: string; text?: string }; yolo?: boolean; tool?: string }): void {
-  const base = payload.prompt?.name ?? (payload.yolo ? 'yolo' : 'Session')
-  addTerm({
-    title: `${base} ${counter + 1}`,
-    kind: payload.yolo ? 'yolo' : 'terminal',
-    prompt: payload.prompt,
-    tool: payload.tool
-  })
+// A new tab opens as the composer; Launch morphs it into the running session.
+function newTab(): void {
+  addTerm({ title: 'New session', kind: 'composer' })
 }
 
-function startStartupSession(s: { mode: 'interactive' | 'yolo'; promptName?: string; promptText?: string; tool?: string }): void {
+function basename(p: string): string {
+  return p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p
+}
+function short(s: string, n = 22): string {
+  return s.length > n ? s.slice(0, n - 1) + '…' : s
+}
+
+// Morph a composer tab in place into the session it launched. Mutating the Term
+// flips the slot's v-if, so Composer unmounts and the run view mounts + spawns.
+function launch(t: Term, p: ComposerLaunch): void {
+  t.cwdOverride = p.folder
+  if (p.mode === 'terminal') {
+    t.kind = 'shell'
+    t.shell = p.shell
+    t.title = `${p.shell ?? 'shell'} · ${basename(p.folder)}`
+    return
+  }
+  t.kind = p.yolo ? 'yolo' : 'terminal'
+  t.prompt = p.role ? { name: p.role } : undefined
+  t.input = p.input
+  t.ticketKey = p.ticketKey
+  const subject = p.ticketKey ?? (p.input ? short(p.input) : basename(p.folder))
+  t.title = `${p.role ?? 'session'} · ${subject}`
+}
+
+function startStartupSession(
+  s: { mode: 'interactive' | 'yolo'; promptName?: string; promptText?: string; tool?: string },
+  ticketKey?: string
+): void {
   const prompt = s.promptName ? { name: s.promptName } : s.promptText ? { text: s.promptText } : undefined
-  startSession({ prompt, yolo: s.mode === 'yolo', tool: s.tool })
+  addTerm({
+    title: `${s.promptName ?? (s.mode === 'yolo' ? 'yolo' : 'session')} ${counter + 1}`,
+    kind: s.mode === 'yolo' ? 'yolo' : 'terminal',
+    prompt,
+    tool: s.tool,
+    ticketKey,
+    input: ticketKey
+  })
 }
 
 function closeAll(): void {
@@ -58,7 +89,7 @@ function startOrchestrator(ticketKey: string): void {
   addTerm({ title: 'Jira Orchestrator', kind: 'orchestrator', ticketKey })
 }
 
-defineExpose({ startStartupSession, closeAll, hasSessions, startOrchestrator })
+defineExpose({ newTab, startStartupSession, closeAll, hasSessions, startOrchestrator })
 
 function resumeYolo(from: Term, p: { sessionId: string; cwd: string; tool: string }): void {
   addTerm({
@@ -84,7 +115,7 @@ function markExited(id: string): void {
 </script>
 
 <template>
-  <section class="right-panel">
+  <section class="workbench">
     <div class="term-bar">
       <nav class="term-tabs">
         <div
@@ -97,21 +128,22 @@ function markExited(id: string): void {
           <button class="term-tab__close" :aria-label="`Close ${t.title}`" @click="closeTerm(t.id)">×</button>
         </div>
       </nav>
-      <NewSessionMenu @start="startSession" />
+      <button class="new-session" aria-label="New session" title="New session" @click="newTab">+</button>
     </div>
 
     <div class="term-body">
-      <EmptyState v-if="!terms.length" :image="raccoonAsleepUrl" caption='No sessions — start one with "New session".' />
+      <EmptyState v-if="!terms.length" :image="raccoonAsleepUrl" caption='No sessions — start one with "+".' />
       <div
         v-for="t in terms"
         v-show="t.id === activeId"
         :key="t.id"
         class="term-slot"
       >
+        <Composer v-if="t.kind === 'composer'" @launch="launch(t, $event)" />
         <OrchestratorView
-          v-if="t.kind === 'orchestrator'"
+          v-else-if="t.kind === 'orchestrator'"
           :id="t.id"
-          :ticket-key="t.ticketKey ?? activeTicketKey ?? ''"
+          :ticket-key="t.ticketKey ?? ''"
           :tool="t.tool"
           @exited="markExited(t.id)"
           @resume="resumeYolo(t, $event)"
@@ -120,16 +152,25 @@ function markExited(id: string): void {
         <YoloView
           v-else-if="t.kind === 'yolo'"
           :id="t.id"
-          :ticket-key="activeTicketKey"
+          :ticket-key="t.ticketKey ?? null"
+          :input="t.input"
           :prompt="t.prompt"
           :tool="t.tool"
           @exited="markExited(t.id)"
           @resume="resumeYolo(t, $event)"
         />
         <TerminalView
+          v-else-if="t.kind === 'shell'"
+          :id="t.id"
+          :shell="t.shell"
+          :cwd-override="t.cwdOverride"
+          @exited="markExited(t.id)"
+        />
+        <TerminalView
           v-else
           :id="t.id"
-          :ticket-key="activeTicketKey"
+          :ticket-key="t.ticketKey ?? null"
+          :input="t.input"
           :prompt="t.prompt"
           :tool="t.tool"
           :resume="t.resume"
@@ -142,6 +183,7 @@ function markExited(id: string): void {
 </template>
 
 <style scoped>
+.workbench { display: flex; flex-direction: column; height: 100%; flex: 1; min-width: 0; background: var(--surface); }
 .term-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--hairline); }
 .term-tabs { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
 .term-tab {
@@ -163,6 +205,11 @@ function markExited(id: string): void {
 .term-tab__label:focus-visible, .term-tab__close:focus-visible {
   outline: 2px solid var(--teal); outline-offset: -2px; border-radius: var(--radius-sm);
 }
+.new-session {
+  background: var(--teal); color: var(--bg); border: 0;
+  border-radius: var(--radius-sm); padding: 4px 12px; cursor: pointer; font-weight: 600; font-size: 16px; line-height: 1.2;
+}
+.new-session:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .term-body { flex: 1; position: relative; overflow: hidden; }
 .term-slot { position: absolute; inset: 0; padding: 6px; }
 </style>

@@ -12,6 +12,9 @@ export interface SpawnTerminalRequest {
   id: string
   tool?: string
   ticketKey?: string
+  // The raw composer input (ticket key or free-text description) — fills the
+  // {{request}} placeholder so a role prompt works for both ticket and free-text.
+  input?: string
   cwdOverride?: string
   cols: number
   rows: number
@@ -82,6 +85,7 @@ export interface StartYoloRequest {
   id: string
   tool?: string
   ticketKey?: string
+  input?: string
   cwdOverride?: string
   prompt?: { name?: string; text?: string }
 }

@@ -43,9 +43,13 @@ export function resolveForge(config: Config, ticketKey?: string): { prCommand: s
 
 export function expandPrompt(
   body: string,
-  ctx: { ticket: PromptTicket; forge: { prCommand: string; term: string }; contextTemplate?: string; catalog?: string }
+  ctx: { ticket: PromptTicket; forge: { prCommand: string; term: string }; request?: string; contextTemplate?: string; catalog?: string }
 ): string {
   const map: Record<string, string> = {
+    // The raw task the user typed (ticket key or free-text description). This is
+    // the one that carries real content under key-only; the ticket.* text fields
+    // below are empty unless a full ticket was injected (legacy / classifier path).
+    'request': ctx.request ?? '',
     'ticket.key': ctx.ticket.key,
     'ticket.type': ctx.ticket.type,
     'ticket.status': ctx.ticket.status,
