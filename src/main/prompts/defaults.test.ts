@@ -15,6 +15,7 @@ const SHIPPED_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../../reso
 // Template keys expand.ts actually substitutes — anything else renders literally
 // to the model, so a prompt must never use it. Keep in sync with expand.ts.
 const ALLOWED_KEYS = new Set([
+  'request',
   'ticket.key', 'ticket.type', 'ticket.status', 'ticket.summary', 'ticket.description',
   'ticket.acceptanceCriteria', 'ticket.comments', 'forge.term', 'forge.prCommand', 'ticket.context'
 ])
@@ -27,16 +28,16 @@ describe('seedDefaultPrompts', () => {
   it('copies every shipped prompt into an empty target and returns their names', () => {
     const seeded = seedDefaultPrompts(SHIPPED_DIR, target)
     expect(seeded.sort()).toEqual(
-      ['business-analyst', 'code-reviewer', 'developer', 'doc-writer', 'qa', 'tech-lead']
+      ['business-analyst', 'doc-writer', 'fix-bug', 'orchestrator', 'qa', 'reviewer', 'senior-dev', 'tech-lead']
     )
     expect(loadPrompts(target).map((p) => p.name).sort()).toEqual(seeded.sort())
   })
 
   it('never overwrites a prompt the user already has', () => {
-    writeFileSync(join(target, 'developer.md'), 'MINE', 'utf8')
+    writeFileSync(join(target, 'senior-dev.md'), 'MINE', 'utf8')
     const seeded = seedDefaultPrompts(SHIPPED_DIR, target)
-    expect(seeded).not.toContain('developer')
-    expect(readFileSync(join(target, 'developer.md'), 'utf8')).toBe('MINE')
+    expect(seeded).not.toContain('senior-dev')
+    expect(readFileSync(join(target, 'senior-dev.md'), 'utf8')).toBe('MINE')
   })
 
   it('is idempotent — a second run seeds nothing', () => {
@@ -65,7 +66,7 @@ describe('shipped prompt library is valid (acceptance criteria)', () => {
 
   it('ships the expected role set', () => {
     expect(files.sort()).toEqual(
-      ['business-analyst.md', 'code-reviewer.md', 'developer.md', 'doc-writer.md', 'qa.md', 'tech-lead.md']
+      ['business-analyst.md', 'doc-writer.md', 'fix-bug.md', 'orchestrator.md', 'qa.md', 'reviewer.md', 'senior-dev.md', 'tech-lead.md']
     )
   })
 
@@ -91,7 +92,7 @@ describe('shipped prompt library is valid (acceptance criteria)', () => {
   })
 
   it('dev / qa / doc prompts instruct feature-branch + PR and forbid main/develop', () => {
-    for (const name of ['developer', 'qa', 'doc-writer']) {
+    for (const name of ['senior-dev', 'qa', 'doc-writer']) {
       const body = parsed.find((p) => p.name === name)!.body
       expect(body, name).toMatch(/feature branch|feature\/|test\/|docs\//i)
       expect(body, name).toContain('{{forge.prCommand}}')
@@ -100,7 +101,7 @@ describe('shipped prompt library is valid (acceptance criteria)', () => {
   })
 
   it('dev / qa / doc prompts drive Jira status: In Progress on start, In Review on PR, Blocked when stuck', () => {
-    for (const name of ['developer', 'qa', 'doc-writer']) {
+    for (const name of ['senior-dev', 'qa', 'doc-writer']) {
       const body = parsed.find((p) => p.name === name)!.body
       // Mechanism: resolve the transition by name, then apply it (mirrors JiraClient.transition).
       expect(body, name).toContain('getTransitionsForJiraIssue')
@@ -124,11 +125,12 @@ describe('shipped prompt expands end to end', () => {
     url: 'https://x/browse/SD-4'
   }
 
-  it('developer.md fully resolves with no leftover placeholders', () => {
-    const body = parseFrontmatter(readFileSync(join(SHIPPED_DIR, 'developer.md'), 'utf8'), 'developer').body
+  it('senior-dev.md fully resolves with no leftover placeholders', () => {
+    const body = parseFrontmatter(readFileSync(join(SHIPPED_DIR, 'senior-dev.md'), 'utf8'), 'senior-dev').body
     const out = expandPrompt(body, {
-      ticket: buildPromptTicket(ticket, 'both'),
+      ticket: buildPromptTicket(ticket, 'key-only'),
       forge: { prCommand: 'gh pr create', term: 'PR' },
+      request: 'SD-4',
       contextTemplate: DEFAULT_TICKET_CONTEXT
     })
     expect(out).toContain('SD-4')
