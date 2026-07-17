@@ -38,6 +38,13 @@ linux:
   target: AppImage
   category: Development
   icon: build/icon.png
+# oneClick (per-user, no elevation) is MANDATORY: the assisted installer
+# (oneClick:false) crashes with an access violation (0xC0000005) in NSIS's
+# bundled 2018-era System.dll at the elevation / "for everyone vs just me"
+# step — the window dies right after the mode choice and installs nothing.
+# Reproduced deterministically on the sibling racconsole app; perMachine:false
+# installs to %LOCALAPPDATA% with no elevation, which is also the right model
+# for a per-user dev tool that reads the current user's ~/.claude and ~/.config.
 nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
+  oneClick: true
+  perMachine: false
