@@ -32,11 +32,28 @@ describe('ConfigStore', () => {
   })
 
   it('boot failure records loadError', () => {
-    const store = new ConfigStore(join(tmpdir(), 'sd-none', 'nope.yaml'))
-    const res = store.reload()
+    // A MALFORMED config is the real boot failure. (A MISSING file is not a
+    // failure — it's the clean-install default; see the "missing config" cases in
+    // load.test.ts and the clean-install boot test below.)
+    const { store } = tmpSetup(MINIMAL)
+    writeFileSync(store.configPath, 'cliTools: [broken', 'utf8')
+    const store2 = new ConfigStore(store.configPath)
+    const res = store2.reload()
     expect(res.ok).toBe(false)
-    expect(store.config).toBeNull()
-    expect(store.loadError).toBeTruthy()
+    expect(store2.config).toBeNull()
+    expect(store2.loadError).toBeTruthy()
+  })
+
+  it('a missing config file boots with defaults (clean install)', () => {
+    // The bug this guards: a fresh install has no config.yaml; reload must succeed
+    // with preset defaults, not fail — otherwise the boot gate skips prompt-seeding
+    // and leaves config null, so tools/repos/prompts all come back empty.
+    const dir = mkdtempSync(join(tmpdir(), 'sd-store-'))
+    const store = new ConfigStore(join(dir, 'does-not-exist.yaml'))
+    const res = store.reload()
+    expect(res).toEqual({ ok: true })
+    expect(store.config?.defaultTool).toBe('claude')
+    expect(store.loadError).toBeNull()
   })
 
   it('reloadPrompts mutates the SAME array instance in place', () => {
@@ -53,7 +70,12 @@ describe('ConfigStore', () => {
 
 describe('requireConfig', () => {
   it('throws with the load error when config is null', () => {
-    const store = new ConfigStore(join(tmpdir(), 'sd-none', 'missing.yaml'))
+    // config stays null only on a real load failure (malformed file), not a
+    // missing one — a missing file now boots with defaults.
+    const dir = mkdtempSync(join(tmpdir(), 'sd-store-'))
+    const cfgPath = join(dir, 'config.yaml')
+    writeFileSync(cfgPath, 'cliTools: [broken', 'utf8')
+    const store = new ConfigStore(cfgPath)
     store.reload()
     expect(() => requireConfig(store)).toThrow(/Config not loaded/)
     const { store: good } = tmpSetup(MINIMAL)

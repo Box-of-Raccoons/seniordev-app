@@ -29,5 +29,18 @@ export function parseConfig(rawText: string): Config {
 }
 
 export function loadConfig(path: string): Config {
-  return parseConfig(readFileSync(path, 'utf8'))
+  let raw: string
+  try {
+    raw = readFileSync(path, 'utf8')
+  } catch (err) {
+    // A missing config file is the normal clean-install / first-run state, not an
+    // error: fall back to an empty config so every preset default (the claude/codex
+    // cliTools, the github forge, defaultTool 'claude') applies and boot succeeds.
+    // Without this, reload() throws → the caller's boot gate skips prompt-seeding and
+    // leaves config null, so tools/repos/prompts all come back empty on a fresh install.
+    // A malformed (non-ENOENT) file is a real problem and still surfaces.
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return parseConfig('')
+    throw err
+  }
+  return parseConfig(raw)
 }
