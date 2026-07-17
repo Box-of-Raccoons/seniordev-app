@@ -46,9 +46,11 @@ function newTab(): void {
   addTerm({ title: 'New session', kind: 'composer', variant: 'agent' })
 }
 
-function onPick(p: { variant: 'agent' | 'terminal'; tool?: string }): void {
-  const title = p.variant === 'terminal' ? 'New shell' : p.tool ? p.tool[0].toUpperCase() + p.tool.slice(1) : 'New session'
-  addTerm({ title, kind: 'composer', variant: p.variant, tool: p.tool })
+// The menu only picks agent-vs-terminal; the agent CLI (Claude/Codex) is chosen
+// later in the composer's tool picker, so no tool rides on the pick.
+function onPick(p: { variant: 'agent' | 'terminal' }): void {
+  const title = p.variant === 'terminal' ? 'New shell' : 'New session'
+  addTerm({ title, kind: 'composer', variant: p.variant })
 }
 
 // Open a prefilled agent composer (used by the deep-link entry point). The user

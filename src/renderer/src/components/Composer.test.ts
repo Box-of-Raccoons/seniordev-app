@@ -13,6 +13,7 @@ beforeEach(() => {
     ]),
     listRepos: vi.fn(async () => [{ key: 'SD', path: 'C:/repos/sd' }]),
     listShells: vi.fn(async () => ({ shells: ['pwsh', 'cmd'], default: 'pwsh' })),
+    listTools: vi.fn(async () => ['claude', 'codex']),
     resolveRepo,
     yoloCaps: vi.fn(async () => ({ available: true }))
   }
@@ -105,5 +106,37 @@ describe('Composer', () => {
     await w.find('#composer-input').setValue('SD-42')
     await flushPromises()
     expect((w.find('#composer-folder').element as HTMLInputElement).value).toBe('D:/mine')
+  })
+
+  it('agent shows a Claude|Codex tool picker and emits the chosen tool', async () => {
+    const w = await mountComposer('agent')
+    // Two segmented groups in agent view: [0] session mode, [1] tool.
+    const toolSeg = w.findAll('.seg')[1]
+    expect(toolSeg.findAll('.seg-btn').map((b) => b.text())).toEqual(['Claude', 'Codex'])
+    await w.find('#composer-folder').setValue('C:/work')
+    await toolSeg.findAll('.seg-btn')[1].trigger('click')
+    await w.find('form').trigger('submit')
+    expect(w.emitted('launch')?.[0]?.[0]).toMatchObject({ tool: 'codex' })
+  })
+
+  it('Open mode hides role/description/YOLO and launches a bare agent', async () => {
+    const w = await mountComposer('agent')
+    // Switch the session mode to Open (the first segmented group's second button).
+    await w.findAll('.seg')[0].findAll('.seg-btn')[1].trigger('click')
+    expect(w.find('#composer-role').exists()).toBe(false)
+    expect(w.find('#composer-input').exists()).toBe(false)
+    expect(w.find('.yolo').exists()).toBe(false)
+    await w.find('#composer-folder').setValue('C:/work')
+    expect(w.find('button[type="submit"]').text()).toBe('Launch')
+    await w.find('form').trigger('submit')
+    expect(w.emitted('launch')?.[0]?.[0]).toEqual({
+      mode: 'interactive',
+      folder: 'C:/work',
+      role: undefined,
+      input: undefined,
+      ticketKey: undefined,
+      yolo: false,
+      tool: 'claude'
+    })
   })
 })

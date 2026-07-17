@@ -1,13 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import NewTabMenu from './NewTabMenu.vue'
-
-beforeEach(() => {
-  ;(window as unknown as { api: unknown }).api = {
-    listTools: vi.fn(async () => ['claude', 'codex']),
-    onConfigChanged: vi.fn(() => () => {})
-  }
-})
 
 async function open() {
   const w = mount(NewTabMenu)
@@ -17,18 +10,18 @@ async function open() {
 }
 
 describe('NewTabMenu', () => {
-  it('lists the agent tools (capitalized) plus Terminal when opened', async () => {
+  it('offers AI and Terminal when opened', async () => {
     const w = await open()
-    expect(w.findAll('.menu-item').map((b) => b.text())).toEqual(['Claude', 'Codex', 'Terminal'])
+    expect(w.findAll('.menu-item').map((b) => b.text())).toEqual(['AI', 'Terminal'])
   })
 
-  it('emits pick with the tool for an agent choice', async () => {
+  it('emits an agent pick (no tool — chosen later in the composer) for AI', async () => {
     const w = await open()
     await w.findAll('.menu-item')[0].trigger('click')
-    expect(w.emitted('pick')?.[0]?.[0]).toEqual({ variant: 'agent', tool: 'claude' })
+    expect(w.emitted('pick')?.[0]?.[0]).toEqual({ variant: 'agent' })
   })
 
-  it('emits pick terminal for the Terminal choice', async () => {
+  it('emits a terminal pick for Terminal', async () => {
     const w = await open()
     await w.findAll('.menu-item').at(-1)!.trigger('click')
     expect(w.emitted('pick')?.[0]?.[0]).toEqual({ variant: 'terminal' })

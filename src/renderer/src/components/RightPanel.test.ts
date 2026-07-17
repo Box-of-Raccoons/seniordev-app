@@ -22,7 +22,7 @@ beforeEach(() => {
 const NewTabMenu = {
   emits: ['pick'],
   template: `<div class="newtab-stub">
-    <button class="pick-claude" @click="$emit('pick', { variant: 'agent', tool: 'claude' })">c</button>
+    <button class="pick-ai" @click="$emit('pick', { variant: 'agent' })">c</button>
     <button class="pick-term" @click="$emit('pick', { variant: 'terminal' })">t</button>
   </div>`
 }
@@ -31,8 +31,8 @@ const Composer = {
   props: ['variant', 'tool'],
   emits: ['launch'],
   template: `<div class="composer-stub" :data-variant="variant" :data-tool="tool">
-    <button class="go-int" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'orchestrator', input: 'ISC-835', ticketKey: 'ISC-835', yolo: false, tool })">i</button>
-    <button class="go-yolo" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'fix-bug', input: 'do it', yolo: true, tool })">y</button>
+    <button class="go-int" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'orchestrator', input: 'ISC-835', ticketKey: 'ISC-835', yolo: false, tool: 'claude' })">i</button>
+    <button class="go-yolo" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'fix-bug', input: 'do it', yolo: true, tool: 'claude' })">y</button>
     <button class="go-term" @click="$emit('launch', { mode: 'terminal', folder: 'C:/proj/api', shell: 'pwsh' })">t</button>
   </div>`
 }
@@ -63,13 +63,14 @@ describe('RightPanel', () => {
     expect(w.find('img.empty-state__art').exists()).toBe(true)
   })
 
-  it('picking Claude from the menu opens an agent composer tab', async () => {
+  it('picking AI from the menu opens an agent composer tab', async () => {
     const w = mountRP()
-    await w.find('.pick-claude').trigger('click')
+    await w.find('.pick-ai').trigger('click')
     expect(w.findAll('.term-tab')).toHaveLength(1)
     expect(w.find('.composer-stub').attributes('data-variant')).toBe('agent')
-    expect(w.find('.composer-stub').attributes('data-tool')).toBe('claude')
-    expect(w.text()).toContain('Claude')
+    // The tool is chosen in the composer, not at pick time, so no tool rides in.
+    expect(w.find('.composer-stub').attributes('data-tool')).toBeUndefined()
+    expect(w.text()).toContain('New session')
   })
 
   it('picking Terminal opens a terminal-variant composer', async () => {
@@ -81,7 +82,7 @@ describe('RightPanel', () => {
 
   it('launching interactive morphs into a terminal carrying the chosen tool', async () => {
     const w = mountRP()
-    await w.find('.pick-claude').trigger('click')
+    await w.find('.pick-ai').trigger('click')
     await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()
     expect(w.find('.composer-stub').exists()).toBe(false)
@@ -92,7 +93,7 @@ describe('RightPanel', () => {
 
   it('launching with YOLO morphs into a yolo view', async () => {
     const w = mountRP()
-    await w.find('.pick-claude').trigger('click')
+    await w.find('.pick-ai').trigger('click')
     await w.find('.go-yolo').trigger('click')
     await w.vm.$nextTick()
     expect(w.findAll('.yv')).toHaveLength(1)
@@ -112,8 +113,8 @@ describe('RightPanel', () => {
 
   it('opens multiple tabs and closes one', async () => {
     const w = mountRP()
-    await w.find('.pick-claude').trigger('click')
-    await w.find('.pick-claude').trigger('click')
+    await w.find('.pick-ai').trigger('click')
+    await w.find('.pick-ai').trigger('click')
     expect(w.findAll('.term-tab')).toHaveLength(2)
     await w.findAll('.term-tab__close')[0].trigger('click')
     expect(w.findAll('.term-tab')).toHaveLength(1)
@@ -121,7 +122,7 @@ describe('RightPanel', () => {
 
   it('each tab has a labeled button close control', async () => {
     const w = mountRP()
-    await w.find('.pick-claude').trigger('click')
+    await w.find('.pick-ai').trigger('click')
     const close = w.find('.term-tab__close')
     expect(close.element.tagName).toBe('BUTTON')
     expect(close.attributes('aria-label')).toMatch(/^Close /)
@@ -157,7 +158,7 @@ describe('RightPanel', () => {
       }
     }
     const w = mount(RightPanel, { global: { stubs: exitStubs } })
-    await w.find('.pick-claude').trigger('click')
+    await w.find('.pick-ai').trigger('click')
     await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()
     await w.find('.trigger-exit').trigger('click')
