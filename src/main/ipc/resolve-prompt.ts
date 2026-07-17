@@ -7,6 +7,8 @@ import { buildPromptTicket, expandPrompt, resolveForge } from '../prompts/expand
 export interface PromptRequest {
   prompt?: { name?: string; text?: string }
   ticketKey?: string
+  // The raw composer input (ticket key or free text) → {{request}}.
+  input?: string
 }
 
 export interface PromptDeps {
@@ -51,6 +53,6 @@ export async function resolveExpandedPrompt(
     'key-only'
   )
   const forge = resolveForge(config, req.ticketKey)
-  const prompt = expandPrompt(body, { ticket: ticketCtx, forge, contextTemplate: deps.contextTemplate?.() })
+  const prompt = expandPrompt(body, { ticket: ticketCtx, forge, request: req.input, contextTemplate: deps.contextTemplate?.() })
   return { prompt, model }
 }

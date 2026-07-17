@@ -1,21 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import LeftPanel from './components/LeftPanel.vue'
 import RightPanel from './components/RightPanel.vue'
 import AboutModal from './components/AboutModal.vue'
 import AppConfigModal from './components/AppConfigModal.vue'
 import PromptConfigModal from './components/PromptConfigModal.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import Splash from './components/Splash.vue'
-import { useResizableSplit } from './composables/useResizableSplit'
 import { useSplash } from './composables/useSplash'
 import type { MenuAction, DeepLink, RepoResolution } from '../../shared/ipc'
 
-const activeTicketKey = ref<string | null>(null)
-const leftPanel = ref<InstanceType<typeof LeftPanel> | null>(null)
 const rightPanel = ref<InstanceType<typeof RightPanel> | null>(null)
-const shell = ref<HTMLElement | null>(null)
-const { leftStyle, leftPercent, dragging, onPointerDown, onKeydown } = useResizableSplit(shell)
 // Boot splash: shown from first paint, dismissed once startup work settles below.
 const { visible: splashVisible, ready: splashReady } = useSplash()
 const modal = ref<'about' | 'app-config' | 'prompt-config' | null>(null)
@@ -48,8 +42,7 @@ function requestNewSession(): void {
 
 function doReset(): void {
   rightPanel.value?.closeAll()
-  leftPanel.value?.closeAll()
-  activeTicketKey.value = null
+  rightPanel.value?.newTab()
   confirmReset.value = false
 }
 
@@ -90,17 +83,14 @@ function confirmOrchestrator(): void {
 }
 
 async function handleDeepLink(link: DeepLink): Promise<void> {
-  await leftPanel.value?.openTickets([link.ticket])
-  activeTicketKey.value = link.ticket
   if (link.action === 'yolo') await requestOrchestrator(link.ticket, true)
+  else rightPanel.value?.newTab()
 }
 
-// SeniorDevWatch (--orchestrate / warm ORCHESTRATOR.run): open the ticket and run
-// the orchestrator directly — NO confirm gate (the trigger is a trusted local CLI
-// arg, not a web deep link, and approval already happened in the watcher).
-async function runOrchestratorNow(key: string): Promise<void> {
-  await leftPanel.value?.openTickets([key])
-  activeTicketKey.value = key
+// SeniorDevWatch (--orchestrate / warm ORCHESTRATOR.run): run the orchestrator
+// directly — NO confirm gate (the trigger is a trusted local CLI arg, not a web
+// deep link, and approval already happened in the watcher).
+function runOrchestratorNow(key: string): void {
   rightPanel.value?.startOrchestrator(key)
 }
 
@@ -112,20 +102,17 @@ onMounted(async () => {
   window.api.deepLinkReady()
   try {
     const startup = await window.api.getStartup()
-    if (startup.tickets.length) {
-      await leftPanel.value?.openTickets(startup.tickets)
-      activeTicketKey.value = startup.tickets[0]
-    }
-    if (startup.session) rightPanel.value?.startStartupSession(startup.session)
+    if (startup.session) rightPanel.value?.startStartupSession(startup.session, startup.tickets[0])
     if (startup.deeplink) await requestOrchestrator(startup.deeplink.ticket, true)
-    if (startup.orchestrate) await runOrchestratorNow(startup.orchestrate)
+    if (startup.orchestrate) runOrchestratorNow(startup.orchestrate)
   } catch (err) {
-    // Startup is best-effort: fall back to an empty workbench the user drives manually.
+    // Startup is best-effort: fall back to a fresh composer the user drives.
     console.error('Startup load failed:', err)
   } finally {
-    // The app is now as ready as it gets (tickets/session loaded, or startup
-    // failed and we're falling back) — take the splash down. Fires on both the
-    // success and error paths so the splash can never outlive startup.
+    // Always land on a launch surface: if nothing above opened a session, open a
+    // composer tab so the app never boots into an empty room.
+    if (!rightPanel.value?.hasSessions()) rightPanel.value?.newTab()
+    // The app is now as ready as it gets — take the splash down (both paths).
     splashReady()
   }
 })
@@ -138,21 +125,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="shell" class="shell" :class="{ 'shell--dragging': dragging }">
-    <LeftPanel ref="leftPanel" :style="leftStyle" @active-ticket="activeTicketKey = $event" />
-    <div
-      class="divider"
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize panels"
-      tabindex="0"
-      :aria-valuenow="leftPercent"
-      aria-valuemin="0"
-      aria-valuemax="100"
-      @pointerdown="onPointerDown"
-      @keydown="onKeydown"
-    ></div>
-    <RightPanel ref="rightPanel" :active-ticket-key="activeTicketKey" :style="{ flex: '1 1 0' }" />
+  <div class="shell">
+    <RightPanel ref="rightPanel" />
   </div>
   <AboutModal v-if="modal === 'about'" @close="modal = null" />
   <AppConfigModal v-if="modal === 'app-config'" @close="modal = null" />

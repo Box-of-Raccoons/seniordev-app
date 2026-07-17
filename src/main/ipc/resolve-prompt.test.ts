@@ -54,6 +54,18 @@ describe('resolveExpandedPrompt', () => {
     await expect(resolveExpandedPrompt(config, deps, { prompt: { name: 'ghost' } })).rejects.toThrow(/Unknown prompt/)
   })
 
+  it('fills {{request}} from the raw input (works for free text with no ticket key)', async () => {
+    const withReq: PromptDeps = { ...deps, prompts: [{ name: 'r', description: '', body: 'Task: {{request}}' }] }
+    const r = await resolveExpandedPrompt(config, withReq, { prompt: { name: 'r' }, input: 'Document our CICD process' })
+    expect(r?.prompt).toBe('Task: Document our CICD process')
+  })
+
+  it('leaves {{request}} empty when no input is given', async () => {
+    const withReq: PromptDeps = { ...deps, prompts: [{ name: 'r', description: '', body: 'Task:[{{request}}]' }] }
+    const r = await resolveExpandedPrompt(config, withReq, { prompt: { name: 'r' } })
+    expect(r?.prompt).toBe('Task:[]')
+  })
+
   it('is key-only: does not fetch the ticket, resolving even if getTicket would throw', async () => {
     const throwing: PromptDeps = {
       ...deps,
