@@ -18,8 +18,8 @@ beforeEach(() => {
   }
 })
 
-async function mountComposer() {
-  const w = mount(Composer)
+async function mountComposer(variant: 'agent' | 'terminal' = 'agent', tool = 'claude') {
+  const w = mount(Composer, { props: { variant, tool } })
   await flushPromises()
   return w
 }
@@ -27,8 +27,7 @@ async function mountComposer() {
 describe('Composer', () => {
   it('defaults the role to orchestrator when present', async () => {
     const w = await mountComposer()
-    const select = w.find('#composer-role').element as HTMLSelectElement
-    expect(select.value).toBe('orchestrator')
+    expect((w.find('#composer-role').element as HTMLSelectElement).value).toBe('orchestrator')
   })
 
   it('detects a ticket key vs free text and shows the right hint', async () => {
@@ -39,10 +38,15 @@ describe('Composer', () => {
     expect(w.text()).toContain('free text')
   })
 
-  it('Terminal mode hides the role + input and shows a shell picker', async () => {
-    const w = await mountComposer()
+  it('agent variant shows role + a multi-line input, no shell', async () => {
+    const w = await mountComposer('agent')
     expect(w.find('#composer-role').exists()).toBe(true)
-    await w.findAll('.seg')[1].trigger('click') // Terminal
+    expect(w.find('#composer-input').element.tagName).toBe('TEXTAREA')
+    expect(w.find('#composer-shell').exists()).toBe(false)
+  })
+
+  it('terminal variant shows only a shell picker, no role/input', async () => {
+    const w = await mountComposer('terminal')
     expect(w.find('#composer-role').exists()).toBe(false)
     expect(w.find('#composer-input').exists()).toBe(false)
     expect(w.find('#composer-shell').exists()).toBe(true)
@@ -50,25 +54,24 @@ describe('Composer', () => {
 
   it('requires a folder before launch is enabled', async () => {
     const w = await mountComposer()
-    const btn = w.find('button[type="submit"]').element as HTMLButtonElement
-    expect(btn.disabled).toBe(true)
+    expect((w.find('button[type="submit"]').element as HTMLButtonElement).disabled).toBe(true)
     await w.find('#composer-folder').setValue('C:/x')
     expect((w.find('button[type="submit"]').element as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('emits an interactive launch with role, input, and detected ticket key', async () => {
-    const w = await mountComposer()
+  it('emits an interactive launch with role, input, ticket key, and tool', async () => {
+    const w = await mountComposer('agent', 'claude')
     await w.find('#composer-folder').setValue('C:/work')
     await w.find('#composer-input').setValue('ISC-835')
     await w.find('form').trigger('submit')
-    const payload = w.emitted('launch')?.[0]?.[0]
-    expect(payload).toMatchObject({
+    expect(w.emitted('launch')?.[0]?.[0]).toMatchObject({
       mode: 'interactive',
       folder: 'C:/work',
       role: 'orchestrator',
       input: 'ISC-835',
       ticketKey: 'ISC-835',
-      yolo: false
+      yolo: false,
+      tool: 'claude'
     })
   })
 
@@ -82,9 +85,8 @@ describe('Composer', () => {
   })
 
   it('emits a terminal launch with the chosen shell and no role', async () => {
-    const w = await mountComposer()
+    const w = await mountComposer('terminal')
     await w.find('#composer-folder').setValue('C:/proj')
-    await w.findAll('.seg')[1].trigger('click') // Terminal
     await w.find('form').trigger('submit')
     expect(w.emitted('launch')?.[0]?.[0]).toEqual({ mode: 'terminal', folder: 'C:/proj', shell: 'pwsh' })
   })

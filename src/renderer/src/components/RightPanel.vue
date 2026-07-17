@@ -4,6 +4,7 @@ import TerminalView from './TerminalView.vue'
 import YoloView from './YoloView.vue'
 import OrchestratorView from './OrchestratorView.vue'
 import Composer from './Composer.vue'
+import NewTabMenu from './NewTabMenu.vue'
 import EmptyState from './EmptyState.vue'
 import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
 import type { ComposerLaunch } from './composer-types'
@@ -12,6 +13,7 @@ interface Term {
   id: string
   title: string
   kind: 'composer' | 'terminal' | 'yolo' | 'shell' | 'orchestrator'
+  variant?: 'agent' | 'terminal'
   prompt?: { name?: string; text?: string }
   input?: string
   tool?: string
@@ -32,9 +34,15 @@ function addTerm(t: Omit<Term, 'id'>): void {
   activeId.value = id
 }
 
-// A new tab opens as the composer; Launch morphs it into the running session.
+// Programmatic new tab (boot / reset / deep-link): a default agent composer on
+// the default CLI tool. The New-tab menu drives the explicit tool/terminal choice.
 function newTab(): void {
-  addTerm({ title: 'New session', kind: 'composer' })
+  addTerm({ title: 'New session', kind: 'composer', variant: 'agent' })
+}
+
+function onPick(p: { variant: 'agent' | 'terminal'; tool?: string }): void {
+  const title = p.variant === 'terminal' ? 'New shell' : p.tool ? p.tool[0].toUpperCase() + p.tool.slice(1) : 'New session'
+  addTerm({ title, kind: 'composer', variant: p.variant, tool: p.tool })
 }
 
 function basename(p: string): string {
@@ -55,6 +63,7 @@ function launch(t: Term, p: ComposerLaunch): void {
     return
   }
   t.kind = p.yolo ? 'yolo' : 'terminal'
+  t.tool = p.tool ?? t.tool
   t.prompt = p.role ? { name: p.role } : undefined
   t.input = p.input
   t.ticketKey = p.ticketKey
@@ -128,7 +137,7 @@ function markExited(id: string): void {
           <button class="term-tab__close" :aria-label="`Close ${t.title}`" @click="closeTerm(t.id)">×</button>
         </div>
       </nav>
-      <button class="new-session" aria-label="New session" title="New session" @click="newTab">+</button>
+      <NewTabMenu @pick="onPick" />
     </div>
 
     <div class="term-body">
@@ -139,7 +148,7 @@ function markExited(id: string): void {
         :key="t.id"
         class="term-slot"
       >
-        <Composer v-if="t.kind === 'composer'" @launch="launch(t, $event)" />
+        <Composer v-if="t.kind === 'composer'" :variant="t.variant ?? 'agent'" :tool="t.tool" @launch="launch(t, $event)" />
         <OrchestratorView
           v-else-if="t.kind === 'orchestrator'"
           :id="t.id"
@@ -205,11 +214,6 @@ function markExited(id: string): void {
 .term-tab__label:focus-visible, .term-tab__close:focus-visible {
   outline: 2px solid var(--teal); outline-offset: -2px; border-radius: var(--radius-sm);
 }
-.new-session {
-  background: var(--teal); color: var(--bg); border: 0;
-  border-radius: var(--radius-sm); padding: 4px 12px; cursor: pointer; font-weight: 600; font-size: 16px; line-height: 1.2;
-}
-.new-session:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .term-body { flex: 1; position: relative; overflow: hidden; }
 .term-slot { position: absolute; inset: 0; padding: 6px; }
 </style>
