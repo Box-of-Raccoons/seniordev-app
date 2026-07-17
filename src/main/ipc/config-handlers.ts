@@ -10,16 +10,13 @@ import type { ConfigStore } from '../config/store'
 // Shown when no config.yaml exists yet — mirrors config.example.yaml, but lives
 // in code so the packaged app doesn't need to locate the example on disk.
 export const STARTER_CONFIG = `# SeniorDev config
-jira:
-  baseUrl: https://yoursite.atlassian.net
-  email: you@company.com
-  apiToken: paste-token-from-id.atlassian.net
+# SeniorDev does not read Jira itself: it hands the ticket key to the agent, which
+# reads the issue via its own Atlassian MCP. No Jira credentials are needed here.
 
 # Everything below is optional; presets for claude/codex + github/gitlab apply automatically.
-# ticketContext: both        # key-only | both
 # defaultTool: claude
 # defaultForge: github
-# repos:
+# repos: ticket-prefix -> folder; prefills the composer's Folder from a ticket key.
 #   - key: PROJ
 #     path: C:/Users/you/code/backend
 #     branchPrefix: feature/

@@ -49,12 +49,6 @@ const stubs = {
     emits: ['exited', 'resume'],
     template:
       '<div class="yv" :data-id="id" :data-input="input"><button class="trigger-resume" @click="$emit(\'resume\', { sessionId: \'sid\', cwd: \'C:/x\', tool: \'claude\' })">resume</button></div>'
-  },
-  OrchestratorView: {
-    props: ['id', 'ticketKey', 'tool'],
-    emits: ['exited', 'resume', 'routed'],
-    template:
-      '<div class="ov" :data-id="id" :data-ticket-key="ticketKey"><button class="trigger-routed" @click="$emit(\'routed\', \'fix-bug\')">route</button></div>'
   }
 }
 
@@ -144,22 +138,13 @@ describe('RightPanel', () => {
     expect(w.text()).toContain('fix-bug')
   })
 
-  it('startOrchestrator opens an orchestrator tab with the ticket key', async () => {
+  it('openComposer opens an agent composer prefilled with the input', async () => {
     const w = mountRP()
-    ;(w.vm as unknown as { startOrchestrator: (key: string) => void }).startOrchestrator('SD-6')
+    ;(w.vm as unknown as { openComposer: (p: { input?: string }) => void }).openComposer({ input: 'SD-6' })
     await w.vm.$nextTick()
-    const ov = w.find('.ov')
-    expect(ov.attributes('data-ticket-key')).toBe('SD-6')
-    expect(w.text()).toContain('Jira Orchestrator')
-  })
-
-  it('routed event updates the orchestrator tab title', async () => {
-    const w = mountRP()
-    ;(w.vm as unknown as { startOrchestrator: (key: string) => void }).startOrchestrator('SD-6')
-    await w.vm.$nextTick()
-    await w.find('.trigger-routed').trigger('click')
-    await w.vm.$nextTick()
-    expect(w.find('.term-tab').text()).toContain('Jira Orchestrator → fix-bug')
+    const composer = w.find('.composer-stub')
+    expect(composer.exists()).toBe(true)
+    expect(composer.attributes('data-variant')).toBe('agent')
   })
 
   it('marks a tab dead when the run view emits exited', async () => {

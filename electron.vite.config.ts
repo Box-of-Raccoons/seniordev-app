@@ -7,10 +7,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: {
-          index: resolve('src/main/index.ts'),
-          watch: resolve('src/watch/main.ts')
-        }
+        input: { index: resolve('src/main/index.ts') }
       }
     }
   },

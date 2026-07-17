@@ -47,25 +47,4 @@ describe('parseStartupArgs', () => {
     expect(o.warnings).toHaveLength(1)
     expect(o.warnings![0]).toContain('C:/missing.md')
   })
-  it('parses --orchestrate <ticket> (uppercased) without consuming it as a positional', () => {
-    const o = parseStartupArgs(['--orchestrate', 'sd-6'], noRead)
-    expect(o.orchestrate).toBe('SD-6')
-    expect(o.tickets).toEqual([])   // the key belongs to the flag, not positionals
-    expect(o.session).toBeUndefined()
-  })
-  it('warns when --orchestrate is missing a ticket key', () => {
-    const o = parseStartupArgs(['--orchestrate', '--minimized'], noRead)
-    expect(o.orchestrate).toBeUndefined()
-    expect(o.warnings?.[0]).toContain('--orchestrate requires a ticket key')
-  })
-  it('parses --minimized', () => {
-    const o = parseStartupArgs(['--orchestrate', 'SD-6', '--minimized'], noRead)
-    expect(o.orchestrate).toBe('SD-6')
-    expect(o.minimized).toBe(true)
-  })
-  it('omits orchestrate/minimized when not passed', () => {
-    const o = parseStartupArgs(['PROJ-1'], noRead)
-    expect(o.orchestrate).toBeUndefined()
-    expect(o.minimized).toBeUndefined()
-  })
 })

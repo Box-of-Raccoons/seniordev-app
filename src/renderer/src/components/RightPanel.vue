@@ -2,18 +2,24 @@
 import { ref } from 'vue'
 import TerminalView from './TerminalView.vue'
 import YoloView from './YoloView.vue'
-import OrchestratorView from './OrchestratorView.vue'
 import Composer from './Composer.vue'
 import NewTabMenu from './NewTabMenu.vue'
 import EmptyState from './EmptyState.vue'
 import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
 import type { ComposerLaunch } from './composer-types'
 
+interface Prefill {
+  input?: string
+  folder?: string
+  role?: string
+}
+
 interface Term {
   id: string
   title: string
-  kind: 'composer' | 'terminal' | 'yolo' | 'shell' | 'orchestrator'
+  kind: 'composer' | 'terminal' | 'yolo' | 'shell'
   variant?: 'agent' | 'terminal'
+  prefill?: Prefill
   prompt?: { name?: string; text?: string }
   input?: string
   tool?: string
@@ -43,6 +49,12 @@ function newTab(): void {
 function onPick(p: { variant: 'agent' | 'terminal'; tool?: string }): void {
   const title = p.variant === 'terminal' ? 'New shell' : p.tool ? p.tool[0].toUpperCase() + p.tool.slice(1) : 'New session'
   addTerm({ title, kind: 'composer', variant: p.variant, tool: p.tool })
+}
+
+// Open a prefilled agent composer (used by the deep-link entry point). The user
+// reviews the prefill and launches it themselves.
+function openComposer(prefill: Prefill): void {
+  addTerm({ title: 'New session', kind: 'composer', variant: 'agent', prefill })
 }
 
 function basename(p: string): string {
@@ -94,11 +106,7 @@ function hasSessions(): boolean {
   return terms.value.length > 0
 }
 
-function startOrchestrator(ticketKey: string): void {
-  addTerm({ title: 'Jira Orchestrator', kind: 'orchestrator', ticketKey })
-}
-
-defineExpose({ newTab, startStartupSession, closeAll, hasSessions, startOrchestrator })
+defineExpose({ newTab, openComposer, startStartupSession, closeAll, hasSessions })
 
 function resumeYolo(from: Term, p: { sessionId: string; cwd: string; tool: string }): void {
   addTerm({
@@ -148,15 +156,14 @@ function markExited(id: string): void {
         :key="t.id"
         class="term-slot"
       >
-        <Composer v-if="t.kind === 'composer'" :variant="t.variant ?? 'agent'" :tool="t.tool" @launch="launch(t, $event)" />
-        <OrchestratorView
-          v-else-if="t.kind === 'orchestrator'"
-          :id="t.id"
-          :ticket-key="t.ticketKey ?? ''"
+        <Composer
+          v-if="t.kind === 'composer'"
+          :variant="t.variant ?? 'agent'"
           :tool="t.tool"
-          @exited="markExited(t.id)"
-          @resume="resumeYolo(t, $event)"
-          @routed="t.title = `Jira Orchestrator → ${$event}`"
+          :initial-input="t.prefill?.input"
+          :initial-folder="t.prefill?.folder"
+          :initial-role="t.prefill?.role"
+          @launch="launch(t, $event)"
         />
         <YoloView
           v-else-if="t.kind === 'yolo'"

@@ -7,14 +7,22 @@ import type { ComposerLaunch } from './composer-types'
 // variant is fixed by the New-tab menu choice: 'agent' runs a CLI agent (Claude,
 // Codex, …) with a role + prompt; 'terminal' opens a raw shell. tool names the
 // agent CLI for the 'agent' variant.
-const props = defineProps<{ variant: 'agent' | 'terminal'; tool?: string }>()
+const props = defineProps<{
+  variant: 'agent' | 'terminal'
+  tool?: string
+  // Optional prefill (deep-link entry point): seed folder/input/role.
+  initialInput?: string
+  initialFolder?: string
+  initialRole?: string
+}>()
 const emit = defineEmits<{ (e: 'launch', payload: ComposerLaunch): void }>()
 
-const folder = ref('')
+const folder = ref(props.initialFolder ?? '')
 // Once the user picks/edits the folder, stop auto-prefilling it from the ticket.
-const folderTouched = ref(false)
+// A prefilled folder counts as chosen, so a detected ticket won't overwrite it.
+const folderTouched = ref(!!props.initialFolder)
 const role = ref('')
-const input = ref('')
+const input = ref(props.initialInput ?? '')
 const yolo = ref(false)
 const shell = ref('')
 
@@ -46,7 +54,12 @@ onMounted(async () => {
     } catch {
       prompts.value = []
     }
-    role.value = prompts.value.find((p) => p.name === 'orchestrator')?.name ?? prompts.value[0]?.name ?? ''
+    const preferred = props.initialRole ?? 'orchestrator'
+    role.value =
+      prompts.value.find((p) => p.name === preferred)?.name ??
+      prompts.value.find((p) => p.name === 'orchestrator')?.name ??
+      prompts.value[0]?.name ??
+      ''
     try {
       yoloAvailable.value = (await window.api.yoloCaps()).available
     } catch {

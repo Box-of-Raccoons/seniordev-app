@@ -39,35 +39,6 @@ export const DEFAULT_YOLO_RECAP = `When you are completely finished, end your fi
 1. "## Changes made" — every file you changed and a one-line why.
 2. "## Pull requests" — the URL of each PR/MR you created (one per project if this repo is a monorepo).`
 
-export const DEFAULT_ORCHESTRATOR_PROMPT = `You are the Jira Orchestrator — a router that matches a Jira ticket to the best prebuilt playbook.
-
-## Ticket
-
-Key: {{ticket.key}}
-Type: {{ticket.type}}
-Status: {{ticket.status}}
-Summary: {{ticket.summary}}
-
-{{ticket.description}}
-
-Acceptance criteria:
-{{ticket.acceptanceCriteria}}
-
-Comments:
-{{ticket.comments}}
-
-## Available playbooks
-
-{{prompts.catalog}}
-
-## Your task
-
-Read the ticket and choose the single playbook best suited to work it. Do not execute the playbook, do not modify any files, and do not run any commands — this is a classification turn only.
-
-Reply with ONLY a JSON object and no other text:
-- {"prompt": "<playbook name>"} — the best match
-- {"prompt": null, "reason": "<one line>"} — if no playbook fits`
-
 export const FORGE_PRESETS = {
   github: {
     prCommand: 'gh pr create',
