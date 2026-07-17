@@ -58,4 +58,13 @@ describe('loadConfig', () => {
   it('throws on an invalid cliTool (missing command)', () => {
     expect(() => loadConfig(tmpConfig('cliTools:\n  bad: {}\n'))).toThrow(/command/)
   })
+
+  it('treats a missing config file as an empty default config (clean install)', () => {
+    // A fresh install has no config.yaml; loadConfig must NOT throw, or boot fails
+    // and nothing (tools/repos/prompts) seeds. It returns the preset defaults.
+    const missing = join(mkdtempSync(join(tmpdir(), 'sd-cfg-')), 'does-not-exist.yaml')
+    const cfg = loadConfig(missing)
+    expect(cfg.defaultTool).toBe('claude')
+    expect(cfg.cliTools.claude.command).toBe('claude')
+  })
 })
