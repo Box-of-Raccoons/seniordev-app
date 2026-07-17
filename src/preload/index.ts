@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, ORCHESTRATOR, type GetTicketResult, type PromptSummary, type DeepLink, type RepoResolution } from '../shared/ipc'
-import type { SpawnTerminalRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, SHELLS, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, ORCHESTRATOR, type GetTicketResult, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo } from '../shared/ipc'
+import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
 import type { ClassifyRequest, ClassifyResult, OrchestratorPromptInfo } from '../shared/ipc'
@@ -8,9 +8,13 @@ import type { ClassifyRequest, ClassifyResult, OrchestratorPromptInfo } from '..
 const api = {
   getTicket: (key: string): Promise<GetTicketResult> => ipcRenderer.invoke(IPC.getTicket, key),
   resolveRepo: (key: string): Promise<RepoResolution> => ipcRenderer.invoke(IPC.resolveRepo, key),
+  listRepos: (): Promise<RepoInfo[]> => ipcRenderer.invoke(REPOS.list),
+  pickFolder: (): Promise<string | null> => ipcRenderer.invoke(DIALOG.pickFolder),
   listPrompts: (): Promise<PromptSummary[]> => ipcRenderer.invoke(PROMPTS.list),
 
   spawnTerminal: (req: SpawnTerminalRequest): Promise<SpawnResult> => ipcRenderer.invoke(TERM.spawn, req),
+  spawnShell: (req: SpawnShellRequest): Promise<SpawnResult> => ipcRenderer.invoke(TERM.spawnShell, req),
+  listShells: (): Promise<ShellsInfo> => ipcRenderer.invoke(SHELLS.list),
   writeTerminal: (id: string, data: string): void => ipcRenderer.send(TERM.write, id, data),
   resizeTerminal: (id: string, cols: number, rows: number): void => ipcRenderer.send(TERM.resize, id, cols, rows),
   killTerminal: (id: string): void => ipcRenderer.send(TERM.kill, id),

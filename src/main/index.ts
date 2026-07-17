@@ -12,6 +12,7 @@ import { registerOrchestratorIpc } from './ipc/orchestrator-handlers'
 import { registerPromptsIpc } from './ipc/prompts-handlers'
 import { seedDefaultPrompts } from './prompts/defaults'
 import { registerShellIpc } from './ipc/shell-handlers'
+import { registerComposerIpc } from './ipc/composer-handlers'
 import { registerAppIpc } from './ipc/app-handlers'
 import { registerConfigIpc } from './ipc/config-handlers'
 import { registerPromptConfigIpc } from './ipc/prompt-config-handlers'
@@ -20,7 +21,7 @@ import { nodePtySpawner } from './terminal/node-pty-spawner'
 import { nodeHeadlessSpawner } from './headless/node-spawner'
 import { systemResolveCommand } from './terminal/resolve-command'
 import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './deeplink/parse'
-import { findRepoForTicket } from '../watch/repo-map'
+import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery } from './deeplink/delivery'
 import { DEEPLINK, ORCHESTRATOR } from '../shared/ipc'
 import type { TerminalManager } from './terminal/manager'
@@ -198,6 +199,7 @@ if (!gotLock) {
       return repo ? { key: repo.key, path: repo.path, tool: cfg.defaultTool } : null
     })
     registerShellIpc()
+    registerComposerIpc({ getConfig: () => store.config })
     const startup = parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8'))
     for (const w of startup.warnings ?? []) console.error('[startup]', w)
 

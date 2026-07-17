@@ -22,8 +22,21 @@ export interface TerminalDataEvent { id: string; data: string }
 export interface TerminalExitEvent { id: string; exitCode: number }
 export type SpawnResult = { ok: true } | { ok: false; error: string }
 
+// Terminal mode: a raw shell (pwsh/cmd/bash/wsl) in a chosen folder, no seeded
+// prompt — so none of the prompt-delivery machinery runs for it.
+export interface SpawnShellRequest {
+  id: string
+  shell: string
+  cwd: string
+  cols: number
+  rows: number
+}
+export interface ShellsInfo { shells: string[]; default: string }
+export const SHELLS = { list: 'shells:list' } as const
+
 export const TERM = {
   spawn: 'pty:spawn',
+  spawnShell: 'pty:spawnShell',
   write: 'pty:write',
   resize: 'pty:resize',
   kill: 'pty:kill',
@@ -35,6 +48,13 @@ export interface PromptSummary { name: string; description: string }
 export const PROMPTS = { list: 'prompts:list' } as const
 
 export const SHELL = { openExternal: 'shell:openExternal' } as const
+
+// Composer folder support: the configured repos (for a quick-pick + ticket-prefix
+// prefill) and a native directory picker. RepoInfo is the serializable subset the
+// renderer needs (label = key, value = path).
+export interface RepoInfo { key: string; path: string }
+export const REPOS = { list: 'repos:list' } as const
+export const DIALOG = { pickFolder: 'dialog:pickFolder' } as const
 
 export interface StartupSession {
   mode: 'interactive' | 'yolo'
