@@ -16,7 +16,18 @@ export function parseDeepLink(url: string): DeepLink | null {
   if (action !== 'open' && action !== 'yolo') return null
   const ticket = parsed.searchParams.get('ticket')
   if (!ticket || !isTicketKey(ticket)) return null
-  return { action, ticket: ticket.toUpperCase() }
+  // Optional prefill hints. role must be a prompt-name slug; folder is a plain
+  // path string (prefilled into a text field, never run), trimmed and length-capped.
+  const roleRaw = parsed.searchParams.get('role')
+  const role = roleRaw && /^[a-z0-9][a-z0-9-]*$/i.test(roleRaw) ? roleRaw : undefined
+  const folderRaw = parsed.searchParams.get('folder')?.trim()
+  const folder = folderRaw ? folderRaw.slice(0, 500) : undefined
+  return {
+    action,
+    ticket: ticket.toUpperCase(),
+    ...(role ? { role } : {}),
+    ...(folder ? { folder } : {})
+  }
 }
 
 export function findDeepLinkArg(argv: string[]): string | undefined {

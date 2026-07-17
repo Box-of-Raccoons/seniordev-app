@@ -1,5 +1,4 @@
 import type { Config } from '../config/schema'
-import type { Ticket } from '../../shared/types'
 import type { PromptModel } from '../config/model'
 import { type PromptTemplate, findPrompt } from '../prompts/library'
 import { buildPromptTicket, expandPrompt, resolveForge } from '../prompts/expand'
@@ -12,12 +11,7 @@ export interface PromptRequest {
 }
 
 export interface PromptDeps {
-  // Retained for the interactive/YOLO deps shape; no longer used here now that
-  // prompt resolution is key-only (the agent reads the ticket via its own MCP).
-  // Removed with the app-side Jira client in the cutover phase.
-  getTicket?: (key: string) => Promise<Ticket>
   prompts: PromptTemplate[]
-  contextTemplate?: () => string
 }
 
 // The expanded prompt plus the model it declared (if any), so the chosen
@@ -53,6 +47,6 @@ export async function resolveExpandedPrompt(
     'key-only'
   )
   const forge = resolveForge(config, req.ticketKey)
-  const prompt = expandPrompt(body, { ticket: ticketCtx, forge, request: req.input, contextTemplate: deps.contextTemplate?.() })
+  const prompt = expandPrompt(body, { ticket: ticketCtx, forge, request: req.input })
   return { prompt, model }
 }

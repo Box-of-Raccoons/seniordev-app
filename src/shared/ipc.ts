@@ -64,7 +64,9 @@ export interface StartupSession {
   promptText?: string
   tool?: string
 }
-export interface DeepLink { action: 'open' | 'yolo'; ticket: string }
+// A deep link prefills a composer. `ticket` is the anchor; `role` and `folder`
+// are optional prefill hints. Nothing launches from a link (see SECURITY.md).
+export interface DeepLink { action: 'open' | 'yolo'; ticket: string; role?: string; folder?: string }
 // `ready` is the renderer's listener-attached signal: main queues warm links
 // until it arrives, so nothing is pushed at a window that can't hear it yet.
 export const DEEPLINK = { event: 'deeplink:event', ready: 'deeplink:ready' } as const
@@ -114,6 +116,5 @@ export const CONFIG = {
 
 export type PromptReadResult = { ok: true; text: string } | { ok: false; error: string }
 export const PROMPT_FILES = {
-  read: 'prompts:read', write: 'prompts:write', create: 'prompts:create', delete: 'prompts:delete',
-  readContext: 'prompts:readContext', writeContext: 'prompts:writeContext'
+  read: 'prompts:read', write: 'prompts:write', create: 'prompts:create', delete: 'prompts:delete'
 } as const

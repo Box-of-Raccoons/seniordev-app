@@ -10,8 +10,6 @@ beforeEach(() => {
     writePrompt: vi.fn().mockResolvedValue({ ok: true }),
     createPrompt: vi.fn().mockResolvedValue({ ok: true, text: '---\nname: new-one\n---\n' }),
     deletePrompt: vi.fn().mockResolvedValue({ ok: true }),
-    readContext: vi.fn().mockResolvedValue({ ok: true, text: 'CTX {{ticket.key}}' }),
-    writeContext: vi.fn().mockResolvedValue({ ok: true }),
     readRecap: vi.fn().mockResolvedValue({ text: 'RECAP', isDefault: true }),
     saveRecap: vi.fn().mockResolvedValue({ ok: true }),
     readPreamble: vi.fn().mockResolvedValue({ text: 'PREAMBLE', isDefault: true }),
@@ -29,23 +27,13 @@ describe('PromptConfigModal', () => {
   it('lists specials pinned first, then prompts', async () => {
     const w = await open()
     const items = w.findAll('.pcfg-item').map((i) => i.text())
-    expect(items[0]).toContain('Ticket context')
-    expect(items[1]).toContain('YOLO preamble')
-    expect(items[2]).toContain('YOLO recap')
-    expect(items[3]).toContain('fix-bug')
-  })
-  it('selecting the context loads it; save calls writeContext', async () => {
-    const w = await open()
-    await w.findAll('.pcfg-item')[0].trigger('click')
-    await flushPromises()
-    expect((w.get('textarea').element as HTMLTextAreaElement).value).toBe('CTX {{ticket.key}}')
-    await w.get('textarea').setValue('NEW CTX')
-    await w.get('button.pcfg-save').trigger('click')
-    expect(window.api.writeContext).toHaveBeenCalledWith('NEW CTX')
+    expect(items[0]).toContain('YOLO preamble')
+    expect(items[1]).toContain('YOLO recap')
+    expect(items[2]).toContain('fix-bug')
   })
   it('preamble shows the default badge and saves via savePreamble', async () => {
     const w = await open()
-    await w.findAll('.pcfg-item')[1].trigger('click')
+    await w.findAll('.pcfg-item')[0].trigger('click')
     await flushPromises()
     expect(w.text()).toContain('using built-in default')
     await w.get('textarea').setValue('MY PREAMBLE')
@@ -54,7 +42,7 @@ describe('PromptConfigModal', () => {
   })
   it('recap shows the default badge and saves via saveRecap', async () => {
     const w = await open()
-    await w.findAll('.pcfg-item')[2].trigger('click')
+    await w.findAll('.pcfg-item')[1].trigger('click')
     await flushPromises()
     expect(w.text()).toContain('using built-in default')
     await w.get('textarea').setValue('MY RECAP')
@@ -63,7 +51,7 @@ describe('PromptConfigModal', () => {
   })
   it('editing a prompt round-trips through readPrompt/writePrompt and surfaces errors', async () => {
     const w = await open()
-    await w.findAll('.pcfg-item')[3].trigger('click')
+    await w.findAll('.pcfg-item')[2].trigger('click')
     await flushPromises()
     expect(window.api.readPrompt).toHaveBeenCalledWith('fix-bug')
     ;(window.api.writePrompt as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, error: 'name collides' })
@@ -83,7 +71,7 @@ describe('PromptConfigModal', () => {
   })
   it('delete confirms then calls deletePrompt and refreshes', async () => {
     const w = await open()
-    await w.findAll('.pcfg-item')[3].trigger('click')
+    await w.findAll('.pcfg-item')[2].trigger('click')
     await flushPromises()
     await w.get('button.pcfg-delete').trigger('click')
     expect(w.text()).toContain('Delete prompt')
@@ -93,17 +81,17 @@ describe('PromptConfigModal', () => {
   })
   it('switching selection with unsaved edits asks to discard first', async () => {
     const w = await open()
-    await w.findAll('.pcfg-item')[0].trigger('click') // context
+    await w.findAll('.pcfg-item')[0].trigger('click') // preamble
     await flushPromises()
     await w.get('textarea').setValue('EDITED BUT UNSAVED')
-    await w.findAll('.pcfg-item')[2].trigger('click') // recap — must NOT load yet
+    await w.findAll('.pcfg-item')[1].trigger('click') // recap — must NOT load yet
     await flushPromises()
     expect(window.api.readRecap).not.toHaveBeenCalled()
     expect(w.text()).toContain('Discard changes and switch?')
     // cancel keeps the edit; confirm switches and loads the target
     await w.get('button.confirm-no').trigger('click')
     expect((w.get('textarea').element as HTMLTextAreaElement).value).toBe('EDITED BUT UNSAVED')
-    await w.findAll('.pcfg-item')[2].trigger('click')
+    await w.findAll('.pcfg-item')[1].trigger('click')
     await w.get('button.confirm-yes').trigger('click')
     await flushPromises()
     expect(window.api.readRecap).toHaveBeenCalled()

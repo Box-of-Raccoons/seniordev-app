@@ -14,6 +14,18 @@ describe('parseDeepLink', () => {
   it('ignores extra query params', () => {
     expect(parseDeepLink('seniordev://yolo?prompt=fix&ticket=AB-12&x=1')).toEqual({ action: 'yolo', ticket: 'AB-12' })
   })
+  it('carries optional role and folder prefill hints', () => {
+    expect(parseDeepLink('seniordev://open?ticket=SD-6&role=fix-bug&folder=~/code/sd')).toEqual({
+      action: 'open',
+      ticket: 'SD-6',
+      role: 'fix-bug',
+      folder: '~/code/sd'
+    })
+  })
+  it('drops a role that is not a prompt-name slug', () => {
+    // "rm -rf" (space) is not a slug → role is ignored, ticket still parses.
+    expect(parseDeepLink('seniordev://open?ticket=SD-6&role=rm%20-rf')).toEqual({ action: 'open', ticket: 'SD-6' })
+  })
   it('rejects an unknown action', () => {
     expect(parseDeepLink('seniordev://delete?ticket=SD-6')).toBeNull()
   })

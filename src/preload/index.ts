@@ -74,9 +74,7 @@ const api = {
   readPrompt: (name: string): Promise<PromptReadResult> => ipcRenderer.invoke(PROMPT_FILES.read, name),
   writePrompt: (name: string, text: string): Promise<SaveResult> => ipcRenderer.invoke(PROMPT_FILES.write, name, text),
   createPrompt: (name: string): Promise<PromptReadResult> => ipcRenderer.invoke(PROMPT_FILES.create, name),
-  deletePrompt: (name: string): Promise<SaveResult> => ipcRenderer.invoke(PROMPT_FILES.delete, name),
-  readContext: (): Promise<PromptReadResult> => ipcRenderer.invoke(PROMPT_FILES.readContext),
-  writeContext: (text: string): Promise<SaveResult> => ipcRenderer.invoke(PROMPT_FILES.writeContext, text)
+  deletePrompt: (name: string): Promise<SaveResult> => ipcRenderer.invoke(PROMPT_FILES.delete, name)
 }
 
 contextBridge.exposeInMainWorld('api', api)

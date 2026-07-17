@@ -209,7 +209,7 @@ function launch(): void {
       </template>
 
       <div class="launch-row">
-        <span v-if="!isTerminal" class="kbd">⌘⏎</span>
+        <span v-if="!isTerminal" class="kbd" aria-hidden="true">⌘⏎</span>
         <button
           type="submit"
           class="btn-primary"
