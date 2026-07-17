@@ -20,19 +20,20 @@ interface has to be legible at a glance and safe to leave running.
 
 SeniorDev is a cross-platform desktop multiplexer for driving CLI coding agents:
 a single-region, prompt-driven surface where every tab is a session you launched.
-The heart is an inline composer that opens as a new tab. You pick a Mode
-(Interactive or Terminal), a Folder, and, for a Claude session, a Role (default
-`orchestrator`) drawn from a config-driven prompt library, then type a smart input
-that is either a Jira ticket key or a free-text description of the work. A YOLO
-checkbox flips the run to auto-execute and open a PR. On Launch the composer tab
-morphs in place into the live agent terminal. Terminal mode skips the agent and
-opens a raw shell (pwsh, cmd, bash, or wsl) in the chosen folder.
+From a New-tab menu you pick what to open: an agent tool (Claude, and Codex once it
+is installed) or a raw Terminal. The choice opens an inline composer as a new tab.
+For an agent you pick a Folder and a Role (default `orchestrator`) drawn from a
+config-driven prompt library, then type a smart input that is either a Jira ticket
+key or a free-text description of the work; a YOLO checkbox flips the run to
+auto-execute and open a PR. On Launch the composer tab morphs in place into the
+live agent terminal. Terminal opens a raw shell (pwsh, cmd, bash, or wsl) in the
+chosen folder.
 
 SeniorDev does not read Jira itself. Given a ticket key it hands that key to the
 agent, which reads the ticket through its own Atlassian MCP, so the app holds no
 Jira credentials and never renders the issue. A deep-link trigger (`seniordev://`)
-can prefill the composer from a Jira issue in one click; any auto-launch passes a
-confirmation gate first.
+can prefill the composer from a Jira issue in one click; it never auto-runs, so
+the developer always reviews and launches the work themselves.
 
 It exists to make an engineer meaningfully more productive by turning routine
 SDLC work into supervised, one-launch agent runs, without ever hiding what the
@@ -45,8 +46,8 @@ control panel.
 
 **Capable, quietly confident, transparent.** SeniorDev carries itself like a
 senior teammate: precise, unflashy, and trustworthy. It states what it's doing in
-plain language, never guesses-and-runs (the deep-link confirm gate asks before it
-launches), and always shows its work. The "raccourier" raccoon mascot adds a note
+plain language, never guesses-and-runs (a deep link only prefills the composer; the
+human always launches), and always shows its work. The "raccourier" raccoon mascot adds a note
 of warmth and identity (a hard-hat-wearing courier who does the grunt work), but
 it appears in moments (splash, about, empty states), never as decoration smeared
 across the task surface. Voice is direct and low-ceremony: short labels, honest
@@ -71,9 +72,9 @@ the way.
 1. **Show the work, always.** Every autonomous action is visible and inspectable:
    live logs, tool one-liners, PR cards, structured recaps. Never hide what an
    agent is doing; the interface's job is legibility of machine work.
-2. **Never guess-and-run.** When intent is ambiguous, confirm (the deep-link
-   confirm gate) rather than inventing a launch. Safe, explicit defaults beat
-   clever autonomy. The UI should make the safe path the obvious one.
+2. **Never guess-and-run.** The human launches every run: a deep link only
+   prefills the composer, it never auto-runs. Safe, explicit defaults beat clever
+   autonomy. The UI should make the safe path the obvious one.
 3. **The tool disappears into the task.** Earned familiarity over novelty:
    standard affordances, consistent component vocabulary, density where the work
    needs it and calm everywhere else. A developer fluent in Linear/Raycast/a good
@@ -81,7 +82,7 @@ the way.
 4. **Warmth in moments, not everywhere.** Personality (the raccoon, the palette's
    warmth) lives in deliberate touchpoints (splash, empty states, about) and
    stays out of the working surface, where clarity wins.
-5. **Respect the developer's flow.** Fast transitions (150–250ms), keyboard-first
+5. **Respect the developer's flow.** Fast transitions (150-250ms), keyboard-first
    where it matters, non-destructive by default (prompt seeding, config saves, and
    session resets never clobber running work without asking).
 

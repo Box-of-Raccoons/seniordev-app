@@ -1,6 +1,6 @@
 ---
 name: SeniorDev
-description: Dark, legible desktop workbench for driving CLI coding agents from Jira tickets — a control room for supervised machine work.
+description: Dark, legible desktop app for launching prompt-driven CLI coding agents, a single-region multiplexer for supervised machine work.
 colors:
   bg: "oklch(0.21 0.012 165)"
   surface: "oklch(0.255 0.014 165)"
@@ -187,7 +187,7 @@ YOLO log never drift apart.
 - **Title** (600, 15px, 1.3): Modal and section headers. The ceiling: headings
   stay small and dense; this is a workbench, not a landing page.
 - **Body** (400, 14px, 1.55): Default UI text and prompt prose. Cap rendered prose
-  at 65–75ch; data and compact UI may run denser.
+  at 65-75ch; data and compact UI may run denser.
 - **Label** (600, 13px, 1.4): Buttons, tab labels, status lines, card labels.
 - **Mono** (400, 13px, Consolas): Terminals, the YOLO live log, tool one-liners
   (`▸ Edit src/foo.ts`). The voice of machine output.
@@ -273,15 +273,15 @@ run on `--ease-out` (`cubic-bezier(0.16, 1, 0.3, 1)`), 120ms for state feedback.
 ### Signature: The Composer and Tab Bar
 The app has two core surfaces, and neither is a panel. The **tab bar** is the only
 persistent chrome: a single row where each tab is one launched session, the active
-tab lifted to `surface-2` with an Ambient Lift, and a `+` opening the next one. The
-**composer** is what a fresh tab shows before it runs, a compact stack of controls
-that defines the session: a mode switch (Interactive / Terminal), a smart input
-that takes either a Jira ticket key or a free-text description and reads as one
-field, a folder picker naming the working directory (prefilled from the ticket
-prefix when one is known), a role select (default `orchestrator`) drawn from the
-prompt library, and a YOLO checkbox that flips the run to auto-execute and open a
-PR. In Terminal mode the agent controls give way to a shell picker (pwsh / cmd /
-bash / wsl). On `Launch` the composer hands its own tab over to the live terminal
+tab lifted to `surface-2` with an Ambient Lift, and a `+` menu that picks what the
+next tab opens (an agent tool, or a raw Terminal). The **composer** is what a fresh
+tab shows before it runs, a compact stack of controls that defines the session: a
+folder picker naming the working directory (prefilled from the ticket prefix when
+one is known), and for an agent a role select (default `orchestrator`) drawn from
+the prompt library, a smart input that takes either a Jira ticket key or a
+free-text description and reads as one field, and a YOLO checkbox that flips the run
+to auto-execute and open a PR. For a Terminal the agent controls give way to a
+shell picker (pwsh / cmd / bash / wsl). On `Launch` the composer hands its own tab over to the live terminal
 or log: one surface, two states, a single `--ease-out` transition. This is the
 model for motion across the app, a state change that conveys the shift from
 composing to running and nothing more.

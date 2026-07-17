@@ -1,7 +1,7 @@
 {
   "name": "seniordev-app",
-  "version": "0.1.0",
-  "description": "SeniorDev — Jira ticket workbench + tabbed interactive CLI multiplexer",
+  "version": "0.2.0",
+  "description": "SeniorDev: a prompt-driven CLI-agent terminal multiplexer",
   "license": "MIT",
   "author": "Box of Raccoons <hardy.spry@boxofraccoons.dev>",
   "homepage": "https://github.com/Box-of-Raccoons/seniordev-app#readme",

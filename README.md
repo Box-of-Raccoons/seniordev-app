@@ -12,22 +12,22 @@ Jira credentials and never renders the ticket.
 
 ## The composer
 
-Every session starts in the composer, which opens as a new tab:
+Click **+** and pick what to open: an agent tool (**Claude** now, **Codex** once
+it is on your PATH) or a raw **Terminal**. Your choice opens a composer as a new tab:
 
-- **Mode**: `Interactive` drives a live Claude session in a terminal; `Terminal`
-  skips the agent and opens a raw shell (pwsh, cmd, bash, or wsl) in the chosen
-  folder.
 - **Folder**: the working directory for the session. A ticket key whose project
   prefix matches a `repos` entry prefills this for you.
-- **Role**: for a Claude session, the prompt to run, drawn from the prompt library
+- **Role** (agent only): the prompt to run, drawn from the prompt library
   (default `orchestrator`).
-- **Input**: a single smart field that takes either a Jira ticket key (e.g.
-  `PROJ-123`) or a free-text description of the work.
-- **YOLO**: a checkbox that flips the run to auto-execute headless and open a PR
-  at the end.
+- **Ticket or description** (agent only): a single smart field that takes either a
+  Jira ticket key (e.g. `PROJ-123`) or a free-text description of the work.
+  Cmd/Ctrl+Enter launches.
+- **YOLO** (agent only): a checkbox that flips the run to auto-execute headless and
+  open a PR at the end.
+- **Shell** (Terminal only): pwsh, cmd, bash, or wsl.
 
-On Launch the composer tab morphs in place into the live agent terminal (or, in
-Terminal mode, the raw shell).
+On Launch the composer tab morphs in place into the live agent terminal (or, for
+Terminal, the raw shell).
 
 ## Configure
 
@@ -72,7 +72,7 @@ cliTools:
 # yoloPreamble is prepended to every YOLO prompt. Empty string disables.
 # Built-in default (from presets.ts) shown here; config value overrides it.
 yoloPreamble: |
-  This is a headless, autonomous session — no human is watching to answer
+  This is a headless, autonomous session with no human watching to answer
   questions. Work the task to completion to the best of your ability. When you
   hit ambiguity, make the most reasonable assumption, note it in your final
   recap, and keep going. Do not stop to ask for confirmation or clarification;
@@ -82,8 +82,8 @@ yoloPreamble: |
 # Built-in default (from presets.ts) shown here; config value overrides it.
 yoloRecap: |
   When you are completely finished, end your final message with:
-  1. "## Changes made" — every file you changed and a one-line why.
-  2. "## Pull requests" — the URL of each PR/MR you created
+  1. "## Changes made": every file you changed and a one-line why.
+  2. "## Pull requests": the URL of each PR/MR you created
      (one per project if this repo is a monorepo).
 ```
 
@@ -106,12 +106,14 @@ ticket:
 
 | Prompt | Role | What it does |
 | --- | --- | --- |
-| `business-analyst` | BA | Breaks the source documentation on a ticket into a Jira epic + child stories with acceptance criteria. |
+| `orchestrator` | Default | Reads the request, decides what kind of work it needs, and does the whole job in one session. |
+| `senior-dev` | Senior dev | Works the request on a feature branch: implements, adds + runs tests, commits, and opens a PR. |
+| `fix-bug` | Bug fixer | Reproduces the bug, fixes the root cause, adds a failing-then-passing regression test, opens a PR. |
 | `tech-lead` | Architect | Produces a short technical design and a suggested story breakdown before implementation. |
-| `developer` | Senior dev | Pulls the ticket, works on a feature branch, implements, adds + runs tests, commits, and opens a PR. |
-| `qa` | QA | Derives a test plan from the acceptance criteria, writes Playwright e2e + unit tests, runs them, reports pass/fail per criterion. |
-| `code-reviewer` | Reviewer | Reviews the open PR / working changes against the ticket's acceptance criteria; reviews, doesn't implement. |
-| `doc-writer` | Docs | Updates the user/dev docs to match the behavior a ticket changes. |
+| `business-analyst` | BA | Breaks the source material into a Jira epic + child stories with acceptance criteria. |
+| `reviewer` | Reviewer | Reviews the open PR / working changes against what the request must satisfy; reviews, doesn't implement. |
+| `qa` | QA | Derives a test plan, writes Playwright e2e + unit tests, runs them, reports pass/fail per criterion. |
+| `doc-writer` | Docs | Updates the user/dev docs to match the behavior a change introduces. |
 
 Manage them from **Config → Prompt Config** (create, edit, delete). Prompt bodies
 may use these template variables; anything else renders literally to the agent. In a
@@ -157,23 +159,22 @@ Launching a session with YOLO armed (or running `seniordev PROJ-123 --yolo devel
 
 ## Trigger from Jira (bookmarklet)
 
-One click from a Jira issue launches SeniorDev via the `seniordev://` deep-link protocol and prefills the composer with the ticket key. Two URL forms exist: `seniordev://open?ticket=SD-6` prefills the composer without launching, while `seniordev://yolo?ticket=SD-6` prefills it with YOLO armed and asks for confirmation before launching. Any webpage can navigate to a `seniordev://` URL, so any auto-launch always passes a confirm gate first: the dialog announces that the run was **triggered by an external link**, names the resolved repository, and **refuses outright** if the ticket's project maps to no configured repo (no guess-and-run in a fallback directory). See [SECURITY.md](SECURITY.md) for the full deep-link threat model.
+One click from a Jira issue launches SeniorDev via the `seniordev://` deep-link
+protocol and prefills a fresh agent composer with the ticket key. You review it and
+Launch yourself: SeniorDev never auto-runs from a link (never guess-and-run), so
+there is no confirm gate to clear. See [SECURITY.md](SECURITY.md) for the deep-link
+threat model.
 
-The first protocol click in your browser shows the one-time OS prompt **Open SeniorDev? ☑ Always allow**; tick "always allow" to skip re-prompting.
+The first protocol click in your browser shows the one-time OS prompt **Open
+SeniorDev? Always allow**; tick "always allow" to skip re-prompting.
 
-**YOLO trigger.** Create a bookmark with this as the URL:
-
-```javascript
-javascript:(function(){var m=location.href.match(/\/browse\/([A-Za-z][A-Za-z0-9]*-\d+)/)||location.search.match(/selectedIssue=([A-Za-z][A-Za-z0-9]*-\d+)/);if(m){location.href='seniordev://yolo?ticket='+m[1]}else{alert('No Jira issue key found in this URL')}})();
-```
-
-**Open only.** Create a bookmark with this as the URL:
+Create a bookmark with this as the URL:
 
 ```javascript
 javascript:(function(){var m=location.href.match(/\/browse\/([A-Za-z][A-Za-z0-9]*-\d+)/)||location.search.match(/selectedIssue=([A-Za-z][A-Za-z0-9]*-\d+)/);if(m){location.href='seniordev://open?ticket='+m[1]}else{alert('No Jira issue key found in this URL')}})();
 ```
 
-Both work on issue detail pages (`/browse/KEY`) and board/backlog views (`?selectedIssue=KEY`).
+It works on issue detail pages (`/browse/KEY`) and board/backlog views (`?selectedIssue=KEY`).
 
 ## Develop
 
