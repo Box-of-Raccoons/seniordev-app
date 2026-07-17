@@ -54,26 +54,44 @@ export function registerTerminalIpc(
     }
   })
 
-  function deliverPromptWhenReady(id: string, prompt: string, bracketedPaste: boolean): void {
+  // Poll until the session has produced output and then gone quiet for quietMs
+  // (or the max-wait safety valve trips), then run `then`. Reuses pendingPrompts
+  // as the activity window so onData keeps it fresh across both delivery phases.
+  function waitForQuiet(id: string, quietMs: number, then: () => void): void {
     const started = Date.now()
     pendingPrompts.set(id, { sawData: false, lastData: 0 })
     const iv = setInterval(() => {
       const pend = pendingPrompts.get(id)
       if (!pend) { clearInterval(iv); return }
-      const settled = pend.sawData && Date.now() - pend.lastData >= QUIET_MS
+      const settled = pend.sawData && Date.now() - pend.lastData >= quietMs
       if (!settled && Date.now() - started < MAX_WAIT_MS) return
       clearInterval(iv)
       pendingPrompts.delete(id)
+      then()
+    }, POLL_MS)
+    promptTimers.set(id, iv)
+  }
+
+  function deliverPromptWhenReady(id: string, prompt: string, bracketedPaste: boolean): void {
+    waitForQuiet(id, QUIET_MS, () => {
       // Bracketed paste (ESC[200~ … ESC[201~) tells a TUI that honors it (codex)
       // to take a multi-line prompt as ONE composer block, not submit per line.
       // Only for opted-in tools: the raw ESC would clear claude's composer.
       manager.write(id, bracketedPaste ? `\x1b[200~${prompt}\x1b[201~` : prompt)
-      promptTimers.set(id, setTimeout(() => {
-        manager.write(id, '\r')
-        promptTimers.delete(id)
-      }, SUBMIT_DELAY_MS))
-    }, POLL_MS)
-    promptTimers.set(id, iv)
+      if (bracketedPaste) {
+        // A large paste takes codex a beat to ingest; a fixed delay can beat it to
+        // the composer and the Enter is dropped (the prompt lands but never runs).
+        // Wait for the paste to render and the session to fall quiet again, THEN
+        // submit — Enter as its own keystroke.
+        waitForQuiet(id, QUIET_MS, () => manager.write(id, '\r'))
+      } else {
+        // claude's carefully-tuned path is unchanged: Enter a fixed beat later.
+        promptTimers.set(id, setTimeout(() => {
+          manager.write(id, '\r')
+          promptTimers.delete(id)
+        }, SUBMIT_DELAY_MS))
+      }
+    })
   }
 
   ipcMain.handle(TERM.spawn, async (_e, req: SpawnTerminalRequest): Promise<SpawnResult> => {

@@ -117,7 +117,7 @@ describe('registerTerminalIpc', () => {
     vi.useRealTimers()
   })
 
-  it('wraps a multi-line prompt in bracketed-paste markers for a tool that opts in (codex)', async () => {
+  it('wraps a codex prompt in bracketed paste, then submits only after the paste settles', async () => {
     vi.useFakeTimers()
     const pty = fakePty()
     registerTerminalIpc(() => undefined, () => pty as unknown as PtyProcess, { source })
@@ -126,9 +126,15 @@ describe('registerTerminalIpc', () => {
     await vi.advanceTimersByTimeAsync(800)
     // The prompt goes out wrapped so codex takes it as one composer block…
     expect(pty.write).toHaveBeenNthCalledWith(1, '\x1b[200~Do PROJ-1\x1b[201~')
-    // …and Enter follows as its own, UNwrapped keystroke to submit.
+    // …but Enter is NOT sent on a fixed delay — a long paste needs to render first.
     await vi.advanceTimersByTimeAsync(300)
+    expect(pty.write).toHaveBeenCalledTimes(1)
+    // codex renders the paste, then falls quiet → Enter submits as its own keystroke.
+    pty.emitData('rendered composer')
+    await vi.advanceTimersByTimeAsync(800)
     expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
+    // The submit is a bare Enter — never wrapped.
+    expect(pty.write).toHaveBeenCalledTimes(2)
     vi.useRealTimers()
   })
 
