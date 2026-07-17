@@ -18,6 +18,10 @@ export const CLI_PRESETS = {
     interactiveArgs: [],
     promptDelivery: 'arg',
     promptArg: '{{prompt}}',
+    // codex's TUI submits on each embedded newline when a multi-line prompt is
+    // typed in (the Windows .cmd shim forces arg->stdin downgrade). codex honors
+    // bracketed paste, so wrap the typed prompt to keep it one composer block.
+    bracketedPaste: true,
     // codex takes `-m/--model <id>`; the resolved model is substituted for {{model}}.
     modelArgs: ['--model', '{{model}}'],
     headless: {

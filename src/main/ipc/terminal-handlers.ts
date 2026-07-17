@@ -54,7 +54,7 @@ export function registerTerminalIpc(
     }
   })
 
-  function deliverPromptWhenReady(id: string, prompt: string): void {
+  function deliverPromptWhenReady(id: string, prompt: string, bracketedPaste: boolean): void {
     const started = Date.now()
     pendingPrompts.set(id, { sawData: false, lastData: 0 })
     const iv = setInterval(() => {
@@ -64,7 +64,10 @@ export function registerTerminalIpc(
       if (!settled && Date.now() - started < MAX_WAIT_MS) return
       clearInterval(iv)
       pendingPrompts.delete(id)
-      manager.write(id, prompt)
+      // Bracketed paste (ESC[200~ … ESC[201~) tells a TUI that honors it (codex)
+      // to take a multi-line prompt as ONE composer block, not submit per line.
+      // Only for opted-in tools: the raw ESC would clear claude's composer.
+      manager.write(id, bracketedPaste ? `\x1b[200~${prompt}\x1b[201~` : prompt)
       promptTimers.set(id, setTimeout(() => {
         manager.write(id, '\r')
         promptTimers.delete(id)
@@ -88,7 +91,7 @@ export function registerTerminalIpc(
       })
       // NOTE: no bracketed-paste framing here — the raw ESC of \x1b[200~ registers
       // as the Escape key in these TUIs (clears the composer / exits dialogs).
-      if (launch.stdinPrompt) deliverPromptWhenReady(req.id, launch.stdinPrompt)
+      if (launch.stdinPrompt) deliverPromptWhenReady(req.id, launch.stdinPrompt, launch.bracketedPaste ?? false)
       return { ok: true }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
