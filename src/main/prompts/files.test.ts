@@ -2,10 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import {
-  CONTEXT_FILE, DEFAULT_TICKET_CONTEXT,
-  createPromptFile, deletePromptFile, readContextFile, readPromptFile, writeContextFile, writePromptFile
-} from './files'
+import { createPromptFile, deletePromptFile, readPromptFile, writePromptFile } from './files'
 import { loadPrompts } from './library'
 
 let dir: string
@@ -54,15 +51,9 @@ describe('prompt files', () => {
     expect(() => readPromptFile(dir, '../evil')).toThrow(/Invalid prompt name/)
     expect(() => deletePromptFile(dir, '_reserved')).toThrow(/Invalid prompt name/)
   })
-  it('context read falls back to the default; write round-trips', () => {
-    expect(readContextFile(dir)).toBe(DEFAULT_TICKET_CONTEXT)
-    writeContextFile(dir, 'custom {{ticket.key}}')
-    expect(readContextFile(dir)).toBe('custom {{ticket.key}}')
-    expect(existsSync(join(dir, CONTEXT_FILE))).toBe(true)
-  })
   it('loadPrompts never lists _-prefixed files', () => {
     createPromptFile(dir, 'real')
-    writeContextFile(dir, 'ctx') // writes _ticket-context.md
+    writeFileSync(join(dir, '_special.md'), '---\nname: special\n---\nx', 'utf8')
     expect(loadPrompts(dir).map((p) => p.name)).toEqual(['real'])
   })
 })

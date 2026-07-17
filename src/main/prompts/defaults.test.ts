@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 import { seedDefaultPrompts } from './defaults'
 import { parseFrontmatter, loadPrompts } from './library'
 import { buildPromptTicket, expandPrompt } from './expand'
-import { DEFAULT_TICKET_CONTEXT } from './files'
 import type { Ticket } from '../../shared/types'
 
 // The committed prompt library that ships with the app.
@@ -17,7 +16,7 @@ const SHIPPED_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../../reso
 const ALLOWED_KEYS = new Set([
   'request',
   'ticket.key', 'ticket.type', 'ticket.status', 'ticket.summary', 'ticket.description',
-  'ticket.acceptanceCriteria', 'ticket.comments', 'forge.term', 'forge.prCommand', 'ticket.context'
+  'ticket.acceptanceCriteria', 'ticket.comments', 'forge.term', 'forge.prCommand'
 ])
 const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
@@ -130,8 +129,7 @@ describe('shipped prompt expands end to end', () => {
     const out = expandPrompt(body, {
       ticket: buildPromptTicket(ticket, 'key-only'),
       forge: { prCommand: 'gh pr create', term: 'PR' },
-      request: 'SD-4',
-      contextTemplate: DEFAULT_TICKET_CONTEXT
+      request: 'SD-4'
     })
     expect(out).toContain('SD-4')
     expect(out).toContain('gh pr create')

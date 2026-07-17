@@ -42,7 +42,7 @@ function doReset(): void {
 // launches it themselves (never guess-and-run). Richer params (role/folder/mode)
 // are a future addition.
 function handleDeepLink(link: DeepLink): void {
-  rightPanel.value?.openComposer({ input: link.ticket })
+  rightPanel.value?.openComposer({ input: link.ticket, role: link.role, folder: link.folder })
 }
 
 onMounted(async () => {

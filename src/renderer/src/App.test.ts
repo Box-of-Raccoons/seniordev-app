@@ -128,8 +128,17 @@ describe('App deep link flow', () => {
     rightOpenComposer.mockClear()
     deepLinkCb({ action: 'yolo', ticket: 'SD-6' })
     await flushPromises()
-    expect(rightOpenComposer).toHaveBeenCalledWith({ input: 'SD-6' })
+    expect(rightOpenComposer).toHaveBeenCalledWith({ input: 'SD-6', role: undefined, folder: undefined })
     expect(w.findComponent({ name: 'ConfirmDialog' }).exists()).toBe(false)
+  })
+
+  it('passes optional role + folder prefill through to the composer', async () => {
+    mountApp()
+    await flushPromises()
+    rightOpenComposer.mockClear()
+    deepLinkCb({ action: 'open', ticket: 'SD-6', role: 'fix-bug', folder: '~/code/sd' })
+    await flushPromises()
+    expect(rightOpenComposer).toHaveBeenCalledWith({ input: 'SD-6', role: 'fix-bug', folder: '~/code/sd' })
   })
 
   it('a cold-start startup.deeplink prefills a composer too', async () => {

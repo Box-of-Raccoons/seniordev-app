@@ -1,19 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { resolveExpandedPrompt, type PromptDeps } from './resolve-prompt'
 import type { Config } from '../config/schema'
-import type { Ticket } from '../../shared/types'
 
 const config = {
-  ticketContext: 'both',
   defaultForge: 'github',
   forges: { github: { prCommand: 'gh pr create', term: 'PR', urlPattern: 'x' } },
   repos: []
 } as unknown as Config
 
-const ticket: Ticket = { key: 'PROJ-1', type: 'Bug', status: 'Open', summary: 's', descriptionAdf: null, acceptanceCriteria: null, comments: [], url: 'u' }
-
 const deps: PromptDeps = {
-  getTicket: async () => ticket,
   prompts: [
     { name: 'tech-lead', description: '', model: 'claude-opus', body: 'Design {{ticket.key}}' },
     { name: 'qa', description: '', body: 'Test it' },
@@ -66,14 +61,10 @@ describe('resolveExpandedPrompt', () => {
     expect(r?.prompt).toBe('Task:[]')
   })
 
-  it('is key-only: does not fetch the ticket, resolving even if getTicket would throw', async () => {
-    const throwing: PromptDeps = {
-      ...deps,
-      getTicket: async () => {
-        throw new Error('getTicket should not be called under key-only')
-      }
-    }
-    const r = await resolveExpandedPrompt(config, throwing, { prompt: { name: 'tech-lead' }, ticketKey: 'PROJ-1' })
+  it('is key-only: injects only the ticket key, never fetched text', async () => {
+    // tech-lead body is 'Design {{ticket.key}}'; the key comes straight from the
+    // request, with no ticket fetch involved.
+    const r = await resolveExpandedPrompt(config, deps, { prompt: { name: 'tech-lead' }, ticketKey: 'PROJ-1' })
     expect(r?.prompt).toBe('Design PROJ-1')
   })
 })

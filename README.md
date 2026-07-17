@@ -176,6 +176,11 @@ javascript:(function(){var m=location.href.match(/\/browse\/([A-Za-z][A-Za-z0-9]
 
 It works on issue detail pages (`/browse/KEY`) and board/backlog views (`?selectedIssue=KEY`).
 
+The link also accepts optional `role` and `folder` query params to prefill more of
+the composer, e.g. `seniordev://open?ticket=SD-6&role=fix-bug&folder=~/code/sd`.
+`role` must be a prompt name; `folder` is prefilled as-is. Nothing launches either
+way, you always review and press Launch.
+
 ## Develop
 
 ```bash

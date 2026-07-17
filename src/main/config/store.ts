@@ -3,7 +3,6 @@ import type { Config } from './schema'
 import { loadConfig } from './load'
 import { defaultConfigDir } from './paths'
 import { loadPrompts, type PromptTemplate } from '../prompts/library'
-import { readContextFile } from '../prompts/files'
 
 // The minimal read surface IPC handlers depend on — lets tests hand in a plain
 // object instead of a real store.
@@ -11,7 +10,6 @@ export interface ConfigSource {
   readonly config: Config | null
   readonly loadError: string | null
   readonly prompts: PromptTemplate[]
-  contextTemplate?: () => string
 }
 
 export function requireConfig(src: ConfigSource): Config {
@@ -51,6 +49,4 @@ export class ConfigStore implements ConfigSource {
     if (!this.config) return
     this.prompts.splice(0, this.prompts.length, ...loadPrompts(this.promptsDir()))
   }
-
-  contextTemplate = (): string => readContextFile(this.promptsDir())
 }

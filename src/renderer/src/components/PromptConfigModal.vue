@@ -6,7 +6,7 @@ import ConfirmDialog from './ConfirmDialog.vue'
 import { TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
 import type { PromptSummary } from '../../../shared/ipc'
 
-type Entry = { kind: 'context' } | { kind: 'preamble' } | { kind: 'recap' } | { kind: 'prompt'; name: string; description: string }
+type Entry = { kind: 'preamble' } | { kind: 'recap' } | { kind: 'prompt'; name: string; description: string }
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 const prompts = ref<PromptSummary[]>([])
@@ -42,11 +42,7 @@ async function confirmSwitch(): Promise<void> {
 
 async function select(entry: Entry): Promise<void> {
   error.value = null
-  if (entry.kind === 'context') {
-    const res = await window.api.readContext()
-    if (!res.ok) { error.value = res.error; return }
-    text.value = res.text
-  } else if (entry.kind === 'preamble') {
+  if (entry.kind === 'preamble') {
     const res = await window.api.readPreamble()
     text.value = res.text
     preambleDefault.value = res.isDefault
@@ -68,8 +64,7 @@ async function save(): Promise<void> {
   error.value = null
   const s = selected.value
   const res =
-    s.kind === 'context' ? await window.api.writeContext(text.value)
-    : s.kind === 'preamble' ? await window.api.savePreamble(text.value)
+    s.kind === 'preamble' ? await window.api.savePreamble(text.value)
     : s.kind === 'recap' ? await window.api.saveRecap(text.value)
     : await window.api.writePrompt(s.name, text.value)
   if (!res.ok) { error.value = res.error; return }
@@ -108,10 +103,6 @@ async function doDelete(): Promise<void> {
   <ModalShell title="Prompt Config" @close="emit('close')">
     <div class="pcfg">
       <aside class="pcfg-list">
-        <button class="pcfg-item" :class="{ 'pcfg-item--on': selected?.kind === 'context' }" @click="requestSelect({ kind: 'context' })">
-          <span class="pcfg-item__name">Ticket context</span>
-          <span class="pcfg-item__desc">what &#123;&#123;ticket.context&#125;&#125; injects</span>
-        </button>
         <button class="pcfg-item" :class="{ 'pcfg-item--on': selected?.kind === 'preamble' }" @click="requestSelect({ kind: 'preamble' })">
           <span class="pcfg-item__name">YOLO preamble</span>
           <span class="pcfg-item__desc">prepended to every YOLO prompt</span>

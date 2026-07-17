@@ -40,4 +40,18 @@ describe('NewTabMenu', () => {
     await w.findAll('.menu-item')[0].trigger('click')
     expect(w.find('.menu').exists()).toBe(false)
   })
+
+  it('focuses the first item on open and moves focus with the arrow keys', async () => {
+    const w = mount(NewTabMenu, { attachTo: document.body })
+    await flushPromises()
+    await w.find('.new-session').trigger('click')
+    await flushPromises()
+    const btns = w.findAll('.menu-item').map((b) => b.element)
+    expect(document.activeElement).toBe(btns[0])
+    await w.find('.menu').trigger('keydown', { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(btns[1])
+    await w.find('.menu').trigger('keydown', { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(btns[0])
+    w.unmount()
+  })
 })
