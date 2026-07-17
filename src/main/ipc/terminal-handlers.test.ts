@@ -66,6 +66,23 @@ describe('registerTerminalIpc', () => {
     expect(res).toEqual({ ok: false, error: expect.stringMatching(/Config not loaded: boom/) })
   })
 
+  it('spawnShell spawns the resolved shell in the cwd with no seeded prompt', async () => {
+    const pty = fakePty()
+    let opts: { file: string; args: string[]; cwd: string } | undefined
+    const spawner: PtySpawner = (o) => { opts = o; return pty as unknown as PtyProcess }
+    registerTerminalIpc(() => undefined, spawner, { source })
+    const res = await handleMap.get('pty:spawnShell')!({}, { id: 's', shell: 'bash', cwd: '/tmp/x', cols: 80, rows: 24 })
+    expect(res).toEqual({ ok: true })
+    expect(opts).toMatchObject({ file: 'bash', args: ['-l'], cwd: '/tmp/x', cols: 80, rows: 24 })
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('spawnShell returns an error for an unknown shell', async () => {
+    registerTerminalIpc(() => undefined, () => fakePty() as unknown as PtyProcess, { source })
+    const res = await handleMap.get('pty:spawnShell')!({}, { id: 's', shell: 'fish', cwd: '/tmp', cols: 80, rows: 24 })
+    expect(res).toEqual({ ok: false, error: expect.stringMatching(/unknown shell/i) })
+  })
+
   it('routes pty:write to the manager', async () => {
     const pty = fakePty()
     registerTerminalIpc(() => undefined, () => pty as unknown as PtyProcess, { source })

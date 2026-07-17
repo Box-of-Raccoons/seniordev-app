@@ -53,4 +53,15 @@ describe('resolveExpandedPrompt', () => {
   it('throws for an unknown named prompt', async () => {
     await expect(resolveExpandedPrompt(config, deps, { prompt: { name: 'ghost' } })).rejects.toThrow(/Unknown prompt/)
   })
+
+  it('is key-only: does not fetch the ticket, resolving even if getTicket would throw', async () => {
+    const throwing: PromptDeps = {
+      ...deps,
+      getTicket: async () => {
+        throw new Error('getTicket should not be called under key-only')
+      }
+    }
+    const r = await resolveExpandedPrompt(config, throwing, { prompt: { name: 'tech-lead' }, ticketKey: 'PROJ-1' })
+    expect(r?.prompt).toBe('Design PROJ-1')
+  })
 })

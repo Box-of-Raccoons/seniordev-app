@@ -10,7 +10,10 @@ export interface PromptRequest {
 }
 
 export interface PromptDeps {
-  getTicket: (key: string) => Promise<Ticket>
+  // Retained for the interactive/YOLO deps shape; no longer used here now that
+  // prompt resolution is key-only (the agent reads the ticket via its own MCP).
+  // Removed with the app-side Jira client in the cutover phase.
+  getTicket?: (key: string) => Promise<Ticket>
   prompts: PromptTemplate[]
   contextTemplate?: () => string
 }
@@ -40,10 +43,13 @@ export async function resolveExpandedPrompt(
   }
   if (body === undefined) return undefined
 
-  const ticket = req.ticketKey
-    ? await deps.getTicket(req.ticketKey)
-    : { key: '', type: '', status: '', summary: '', descriptionAdf: null, acceptanceCriteria: null, comments: [], url: '' }
-  const ticketCtx = buildPromptTicket(ticket, config.ticketContext)
+  // Key-only: the ticket key is injected as a string and the agent reads the
+  // ticket itself via its Atlassian MCP. We never fetch it app-side, so the
+  // {{ticket.*}} body fields other than {{ticket.key}} expand empty by design.
+  const ticketCtx = buildPromptTicket(
+    { key: req.ticketKey ?? '', type: '', status: '', summary: '', descriptionAdf: null, acceptanceCriteria: null, comments: [], url: '' },
+    'key-only'
+  )
   const forge = resolveForge(config, req.ticketKey)
   const prompt = expandPrompt(body, { ticket: ticketCtx, forge, contextTemplate: deps.contextTemplate?.() })
   return { prompt, model }

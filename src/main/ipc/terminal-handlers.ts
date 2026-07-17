@@ -2,8 +2,9 @@ import { ipcMain } from 'electron'
 import { requireConfig, type ConfigSource } from '../config/store'
 import { TerminalManager, type PtySpawner } from '../terminal/manager'
 import { buildInteractiveLaunch } from '../terminal/session'
+import { resolveShell } from '../terminal/shell'
 import type { ResolvedCommand } from '../terminal/resolve-command'
-import { TERM, type SpawnTerminalRequest, type SpawnResult } from '../../shared/ipc'
+import { TERM, type SpawnTerminalRequest, type SpawnShellRequest, type SpawnResult } from '../../shared/ipc'
 import { resolveExpandedPrompt } from './resolve-prompt'
 
 export interface TerminalDeps {
@@ -88,6 +89,25 @@ export function registerTerminalIpc(
       // NOTE: no bracketed-paste framing here — the raw ESC of \x1b[200~ registers
       // as the Escape key in these TUIs (clears the composer / exits dialogs).
       if (launch.stdinPrompt) deliverPromptWhenReady(req.id, launch.stdinPrompt)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  // Raw shell: spawn the chosen shell in the given folder with no seeded prompt.
+  // Needs no config, so it works even before a config loads.
+  ipcMain.handle(TERM.spawnShell, (_e, req: SpawnShellRequest): SpawnResult => {
+    try {
+      const def = resolveShell(req.shell)
+      const resolved = deps.resolveCommand?.(def.command)
+      manager.spawn(req.id, {
+        file: def.command,
+        args: def.args,
+        cwd: req.cwd,
+        cols: req.cols,
+        rows: req.rows,
+        resolved
+      })
       return { ok: true }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
