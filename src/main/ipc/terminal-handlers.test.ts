@@ -18,7 +18,10 @@ const ticket: Ticket = { key: 'PROJ-1', type: 'Bug', status: 'Open', summary: 's
 const cfg = {
   defaultTool: 'claude',
   ticketContext: 'both',
-  cliTools: { claude: { command: 'claude', interactiveArgs: [], promptDelivery: 'stdin' } },
+  cliTools: {
+    claude: { command: 'claude', interactiveArgs: [], promptDelivery: 'stdin' },
+    codex: { command: 'codex', interactiveArgs: [], promptDelivery: 'stdin', bracketedPaste: true }
+  },
   defaultForge: 'github',
   forges: { github: { prCommand: 'gh pr create', term: 'PR', urlPattern: 'x' } },
   repos: []
@@ -66,6 +69,23 @@ describe('registerTerminalIpc', () => {
     expect(res).toEqual({ ok: false, error: expect.stringMatching(/Config not loaded: boom/) })
   })
 
+  it('spawnShell spawns the resolved shell in the cwd with no seeded prompt', async () => {
+    const pty = fakePty()
+    let opts: { file: string; args: string[]; cwd: string } | undefined
+    const spawner: PtySpawner = (o) => { opts = o; return pty as unknown as PtyProcess }
+    registerTerminalIpc(() => undefined, spawner, { source })
+    const res = await handleMap.get('pty:spawnShell')!({}, { id: 's', shell: 'bash', cwd: '/tmp/x', cols: 80, rows: 24 })
+    expect(res).toEqual({ ok: true })
+    expect(opts).toMatchObject({ file: 'bash', args: ['-l'], cwd: '/tmp/x', cols: 80, rows: 24 })
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('spawnShell returns an error for an unknown shell', async () => {
+    registerTerminalIpc(() => undefined, () => fakePty() as unknown as PtyProcess, { source })
+    const res = await handleMap.get('pty:spawnShell')!({}, { id: 's', shell: 'fish', cwd: '/tmp', cols: 80, rows: 24 })
+    expect(res).toEqual({ ok: false, error: expect.stringMatching(/unknown shell/i) })
+  })
+
   it('routes pty:write to the manager', async () => {
     const pty = fakePty()
     registerTerminalIpc(() => undefined, () => pty as unknown as PtyProcess, { source })
@@ -94,6 +114,27 @@ describe('registerTerminalIpc', () => {
     expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
     // Guard the regression: no write may contain an ESC (it acts as the Escape key).
     for (const call of pty.write.mock.calls) expect(call[0]).not.toContain('\x1b')
+    vi.useRealTimers()
+  })
+
+  it('wraps a codex prompt in bracketed paste, then submits only after the paste settles', async () => {
+    vi.useFakeTimers()
+    const pty = fakePty()
+    registerTerminalIpc(() => undefined, () => pty as unknown as PtyProcess, { source })
+    await handleMap.get('pty:spawn')!({}, { id: 'a', tool: 'codex', ticketKey: 'PROJ-1', prompt: { name: 'p' }, cols: 80, rows: 24 })
+    pty.emitData('boot screen')
+    await vi.advanceTimersByTimeAsync(800)
+    // The prompt goes out wrapped so codex takes it as one composer block…
+    expect(pty.write).toHaveBeenNthCalledWith(1, '\x1b[200~Do PROJ-1\x1b[201~')
+    // …but Enter is NOT sent on a fixed delay — a long paste needs to render first.
+    await vi.advanceTimersByTimeAsync(300)
+    expect(pty.write).toHaveBeenCalledTimes(1)
+    // codex renders the paste, then falls quiet → Enter submits as its own keystroke.
+    pty.emitData('rendered composer')
+    await vi.advanceTimersByTimeAsync(800)
+    expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
+    // The submit is a bare Enter — never wrapped.
+    expect(pty.write).toHaveBeenCalledTimes(2)
     vi.useRealTimers()
   })
 

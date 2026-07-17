@@ -1,5 +1,4 @@
 import type { Config } from '../config/schema'
-import type { Ticket } from '../../shared/types'
 import type { PromptModel } from '../config/model'
 import { type PromptTemplate, findPrompt } from '../prompts/library'
 import { buildPromptTicket, expandPrompt, resolveForge } from '../prompts/expand'
@@ -7,12 +6,12 @@ import { buildPromptTicket, expandPrompt, resolveForge } from '../prompts/expand
 export interface PromptRequest {
   prompt?: { name?: string; text?: string }
   ticketKey?: string
+  // The raw composer input (ticket key or free text) → {{request}}.
+  input?: string
 }
 
 export interface PromptDeps {
-  getTicket: (key: string) => Promise<Ticket>
   prompts: PromptTemplate[]
-  contextTemplate?: () => string
 }
 
 // The expanded prompt plus the model it declared (if any), so the chosen
@@ -40,11 +39,14 @@ export async function resolveExpandedPrompt(
   }
   if (body === undefined) return undefined
 
-  const ticket = req.ticketKey
-    ? await deps.getTicket(req.ticketKey)
-    : { key: '', type: '', status: '', summary: '', descriptionAdf: null, acceptanceCriteria: null, comments: [], url: '' }
-  const ticketCtx = buildPromptTicket(ticket, config.ticketContext)
+  // Key-only: the ticket key is injected as a string and the agent reads the
+  // ticket itself via its Atlassian MCP. We never fetch it app-side, so the
+  // {{ticket.*}} body fields other than {{ticket.key}} expand empty by design.
+  const ticketCtx = buildPromptTicket(
+    { key: req.ticketKey ?? '', type: '', status: '', summary: '', descriptionAdf: null, acceptanceCriteria: null, comments: [], url: '' },
+    'key-only'
+  )
   const forge = resolveForge(config, req.ticketKey)
-  const prompt = expandPrompt(body, { ticket: ticketCtx, forge, contextTemplate: deps.contextTemplate?.() })
+  const prompt = expandPrompt(body, { ticket: ticketCtx, forge, request: req.input })
   return { prompt, model }
 }

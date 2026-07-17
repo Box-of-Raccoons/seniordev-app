@@ -5,7 +5,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { TERM_BG, TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
 
-const props = defineProps<{ id: string; ticketKey: string | null; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string }>()
+const props = defineProps<{ id: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string }>()
 const emit = defineEmits<{ (e: 'exited', code: number): void }>()
 const host = ref<HTMLDivElement | null>(null)
 let term: Terminal | null = null
@@ -39,16 +39,26 @@ onMounted(async () => {
     // Build a plain, structured-cloneable payload. props.prompt is a Vue
     // reactive Proxy, which contextBridge/ipcRenderer.invoke cannot clone
     // ("An object could not be cloned") — so unwrap it to a plain object.
-    const res = await window.api.spawnTerminal({
-      id: props.id,
-      ticketKey: props.ticketKey ?? undefined,
-      cwdOverride: props.cwdOverride,
-      cols: term.cols,
-      rows: term.rows,
-      prompt: props.prompt ? { name: props.prompt.name, text: props.prompt.text } : undefined,
-      resume: props.resume ? { sessionId: props.resume.sessionId } : undefined,
-      tool: props.tool
-    })
+    // A raw shell (Terminal mode) takes no prompt/tool — just the shell + cwd.
+    const res = props.shell
+      ? await window.api.spawnShell({
+          id: props.id,
+          shell: props.shell,
+          cwd: props.cwdOverride ?? '',
+          cols: term.cols,
+          rows: term.rows
+        })
+      : await window.api.spawnTerminal({
+          id: props.id,
+          ticketKey: props.ticketKey ?? undefined,
+          input: props.input,
+          cwdOverride: props.cwdOverride,
+          cols: term.cols,
+          rows: term.rows,
+          prompt: props.prompt ? { name: props.prompt.name, text: props.prompt.text } : undefined,
+          resume: props.resume ? { sessionId: props.resume.sessionId } : undefined,
+          tool: props.tool
+        })
     // Closed mid-spawn → term is already disposed; don't write to it.
     if (unmounted) return
     if (!res.ok) term.write(`\r\n[failed to start: ${res.error}]\r\n`)

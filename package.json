@@ -1,7 +1,7 @@
 {
   "name": "seniordev-app",
-  "version": "0.1.0",
-  "description": "SeniorDev — Jira ticket workbench + tabbed interactive CLI multiplexer",
+  "version": "0.2.0",
+  "description": "SeniorDev: a prompt-driven CLI-agent terminal multiplexer",
   "license": "MIT",
   "author": "Box of Raccoons <hardy.spry@boxofraccoons.dev>",
   "homepage": "https://github.com/Box-of-Raccoons/seniordev-app#readme",
@@ -25,8 +25,6 @@
     "start": "electron-vite preview",
     "typecheck": "vue-tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
-    "watch": "electron-vite build && electron out/main/watch.js",
-    "watch:build": "electron-vite build",
     "rebuild": "electron-rebuild -f",
     "dist": "electron-vite build && electron-rebuild -f && electron-builder",
     "dist:dir": "electron-vite build && electron-rebuild -f && electron-builder --dir"

@@ -43,9 +43,13 @@ export function resolveForge(config: Config, ticketKey?: string): { prCommand: s
 
 export function expandPrompt(
   body: string,
-  ctx: { ticket: PromptTicket; forge: { prCommand: string; term: string }; contextTemplate?: string; catalog?: string }
+  ctx: { ticket: PromptTicket; forge: { prCommand: string; term: string }; request?: string }
 ): string {
   const map: Record<string, string> = {
+    // {{request}} carries the real content under key-only (the ticket key or a
+    // free-text task); the ticket.* text fields are empty unless a full ticket was
+    // built with mode 'both'. An unknown placeholder is left literal.
+    'request': ctx.request ?? '',
     'ticket.key': ctx.ticket.key,
     'ticket.type': ctx.ticket.type,
     'ticket.status': ctx.ticket.status,
@@ -56,13 +60,5 @@ export function expandPrompt(
     'forge.prCommand': ctx.forge.prCommand,
     'forge.term': ctx.forge.term
   }
-  // Only present for the orchestrator's stage-1 template; left out otherwise so
-  // {{prompts.catalog}} stays literal (unknown-key behavior) for normal prompts.
-  if (ctx.catalog !== undefined) map['prompts.catalog'] = ctx.catalog
-  const fill = (s: string): string =>
-    s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, key: string) => (key in map ? map[key] : m))
-  // One-level expansion: the template's own {{ticket.*}} fields are filled, but
-  // 'ticket.context' is not yet in the map, so a self-reference stays literal.
-  if (ctx.contextTemplate !== undefined) map['ticket.context'] = fill(ctx.contextTemplate)
-  return fill(body)
+  return body.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, key: string) => (key in map ? map[key] : m))
 }

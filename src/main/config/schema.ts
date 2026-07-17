@@ -17,6 +17,11 @@ export const CliToolSchema = z.object({
   // Fallback model when a prompt doesn't declare one. Empty/absent ⇒ append
   // nothing (today's behavior — let the CLI pick its own default).
   defaultModel: z.string().optional(),
+  // Wrap a typed-in prompt in bracketed-paste markers (ESC[200~ … ESC[201~) so a
+  // multi-line prompt lands as one composer block instead of submitting per line.
+  // Set for TUIs that HONOR bracketed paste (codex); must stay off for TUIs that
+  // don't consume the markers (claude), where the raw ESC acts as the Escape key.
+  bracketedPaste: z.boolean().optional(),
   headless: HeadlessSchema.optional(),
   resumeArgs: z.array(z.string()).optional()
 })
@@ -34,37 +39,12 @@ export const RepoSchema = z.object({
   forge: z.string().optional()
 })
 
-export const JiraSchema = z.object({
-  // Must be https: the client sends `Authorization: Basic base64(email:apiToken)`,
-  // so an http baseUrl would leak the API token in cleartext (SD-9 S5).
-  baseUrl: z
-    .string()
-    .url()
-    .refine((u) => u.startsWith('https://'), 'jira.baseUrl must use https://'),
-  email: z.string().email(),
-  apiToken: z.string().min(1)
-})
-
-export const WatchSchema = z.object({
-  enabled: z.boolean().default(false),
-  intervalSeconds: z.number().int().positive().default(300),
-  label: z.string().min(1).default('SeniorDev'),
-  triggerStatusCategory: z.string().min(1).default('To Do'),
-  transitionOnDispatch: z.string().min(1).default('In Progress'),
-  autoMode: z.boolean().default(false)
-})
-
-export type WatchConfig = z.infer<typeof WatchSchema>
-
 export const ConfigSchema = z.object({
-  jira: JiraSchema,
-  ticketContext: z.enum(['key-only', 'both']).default('both'),
   defaultTool: z.string().default('claude'),
   cliTools: z.record(CliToolSchema).default({}),
   defaultForge: z.string().default('github'),
   forges: z.record(ForgeSchema).default({}),
   repos: z.array(RepoSchema).default([]),
-  watch: WatchSchema.default({}),
   promptsDir: z.string().optional(),
   yoloPreamble: z.string().optional(),
   yoloRecap: z.string().optional()

@@ -1,9 +1,7 @@
 import { ipcMain } from 'electron'
 import { CONFIG, PROMPT_FILES, type PromptReadResult, type SaveResult } from '../../shared/ipc'
 import type { ConfigStore } from '../config/store'
-import {
-  createPromptFile, deletePromptFile, readContextFile, readPromptFile, writeContextFile, writePromptFile
-} from '../prompts/files'
+import { createPromptFile, deletePromptFile, readPromptFile, writePromptFile } from '../prompts/files'
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -37,16 +35,6 @@ export function registerPromptConfigIpc(
 
   ipcMain.handle(PROMPT_FILES.delete, (_e, name: string): SaveResult => {
     try { deletePromptFile(store.promptsDir(), name); changed(); return { ok: true } }
-    catch (err) { return { ok: false, error: errMsg(err) } }
-  })
-
-  ipcMain.handle(PROMPT_FILES.readContext, (): PromptReadResult => {
-    try { return { ok: true, text: readContextFile(store.promptsDir()) } }
-    catch (err) { return { ok: false, error: errMsg(err) } }
-  })
-
-  ipcMain.handle(PROMPT_FILES.writeContext, (_e, text: string): SaveResult => {
-    try { writeContextFile(store.promptsDir(), text); changed(); return { ok: true } }
     catch (err) { return { ok: false, error: errMsg(err) } }
   })
 }

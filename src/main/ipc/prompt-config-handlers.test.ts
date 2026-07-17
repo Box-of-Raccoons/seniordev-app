@@ -15,9 +15,8 @@ vi.mock('electron', () => ({
 import { registerPromptConfigIpc } from './prompt-config-handlers'
 import { ConfigStore } from '../config/store'
 import { CONFIG, PROMPT_FILES, type PromptReadResult, type SaveResult } from '../../shared/ipc'
-import { DEFAULT_TICKET_CONTEXT } from '../prompts/files'
 
-const MINIMAL = 'jira:\n  baseUrl: https://x.atlassian.net\n  email: a@b.co\n  apiToken: t\n'
+const MINIMAL = 'defaultTool: claude\n'
 
 // Creates a real ConfigStore whose temp config sets promptsDir to a temp path,
 // registers handlers, and returns a fake sender.
@@ -88,26 +87,6 @@ describe('prompt-config handlers', () => {
     expect(result.ok).toBe(true)
     expect(store.prompts).toHaveLength(0)
     expect(sender.send).toHaveBeenCalledWith(CONFIG.changed)
-  })
-
-  it('readContext falls back to default; writeContext round-trips and broadcasts', async () => {
-    const { sender } = setup()
-
-    // No context file yet → falls back to DEFAULT_TICKET_CONTEXT
-    const r1 = (await handleMap.get(PROMPT_FILES.readContext)!({})) as PromptReadResult
-    expect(r1.ok).toBe(true)
-    if (r1.ok) expect(r1.text).toBe(DEFAULT_TICKET_CONTEXT)
-
-    // Write a new context
-    const newContext = 'X {{ticket.key}}'
-    const writeResult = (await handleMap.get(PROMPT_FILES.writeContext)!({}, newContext)) as SaveResult
-    expect(writeResult.ok).toBe(true)
-    expect(sender.send).toHaveBeenCalledWith(CONFIG.changed)
-
-    // Read back — must match what was written
-    const r2 = (await handleMap.get(PROMPT_FILES.readContext)!({})) as PromptReadResult
-    expect(r2.ok).toBe(true)
-    if (r2.ok) expect(r2.text).toBe(newContext)
   })
 
   it('read of a missing prompt returns ok:false', async () => {

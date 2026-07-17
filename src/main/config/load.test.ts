@@ -11,12 +11,7 @@ function tmpConfig(yaml: string): string {
   return p
 }
 
-const MINIMAL = `
-jira:
-  baseUrl: https://acme.atlassian.net
-  email: dev@acme.com
-  apiToken: secret-token
-`
+const MINIMAL = 'defaultTool: claude\n'
 
 describe('parseConfig', () => {
   it('parses raw yaml text with presets merged', () => {
@@ -24,18 +19,17 @@ describe('parseConfig', () => {
     expect(cfg.cliTools.claude.command).toBe('claude')
   })
   it('throws a Zod error naming the bad path', () => {
-    expect(() => parseConfig('jira:\n  baseUrl: not-a-url\n  email: a@b.co\n  apiToken: t\n')).toThrow(/baseUrl/)
+    // A cliTool with no command violates CliToolSchema.
+    expect(() => parseConfig('cliTools:\n  bad: {}\n')).toThrow(/command/)
   })
   it('throws on YAML syntax errors', () => {
-    expect(() => parseConfig('jira: [unclosed')).toThrow()
+    expect(() => parseConfig('x: [unclosed')).toThrow()
   })
 })
 
 describe('loadConfig', () => {
-  it('loads a minimal jira-only config and applies presets + defaults', () => {
+  it('loads a minimal config and applies presets + defaults', () => {
     const cfg = loadConfig(tmpConfig(MINIMAL))
-    expect(cfg.jira.baseUrl).toBe('https://acme.atlassian.net')
-    expect(cfg.ticketContext).toBe('both')
     expect(cfg.defaultTool).toBe('claude')
     expect(cfg.cliTools.claude.command).toBe('claude')
     expect(cfg.cliTools.codex.promptDelivery).toBe('arg')
@@ -61,14 +55,7 @@ describe('loadConfig', () => {
     expect(cfg.cliTools.claude.headless?.outputParser).toBe('claude-stream-json')
   })
 
-  it('throws on invalid jira email', () => {
-    expect(() =>
-      loadConfig(tmpConfig(`
-jira:
-  baseUrl: https://acme.atlassian.net
-  email: not-an-email
-  apiToken: x
-`))
-    ).toThrow()
+  it('throws on an invalid cliTool (missing command)', () => {
+    expect(() => loadConfig(tmpConfig('cliTools:\n  bad: {}\n'))).toThrow(/command/)
   })
 })
