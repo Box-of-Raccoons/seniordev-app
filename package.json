@@ -1,6 +1,6 @@
 {
   "name": "seniordev-app",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "SeniorDev: a prompt-driven CLI-agent terminal multiplexer",
   "license": "MIT",
   "author": "Box of Raccoons <hardy.spry@boxofraccoons.dev>",
