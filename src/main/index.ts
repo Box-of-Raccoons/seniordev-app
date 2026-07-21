@@ -12,6 +12,8 @@ import { registerPromptsIpc } from './ipc/prompts-handlers'
 import { seedDefaultPrompts } from './prompts/defaults'
 import { registerShellIpc } from './ipc/shell-handlers'
 import { registerComposerIpc } from './ipc/composer-handlers'
+import { registerRecentIpc } from './ipc/recent-handlers'
+import { registerClipboardIpc } from './ipc/clipboard-handlers'
 import { registerAppIpc } from './ipc/app-handlers'
 import { registerConfigIpc } from './ipc/config-handlers'
 import { registerPromptConfigIpc } from './ipc/prompt-config-handlers'
@@ -180,6 +182,8 @@ if (!gotLock) {
     })
     registerShellIpc()
     registerComposerIpc({ getConfig: () => store.config, resolveCommand: systemResolveCommand })
+    registerRecentIpc()
+    registerClipboardIpc()
     const startup = parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8'))
     for (const w of startup.warnings ?? []) console.error('[startup]', w)
 

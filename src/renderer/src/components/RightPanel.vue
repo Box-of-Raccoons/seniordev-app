@@ -19,6 +19,7 @@ interface Term {
   title: string
   kind: 'composer' | 'terminal' | 'yolo' | 'shell'
   variant?: 'agent' | 'terminal'
+  initialMode?: 'task' | 'open'
   prefill?: Prefill
   prompt?: { name?: string; text?: string }
   input?: string
@@ -46,11 +47,11 @@ function newTab(): void {
   addTerm({ title: 'New session', kind: 'composer', variant: 'agent' })
 }
 
-// The menu only picks agent-vs-terminal; the agent CLI (Claude/Codex) is chosen
-// later in the composer's tool picker, so no tool rides on the pick.
-function onPick(p: { variant: 'agent' | 'terminal' }): void {
-  const title = p.variant === 'terminal' ? 'New shell' : 'New session'
-  addTerm({ title, kind: 'composer', variant: p.variant })
+// The menu picks agent-vs-terminal (the agent CLI is chosen later in the
+// composer's tool picker) plus, for the Open item, the composer's start mode.
+function onPick(p: { variant: 'agent' | 'terminal'; mode?: 'task' | 'open' }): void {
+  const title = p.variant === 'terminal' ? 'New shell' : p.mode === 'open' ? 'Open session' : 'New session'
+  addTerm({ title, kind: 'composer', variant: p.variant, initialMode: p.mode })
 }
 
 // Open a prefilled agent composer (used by the deep-link entry point). The user
@@ -70,6 +71,8 @@ function short(s: string, n = 22): string {
 // flips the slot's v-if, so Composer unmounts and the run view mounts + spawns.
 function launch(t: Term, p: ComposerLaunch): void {
   t.cwdOverride = p.folder
+  // Remember the folder we actually launched into (best-effort; see recent-folders).
+  window.api.recordRecentFolder(p.folder)
   if (p.mode === 'terminal') {
     t.kind = 'shell'
     t.shell = p.shell
@@ -147,6 +150,8 @@ function markExited(id: string): void {
           <button class="term-tab__close" :aria-label="`Close ${t.title}`" @click="closeTerm(t.id)">×</button>
         </div>
       </nav>
+      <!-- + sits right after the last tab (Windows Terminal style): dropping
+           flex:1 on .term-tabs stops the tabs stretching and shoving it right. -->
       <NewTabMenu @pick="onPick" />
     </div>
 
@@ -161,6 +166,7 @@ function markExited(id: string): void {
         <Composer
           v-if="t.kind === 'composer'"
           :variant="t.variant ?? 'agent'"
+          :initial-mode="t.initialMode"
           :tool="t.tool"
           :initial-input="t.prefill?.input"
           :initial-folder="t.prefill?.folder"
@@ -203,7 +209,7 @@ function markExited(id: string): void {
 <style scoped>
 .workbench { display: flex; flex-direction: column; height: 100%; flex: 1; min-width: 0; background: var(--surface); }
 .term-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--hairline); }
-.term-tabs { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+.term-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
 .term-tab {
   display: inline-flex; align-items: center;
   background: var(--surface); color: var(--ink-soft);
