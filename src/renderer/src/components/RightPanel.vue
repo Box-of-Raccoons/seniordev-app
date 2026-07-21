@@ -139,7 +139,6 @@ function markExited(id: string): void {
 <template>
   <section class="workbench">
     <div class="term-bar">
-      <NewTabMenu @pick="onPick" />
       <nav class="term-tabs">
         <div
           v-for="t in terms"
@@ -151,6 +150,9 @@ function markExited(id: string): void {
           <button class="term-tab__close" :aria-label="`Close ${t.title}`" @click="closeTerm(t.id)">×</button>
         </div>
       </nav>
+      <!-- + sits right after the last tab (Windows Terminal style): dropping
+           flex:1 on .term-tabs stops the tabs stretching and shoving it right. -->
+      <NewTabMenu @pick="onPick" />
     </div>
 
     <div class="term-body">
