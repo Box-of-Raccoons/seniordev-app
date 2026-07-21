@@ -11,6 +11,9 @@ import type { ComposerLaunch } from './composer-types'
 const props = defineProps<{
   variant: 'agent' | 'terminal'
   tool?: string
+  // Seed the start mode; the Open item in the New-tab menu passes 'open' for the
+  // fast unprompted path. Defaults to 'task'.
+  initialMode?: 'task' | 'open'
   // Optional prefill (deep-link entry point): seed folder/input/role.
   initialInput?: string
   initialFolder?: string
@@ -29,10 +32,11 @@ const shell = ref('')
 const tool = ref(props.tool ?? '')
 // 'task' = the agent starts with a role + task prompt (and optional YOLO).
 // 'open' = launch a bare, unprompted agent — just the CLI in the chosen folder.
-const mode = ref<'task' | 'open'>('task')
+const mode = ref<'task' | 'open'>(props.initialMode ?? 'task')
 
 const prompts = ref<PromptSummary[]>([])
 const repos = ref<RepoInfo[]>([])
+const recentFolders = ref<string[]>([])
 const shells = ref<string[]>([])
 const tools = ref<string[]>([])
 const yoloAvailable = ref(false)
@@ -60,6 +64,10 @@ const launchLabel = computed(() =>
 
 function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+function baseName(p: string): string {
+  return p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p
 }
 
 onMounted(async () => {
@@ -102,6 +110,18 @@ onMounted(async () => {
   } catch {
     repos.value = []
   }
+  try {
+    recentFolders.value = await window.api.listRecentFolders()
+  } catch {
+    recentFolders.value = []
+  }
+  // Open mode is the fast path: prefill the folder with the last one used so the
+  // flow collapses to New-tab → Open → launch. A prefilled folder counts as
+  // chosen (folderTouched), so nothing overwrites it.
+  if (mode.value === 'open' && !folder.value.trim() && recentFolders.value[0]) {
+    folder.value = recentFolders.value[0]
+    folderTouched.value = true
+  }
 })
 
 // Prefill the folder from the ticket's mapped repo, until the user takes over.
@@ -132,8 +152,10 @@ function onFolderInput(): void {
   folderTouched.value = true
 }
 
-function onInputKeydown(e: KeyboardEvent): void {
-  // Enter makes a newline in the multi-line box; Cmd/Ctrl+Enter launches.
+function onFormKeydown(e: KeyboardEvent): void {
+  // Cmd/Ctrl+Enter launches from anywhere in the composer — the folder field, the
+  // tool buttons, or the Task textarea — so Open mode (which has no textarea) is
+  // keyboard-launchable too. Plain Enter in the textarea still makes a newline.
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
     e.preventDefault()
     launch()
@@ -161,7 +183,7 @@ function launch(): void {
 </script>
 
 <template>
-  <form class="composer" @submit.prevent="launch">
+  <form class="composer" @submit.prevent="launch" @keydown="onFormKeydown">
     <div class="composer__inner">
       <!-- Agent: choose whether the session starts with a task prompt or bare. -->
       <div v-if="!isTerminal" class="seg" role="group" aria-label="Session mode">
@@ -196,7 +218,19 @@ function launch(): void {
           />
           <button type="button" class="btn-ghost" @click="browse">Browse…</button>
         </div>
+        <div v-if="recentFolders.length" class="repos" role="group" aria-label="Recent folders">
+          <span class="chip-label">Recent</span>
+          <button
+            v-for="f in recentFolders"
+            :key="f"
+            type="button"
+            class="chip"
+            :title="f"
+            @click="pickRepo(f)"
+          >{{ baseName(f) }}</button>
+        </div>
         <div v-if="repos.length" class="repos" role="group" aria-label="Configured repos">
+          <span v-if="recentFolders.length" class="chip-label">Repos</span>
           <button
             v-for="r in repos"
             :key="r.key"
@@ -242,7 +276,6 @@ function launch(): void {
             rows="3"
             placeholder="ISC-835, or describe the task…"
             autocomplete="off"
-            @keydown="onInputKeydown"
           ></textarea>
           <span v-if="detectedTicket" class="hint">detected ticket {{ detectedTicket }} · the agent reads it via its MCP</span>
           <span v-else-if="input.trim()" class="hint hint--muted">free text · used as the task description</span>
@@ -299,7 +332,8 @@ function launch(): void {
 .folder-row { display: flex; gap: 8px; }
 .folder-row .control { flex: 1; min-width: 0; }
 
-.repos { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.repos { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px; }
+.chip-label { font-size: 11px; color: var(--ink-muted); margin-right: 2px; }
 .chip {
   font-family: var(--font-mono, Consolas, monospace); font-size: 11px;
   background: var(--surface); color: var(--ink-soft);

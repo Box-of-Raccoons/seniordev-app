@@ -54,6 +54,12 @@ export const SHELL = { openExternal: 'shell:openExternal' } as const
 export interface RepoInfo { key: string; path: string }
 export const REPOS = { list: 'repos:list' } as const
 export const DIALOG = { pickFolder: 'dialog:pickFolder' } as const
+// Recent folders: an MRU list the app writes on every launch, surfaced as
+// quick-pick chips in the composer (distinct from the config-driven repos).
+export const RECENT = { list: 'recent:list', record: 'recent:record' } as const
+// Text-only clipboard bridge for the terminal (readText/writeText — never image),
+// which is what stops Codex erroring "can't paste image" on a paste.
+export const CLIPBOARD = { readText: 'clipboard:readText', writeText: 'clipboard:writeText' } as const
 // Agent CLI tools offered in the New-tab menu (claude, codex, …) — the default
 // tool plus any others whose command resolves on PATH. Returns tool names.
 export const TOOLS = { list: 'tools:list' } as const

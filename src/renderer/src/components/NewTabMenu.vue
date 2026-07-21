@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
-const emit = defineEmits<{ (e: 'pick', payload: { variant: 'agent' | 'terminal' }): void }>()
+// `mode` rides only on the 'Open' pick: it seeds the composer straight into Open
+// (unprompted) mode. 'AI' leaves it undefined (composer defaults to Task).
+const emit = defineEmits<{ (e: 'pick', payload: { variant: 'agent' | 'terminal'; mode?: 'task' | 'open' }): void }>()
 
 const open = ref(false)
 const wrap = ref<HTMLElement | null>(null)
@@ -52,6 +54,11 @@ function pickAgent(): void {
   open.value = false
   emit('pick', { variant: 'agent' })
 }
+// A bare agent, unprompted, in the chosen (or last-used) folder — the fast path.
+function pickOpen(): void {
+  open.value = false
+  emit('pick', { variant: 'agent', mode: 'open' })
+}
 function pickTerminal(): void {
   open.value = false
   emit('pick', { variant: 'terminal' })
@@ -63,6 +70,7 @@ function pickTerminal(): void {
     <button class="new-session" aria-haspopup="menu" :aria-expanded="open" aria-label="New session" title="New session" @click="toggle">+</button>
     <div v-if="open" ref="menu" class="menu" role="menu" @keydown="onMenuKeydown">
       <button class="menu-item" role="menuitem" @click="pickAgent">AI</button>
+      <button class="menu-item" role="menuitem" @click="pickOpen">Open</button>
       <div class="sep" role="separator"></div>
       <button class="menu-item" role="menuitem" @click="pickTerminal">Terminal</button>
     </div>
@@ -77,7 +85,7 @@ function pickTerminal(): void {
 }
 .new-session:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .menu {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 160px;
+  position: absolute; left: 0; top: calc(100% + 4px); z-index: 20; min-width: 160px;
   background: var(--surface-2); border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-sm); padding: 4px; display: flex; flex-direction: column; gap: 2px;
   box-shadow: var(--shadow-popover);
