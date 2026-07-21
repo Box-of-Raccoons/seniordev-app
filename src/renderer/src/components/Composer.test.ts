@@ -12,6 +12,7 @@ beforeEach(() => {
       { name: 'senior-dev', description: 'build it' }
     ]),
     listRepos: vi.fn(async () => [{ key: 'SD', path: 'C:/repos/sd' }]),
+    listRecentFolders: vi.fn(async () => []),
     listShells: vi.fn(async () => ({ shells: ['pwsh', 'cmd'], default: 'pwsh' })),
     listTools: vi.fn(async () => ['claude', 'codex']),
     resolveRepo,
@@ -138,5 +139,40 @@ describe('Composer', () => {
       yolo: false,
       tool: 'claude'
     })
+  })
+
+  it('initialMode=open starts in Open mode and prefills the folder from the most recent', async () => {
+    ;(window.api as unknown as { listRecentFolders: unknown }).listRecentFolders = vi.fn(async () => [
+      'C:/code/seniordev-app',
+      'C:/code/other'
+    ])
+    const w = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialMode: 'open' } })
+    await flushPromises()
+    // Open mode hides the task-only controls...
+    expect(w.find('#composer-role').exists()).toBe(false)
+    // ...and prefills the folder with the last-used one, collapsing the flow to one launch.
+    expect((w.find('#composer-folder').element as HTMLInputElement).value).toBe('C:/code/seniordev-app')
+  })
+
+  it('renders recent-folder chips (basename) and fills the folder when one is clicked', async () => {
+    ;(window.api as unknown as { listRecentFolders: unknown }).listRecentFolders = vi.fn(async () => [
+      'C:/code/seniordev-app'
+    ])
+    const w = mount(Composer, { props: { variant: 'agent', tool: 'claude' } })
+    await flushPromises()
+    const recent = w.find('[aria-label="Recent folders"]')
+    expect(recent.exists()).toBe(true)
+    const chip = recent.find('.chip')
+    expect(chip.text()).toBe('seniordev-app')
+    await chip.trigger('click')
+    expect((w.find('#composer-folder').element as HTMLInputElement).value).toBe('C:/code/seniordev-app')
+  })
+
+  it('launches on Ctrl+Enter in Open mode (no textarea to carry the shortcut)', async () => {
+    ;(window.api as unknown as { listRecentFolders: unknown }).listRecentFolders = vi.fn(async () => ['C:/code/app'])
+    const w = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialMode: 'open' } })
+    await flushPromises()
+    await w.find('form').trigger('keydown', { key: 'Enter', ctrlKey: true })
+    expect(w.emitted('launch')?.[0]?.[0]).toMatchObject({ mode: 'interactive', folder: 'C:/code/app' })
   })
 })

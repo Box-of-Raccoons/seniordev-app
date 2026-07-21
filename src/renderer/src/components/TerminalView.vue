@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { TERM_BG, TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
+import { clipboardAction } from '../terminal-clipboard'
 
 const props = defineProps<{ id: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string }>()
 const emit = defineEmits<{ (e: 'exited', code: number): void }>()
@@ -13,6 +14,23 @@ let fit: FitAddon | null = null
 let offData: (() => void) | null = null
 let offExit: (() => void) | null = null
 let ro: ResizeObserver | null = null
+let onContextMenu: ((e: MouseEvent) => void) | null = null
+
+// Copy the current selection to the OS clipboard (text only), then clear it so the
+// next keystroke isn't swallowed by a lingering selection.
+function copySelection(): void {
+  const sel = term?.getSelection()
+  if (sel) window.api.clipboardWriteText(sel)
+  term?.clearSelection()
+}
+
+// Paste via term.paste() (not a raw pty write) so xterm applies bracketed-paste
+// framing per the app's current DEC mode — correct multi-line paste into Codex.
+// The text comes from the main-process text-only clipboard, so image data never
+// reaches the TUI.
+function pasteText(): void {
+  window.api.clipboardReadText().then((t) => { if (t) term?.paste(t) })
+}
 // The tab can close during the awaited spawn round-trip below; onBeforeUnmount
 // then disposes term and nulls host. This flag lets the async onMounted bail
 // before touching a disposed terminal or a gone host (SD-9 B2; same guard as
@@ -25,6 +43,25 @@ onMounted(async () => {
   term.loadAddon(fit)
   term.open(host.value!)
   fit.fit()
+
+  // Clipboard: bind copy/paste that xterm/Electron don't wire by default. The
+  // policy (Ctrl+C copies only with a selection, else SIGINT passes through;
+  // Ctrl+V and the Shift variants copy/paste) lives in clipboardAction.
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type !== 'keydown') return true
+    const action = clipboardAction(e, term?.hasSelection() ?? false)
+    if (action === 'copy') { copySelection(); return false }
+    if (action === 'paste') { pasteText(); return false }
+    return true
+  })
+  // Right-click: copy a selection if there is one, otherwise paste — the
+  // deterministic PuTTY/console convention, so right-click always does something.
+  onContextMenu = (e: MouseEvent): void => {
+    e.preventDefault()
+    if (term?.hasSelection()) copySelection()
+    else pasteText()
+  }
+  host.value!.addEventListener('contextmenu', onContextMenu)
 
   term.onData((d) => window.api.writeTerminal(props.id, d))
   offData = window.api.onTerminalData((e) => { if (e.id === props.id) term?.write(e.data) })
@@ -82,6 +119,7 @@ onBeforeUnmount(() => {
   offData?.()
   offExit?.()
   ro?.disconnect()
+  if (onContextMenu) host.value?.removeEventListener('contextmenu', onContextMenu)
   window.api.killTerminal(props.id)
   term?.dispose()
 })

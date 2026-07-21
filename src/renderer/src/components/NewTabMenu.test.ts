@@ -10,15 +10,21 @@ async function open() {
 }
 
 describe('NewTabMenu', () => {
-  it('offers AI and Terminal when opened', async () => {
+  it('offers AI, Open and Terminal when opened', async () => {
     const w = await open()
-    expect(w.findAll('.menu-item').map((b) => b.text())).toEqual(['AI', 'Terminal'])
+    expect(w.findAll('.menu-item').map((b) => b.text())).toEqual(['AI', 'Open', 'Terminal'])
   })
 
   it('emits an agent pick (no tool — chosen later in the composer) for AI', async () => {
     const w = await open()
     await w.findAll('.menu-item')[0].trigger('click')
     expect(w.emitted('pick')?.[0]?.[0]).toEqual({ variant: 'agent' })
+  })
+
+  it('emits an agent pick seeded into Open mode for Open', async () => {
+    const w = await open()
+    await w.findAll('.menu-item')[1].trigger('click')
+    expect(w.emitted('pick')?.[0]?.[0]).toEqual({ variant: 'agent', mode: 'open' })
   })
 
   it('emits a terminal pick for Terminal', async () => {

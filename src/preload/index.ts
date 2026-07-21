@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, SHELLS, TOOLS, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
@@ -8,6 +8,10 @@ const api = {
   resolveRepo: (key: string): Promise<RepoResolution> => ipcRenderer.invoke(IPC.resolveRepo, key),
   listRepos: (): Promise<RepoInfo[]> => ipcRenderer.invoke(REPOS.list),
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke(DIALOG.pickFolder),
+  listRecentFolders: (): Promise<string[]> => ipcRenderer.invoke(RECENT.list),
+  recordRecentFolder: (path: string): void => ipcRenderer.send(RECENT.record, path),
+  clipboardReadText: (): Promise<string> => ipcRenderer.invoke(CLIPBOARD.readText),
+  clipboardWriteText: (text: string): void => ipcRenderer.send(CLIPBOARD.writeText, text),
   listPrompts: (): Promise<PromptSummary[]> => ipcRenderer.invoke(PROMPTS.list),
 
   spawnTerminal: (req: SpawnTerminalRequest): Promise<SpawnResult> => ipcRenderer.invoke(TERM.spawn, req),

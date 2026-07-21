@@ -13,6 +13,11 @@ vi.mock('@xterm/xterm', () => ({
     loadAddon(): void {}
     open(): void {}
     onData(): void {}
+    attachCustomKeyEventHandler(): void {}
+    hasSelection(): boolean { return false }
+    getSelection(): string { return '' }
+    clearSelection(): void {}
+    paste(): void {}
     write = writeSpy
     dispose = disposeSpy
   }
@@ -40,6 +45,8 @@ beforeEach(() => {
     killTerminal: vi.fn(),
     onTerminalData: vi.fn(() => () => {}),
     onTerminalExit: vi.fn(() => () => {}),
+    clipboardReadText: vi.fn(async () => ''),
+    clipboardWriteText: vi.fn(),
     spawnTerminal: vi.fn(() => new Promise<SpawnResult>((res) => { resolveSpawn = res }))
   }
 })

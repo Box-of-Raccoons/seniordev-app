@@ -13,6 +13,8 @@ beforeEach(() => {
     listShells: vi.fn(async () => ({ shells: ['pwsh'], default: 'pwsh' })),
     listTools: vi.fn(async () => ['claude']),
     resolveRepo: vi.fn(async () => null),
+    recordRecentFolder: vi.fn(),
+    listRecentFolders: vi.fn(async () => []),
     yoloCaps: vi.fn(async () => ({ available: true })),
     onConfigChanged: vi.fn(() => () => {}),
     getStartup: vi.fn(async () => ({ tickets: [] }))
