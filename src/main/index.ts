@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
 import { join, resolve } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { defaultConfigDir } from './config/paths'
+import { applyFixedPath } from './env/fix-path'
 import { parseStartupArgs } from './cli/parse-args'
 import { registerStartupIpc } from './ipc/startup-handlers'
 import { ConfigStore } from './config/store'
@@ -147,6 +148,14 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
+    // A GUI-launched macOS/Linux app inherits launchd's minimal PATH, not the
+    // user's shell PATH — so node-pty can't find CLI tools installed under
+    // ~/.local/bin, /opt/homebrew/bin, a version manager, etc., and every session
+    // dies with "[process exited: 1]". Recover the login shell's PATH before any
+    // terminal/headless spawner is wired up below. No-op on Windows.
+    const fixedPath = applyFixedPath()
+    if (fixedPath) console.log('[env] applied login shell PATH')
+
     if (!process.env.ELECTRON_RENDERER_URL) {
       session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
         cb({
