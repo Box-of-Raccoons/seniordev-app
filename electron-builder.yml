@@ -6,6 +6,13 @@ protocols:
 directories:
   buildResources: build
   output: release
+# Ad-hoc code-sign the packaged macOS .app so it launches locally on Apple
+# Silicon without the Gatekeeper "damaged / malware" dialog. electron-builder
+# skips signing entirely when no Apple Developer ID identity is present, which
+# leaves an unsigned arm64 bundle macOS refuses to run. See build/adhoc-sign.cjs
+# for the full rationale and the distribution caveat (real notarization still
+# needed to ship to other machines).
+afterPack: build/adhoc-sign.cjs
 # node-pty is rebuilt for the Electron ABI by @electron/rebuild (see the `dist`
 # script) via node-gyp. electron-builder's own `npm rebuild` path instead runs
 # node-pty's `build` script (`tsc -b`), which fails compiling node-pty's bundled
