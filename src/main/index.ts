@@ -21,7 +21,7 @@ import { registerPromptConfigIpc } from './ipc/prompt-config-handlers'
 import { installMenu } from './menu'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
 import { nodeHeadlessSpawner } from './headless/node-spawner'
-import { systemResolveCommand } from './terminal/resolve-command'
+import { systemResolveCommand, systemCommandAvailable } from './terminal/resolve-command'
 import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './deeplink/parse'
 import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery } from './deeplink/delivery'
@@ -190,7 +190,7 @@ if (!gotLock) {
       return repo ? { key: repo.key, path: repo.path, tool: cfg.defaultTool } : null
     })
     registerShellIpc()
-    registerComposerIpc({ getConfig: () => store.config, resolveCommand: systemResolveCommand })
+    registerComposerIpc({ getConfig: () => store.config, isAvailable: systemCommandAvailable })
     registerRecentIpc()
     registerClipboardIpc()
     const startup = parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8'))

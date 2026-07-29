@@ -1,5 +1,5 @@
-import { win32 } from 'node:path'
-import { existsSync } from 'node:fs'
+import { win32, posix } from 'node:path'
+import { existsSync, statSync } from 'node:fs'
 
 // Resolves a bare command (e.g. `claude`, `codex`) to a concrete file on disk the
 // same way cmd.exe / where.exe would — walking PATH and appending PATHEXT — so the
@@ -78,5 +78,56 @@ export function systemResolveCommand(file: string): ResolvedCommand | undefined 
     path: process.env.PATH ?? '',
     pathext: process.env.PATHEXT ?? '',
     exists: existsSync
+  })
+}
+
+// Whether a bare command (or explicit path) actually names a runnable file on
+// PATH. This is a DIFFERENT question from resolveCommandPath, which classifies
+// HOW to spawn on Windows and deliberately no-ops on POSIX; availability must be
+// answered on every platform, because the composer uses it to decide whether to
+// offer a non-default tool like codex (it would otherwise be hidden on macOS and
+// Linux forever, since systemResolveCommand returns undefined there). Pure and
+// fully injectable — never touches process.env or the real fs.
+export function commandAvailable(
+  file: string,
+  opts: { path: string; sep: string; join: (dir: string, f: string) => string; exists: (p: string) => boolean }
+): boolean {
+  // An explicit path (has a separator) is checked directly, never PATH-searched.
+  if (/[\\/]/.test(file)) return opts.exists(file)
+  for (const dir of opts.path.split(opts.sep)) {
+    if (dir !== '' && opts.exists(opts.join(dir, file))) return true
+  }
+  return false
+}
+
+// A regular file with an execute bit — the POSIX notion of "runnable", matching
+// what `command -v` / `which` report. A directory on PATH must not count.
+function isExecutableFile(p: string): boolean {
+  try {
+    const st = statSync(p)
+    return st.isFile() && (st.mode & 0o111) !== 0
+  } catch {
+    return false
+  }
+}
+
+// System wiring for the composer's availability check. Windows reuses the
+// PATH+PATHEXT resolver (a matched kind other than 'none' means found); POSIX
+// walks PATH for a runnable file, which is exactly what the OS itself does.
+export function systemCommandAvailable(file: string): boolean {
+  if (process.platform === 'win32') {
+    return (
+      resolveCommandPath(file, {
+        path: process.env.PATH ?? '',
+        pathext: process.env.PATHEXT ?? '',
+        exists: existsSync
+      }).kind !== 'none'
+    )
+  }
+  return commandAvailable(file, {
+    path: process.env.PATH ?? '',
+    sep: ':',
+    join: posix.join,
+    exists: isExecutableFile
   })
 }
