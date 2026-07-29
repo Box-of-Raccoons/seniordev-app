@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import TerminalView from './TerminalView.vue'
 import YoloView from './YoloView.vue'
 import Composer from './Composer.vue'
 import NewTabMenu from './NewTabMenu.vue'
 import EmptyState from './EmptyState.vue'
+import StatusGlyph from './StatusGlyph.vue'
 import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
 import type { ComposerLaunch } from './composer-types'
+import type { TabStatus } from '../../../shared/ipc'
 
 interface Prefill {
   input?: string
@@ -33,6 +35,16 @@ interface Term {
 const terms = ref<Term[]>([])
 const activeId = ref<string | null>(null)
 let counter = 0
+
+// Live per-tab status (S1), keyed by the tab id — which is the pty id the main
+// process reports on STATUS.update. A tab with no entry (composer, or nothing
+// running yet) shows no glyph.
+const statuses = reactive<Record<string, TabStatus>>({})
+let offStatus: (() => void) | null = null
+onMounted(() => {
+  offStatus = window.api.onStatusUpdate((e) => { statuses[e.id] = e.status })
+})
+onBeforeUnmount(() => offStatus?.())
 
 function addTerm(t: Omit<Term, 'id'>): void {
   counter += 1
@@ -127,6 +139,7 @@ function closeTerm(id: string): void {
   const i = terms.value.findIndex((t) => t.id === id)
   if (i === -1) return
   terms.value.splice(i, 1)
+  delete statuses[id]
   if (activeId.value === id) activeId.value = terms.value.at(-1)?.id ?? null
 }
 
@@ -146,6 +159,7 @@ function markExited(id: string): void {
           class="term-tab"
           :class="{ 'term-tab--active': t.id === activeId, 'term-tab--dead': t.exited }"
         >
+          <StatusGlyph class="term-tab__status" :status="statuses[t.id] ?? null" />
           <button class="term-tab__label" @click="activeId = t.id">{{ t.title }}</button>
           <button class="term-tab__close" :aria-label="`Close ${t.title}`" @click="closeTerm(t.id)">×</button>
         </div>
@@ -217,9 +231,10 @@ function markExited(id: string): void {
 }
 .term-tab--active { background: var(--surface-2); color: var(--ink); }
 .term-tab--dead .term-tab__label { color: var(--ink-muted); text-decoration: line-through; }
+.term-tab__status { display: inline-flex; align-items: center; padding-left: 9px; }
 .term-tab__label {
   background: transparent; border: 0; color: inherit; font: inherit;
-  padding: 5px 4px 5px 10px; cursor: pointer;
+  padding: 5px 4px 5px 8px; cursor: pointer;
 }
 .term-tab__close {
   background: transparent; border: 0; color: var(--ink-muted); font: inherit; line-height: 1;

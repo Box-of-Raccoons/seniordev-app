@@ -8,6 +8,7 @@ beforeEach(() => {
     spawnShell: vi.fn(async () => ({ ok: true })),
     writeTerminal: vi.fn(), resizeTerminal: vi.fn(), killTerminal: vi.fn(),
     onTerminalData: vi.fn(() => () => {}), onTerminalExit: vi.fn(() => () => {}),
+    onStatusUpdate: vi.fn(() => () => {}),
     openExternal: vi.fn(async () => ({ ok: true })),
     listPrompts: vi.fn(async () => []), listRepos: vi.fn(async () => []),
     listShells: vi.fn(async () => ({ shells: ['pwsh'], default: 'pwsh' })),
