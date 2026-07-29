@@ -104,6 +104,24 @@ export const YOLO = {
   exit: 'yolo:exit', kill: 'yolo:kill', caps: 'yolo:caps'
 } as const
 
+// S1 status system. The five per-tab glyph states (spec 5.1). This is the wire
+// type shared between the main-process state machine (terminal/status.ts) and
+// the renderer that draws the glyph; the machine LOGIC stays in main.
+export type TabStatus = 'working' | 'idle' | 'needsYou' | 'needsReview' | 'failed'
+
+// Quiet detection lives in main, the buffer scan in the renderer (spec 5.4). On
+// each quiet event main sends a scanRequest carrying the tool's approvalPatterns;
+// the renderer scans that tab's xterm buffer and replies with scanResult; main
+// feeds the result to the state machine and pushes the resulting `update` back.
+export interface StatusScanRequest { id: string; patterns: string[] }
+export interface StatusScanResult { id: string; promptMatched: boolean }
+export interface StatusUpdateEvent { id: string; status: TabStatus }
+export const STATUS = {
+  scanRequest: 'status:scanRequest', // main → renderer
+  scanResult: 'status:scanResult', // renderer → main
+  update: 'status:update' // main → renderer
+} as const
+
 export type MenuAction = 'new-session' | 'app-config' | 'prompt-config' | 'about'
 export const MENU = { action: 'menu:action' } as const
 

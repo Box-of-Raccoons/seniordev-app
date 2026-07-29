@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
+import type { StatusScanRequest, StatusUpdateEvent } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
 
 const api = {
@@ -50,6 +51,19 @@ const api = {
     const listener = (_e: IpcRendererEvent, payload: YoloExitEvent): void => cb(payload)
     ipcRenderer.on(YOLO.exit, listener)
     return () => ipcRenderer.off(YOLO.exit, listener)
+  },
+  // S1 status: the renderer answers scan requests (scanning its xterm buffer for
+  // an approval prompt) and receives per-tab status updates to draw the glyph.
+  onStatusScanRequest: (cb: (e: StatusScanRequest) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: StatusScanRequest): void => cb(payload)
+    ipcRenderer.on(STATUS.scanRequest, listener)
+    return () => ipcRenderer.off(STATUS.scanRequest, listener)
+  },
+  sendStatusScanResult: (id: string, promptMatched: boolean): void => ipcRenderer.send(STATUS.scanResult, id, promptMatched),
+  onStatusUpdate: (cb: (e: StatusUpdateEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: StatusUpdateEvent): void => cb(payload)
+    ipcRenderer.on(STATUS.update, listener)
+    return () => ipcRenderer.off(STATUS.update, listener)
   },
   onMenuAction: (cb: (action: MenuAction) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, action: MenuAction): void => cb(action)

@@ -3,8 +3,14 @@
 // detection (terminal/activity.ts) and the buffer scan (renderer) feed it their
 // results; this module only decides the resulting state. See spec sections 5.1
 // (states) and 5.2 (transitions).
+//
+// The five state values are the shared wire type TabStatus (src/shared/ipc.ts);
+// the renderer needs them to draw glyphs. Only the type is shared — importing it
+// pulls in no Electron, so this module stays pure main-process logic (spec 5.6).
 
-export type Status = 'working' | 'idle' | 'needsYou' | 'needsReview' | 'failed'
+import type { TabStatus } from '../../shared/ipc'
+
+export type Status = TabStatus
 
 // A tab's kind fixes how an exit resolves and whether it is ever scanned for a
 // prompt. Interactive (agent TUI) and shell both ride the pty and get all five
