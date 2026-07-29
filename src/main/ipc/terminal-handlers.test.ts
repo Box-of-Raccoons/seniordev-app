@@ -10,6 +10,8 @@ vi.mock('electron', () => ({
 }))
 
 import { registerTerminalIpc } from './terminal-handlers'
+import { createSessionActivity } from '../terminal/activity'
+import { createStatusHub } from '../terminal/status-hub'
 import type { PtyProcess, PtySpawner } from '../terminal/manager'
 import type { Config } from '../config/schema'
 import type { Ticket } from '../../shared/types'
@@ -135,6 +137,35 @@ describe('registerTerminalIpc', () => {
     expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
     // The submit is a bare Enter — never wrapped.
     expect(pty.write).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
+  })
+
+  it('still delivers the prompt when the status hub shares the same activity tracker', async () => {
+    // The core-path risk of the orchestration: the hub arms a CONTINUOUS quiet
+    // watch on the same activity instance that prompt delivery uses. Prove the two
+    // watches coexist and delivery is unaffected, under the same fake-timer harness.
+    vi.useFakeTimers()
+    const pty = fakePty()
+    const activity = createSessionActivity()
+    const scanRequests: unknown[] = []
+    const updates: { id: string; status: string }[] = []
+    const statusHub = createStatusHub({
+      activity,
+      sendScanRequest: (r) => scanRequests.push(r),
+      sendUpdate: (e) => updates.push(e)
+    })
+    registerTerminalIpc(() => undefined, () => pty as unknown as PtyProcess, { source, activity, statusHub })
+    await handleMap.get('pty:spawn')!({}, { id: 'a', ticketKey: 'PROJ-1', prompt: { name: 'p' }, cols: 80, rows: 24 })
+    expect(updates).toContainEqual({ id: 'a', status: 'working' }) // hub registered the tab
+
+    pty.emitData('boot screen')
+    await vi.advanceTimersByTimeAsync(800)
+    // Delivery fires exactly as without the hub…
+    expect(pty.write).toHaveBeenNthCalledWith(1, 'Do PROJ-1')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
+    // …and the hub's own watch observed the same quiet and asked for a scan.
+    expect(scanRequests).toContainEqual({ id: 'a', patterns: [] })
     vi.useRealTimers()
   })
 

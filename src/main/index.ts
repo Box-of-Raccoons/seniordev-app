@@ -26,7 +26,9 @@ import { systemResolveCommand, systemCommandAvailable } from './terminal/resolve
 import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './deeplink/parse'
 import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery } from './deeplink/delivery'
-import { DEEPLINK } from '../shared/ipc'
+import { DEEPLINK, STATUS } from '../shared/ipc'
+import { createSessionActivity } from './terminal/activity'
+import { createStatusHub } from './terminal/status-hub'
 import type { TerminalManager } from './terminal/manager'
 import type { YoloRunner } from './headless/runner'
 
@@ -216,8 +218,19 @@ if (!gotLock) {
     registerPromptsIpc(store.prompts)
     const getSender = (): Electron.WebContents | undefined =>
       BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents
-    terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand })
-    yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand })
+    // S1 status: one shared activity tracker (so prompt delivery and the status
+    // scan detect quiet from the same source) and one hub that both the pty and
+    // headless handlers feed. The hub sends scan requests and status updates to
+    // the renderer; the renderer's scan replies come back on STATUS.scanResult.
+    const activity = createSessionActivity()
+    const statusHub = createStatusHub({
+      activity,
+      sendScanRequest: (req) => getSender()?.send(STATUS.scanRequest, req),
+      sendUpdate: (ev) => getSender()?.send(STATUS.update, ev)
+    })
+    ipcMain.on(STATUS.scanResult, (_e, id: string, promptMatched: boolean) => statusHub.scanResult(id, promptMatched))
+    terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand, activity, statusHub })
+    yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand, statusHub })
     registerAppIpc()
     registerConfigIpc(store, getSender)
     registerPromptConfigIpc(store, getSender)

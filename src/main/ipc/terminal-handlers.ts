@@ -6,11 +6,26 @@ import { resolveShell } from '../terminal/shell'
 import type { ResolvedCommand } from '../terminal/resolve-command'
 import { TERM, type SpawnTerminalRequest, type SpawnShellRequest, type SpawnResult } from '../../shared/ipc'
 import { resolveExpandedPrompt } from './resolve-prompt'
-import { createSessionActivity } from '../terminal/activity'
+import { createSessionActivity, type SessionActivity } from '../terminal/activity'
+import type { StatusHub } from '../terminal/status-hub'
+import type { Config } from '../config/schema'
 
 export interface TerminalDeps {
   source: ConfigSource
   resolveCommand?: (command: string) => ResolvedCommand | undefined
+  // S1 status: the shared activity tracker (so status and prompt delivery detect
+  // quiet from one source) and the hub that turns events into status updates.
+  // Optional so existing tests that exercise only prompt delivery need neither.
+  activity?: SessionActivity
+  statusHub?: StatusHub
+}
+
+// A shell tab has no fixed tool, so it is scanned against every tool's approval
+// patterns — if a user runs claude or codex by hand, the union still matches
+// (plan section 3). Deduped; empty when no config has loaded yet.
+function unionApprovalPatterns(config: Config | null): string[] {
+  if (!config) return []
+  return [...new Set(Object.values(config.cliTools).flatMap((t) => t.approvalPatterns ?? []))]
 }
 
 // Stdin prompt delivery must wait for the CLI's TUI to be READY, not a fixed
@@ -33,9 +48,10 @@ export function registerTerminalIpc(
   deps: TerminalDeps
 ): TerminalManager {
   // Continuous per-session output activity (see terminal/activity.ts). Prompt
-  // delivery below registers one-shot watches over it; the status monitor will
-  // watch the same source continuously, so quiet is detected in one place.
-  const activity = createSessionActivity()
+  // delivery below registers one-shot watches over it; the status hub watches the
+  // same source continuously, so quiet is detected in one place. The hub is
+  // handed the SAME instance from index.ts; a bare test falls back to its own.
+  const activity = deps.activity ?? createSessionActivity()
   // Canceller for the delivery step currently in flight (a pending quiet watch
   // or the Enter timeout), so a kill/exit can stop it mid-delivery.
   const deliveryCancels = new Map<string, () => void>()
@@ -49,11 +65,13 @@ export function registerTerminalIpc(
     onData: (id, data) => {
       getSender()?.send(TERM.data, { id, data })
       activity.data(id)
+      deps.statusHub?.data(id)
     },
     onExit: (id, exitCode) => {
       getSender()?.send(TERM.exit, { id, exitCode })
       cancelPendingPrompt(id)
       activity.clear(id)
+      deps.statusHub?.exit(id, exitCode)
     }
   })
 
@@ -106,6 +124,9 @@ export function registerTerminalIpc(
         rows: req.rows,
         resolved: launch.resolved
       })
+      // Status: an agent tab is scanned against its own tool's approval patterns.
+      const toolName = req.tool ?? config.defaultTool
+      deps.statusHub?.registerPty(req.id, 'interactive', config.cliTools[toolName]?.approvalPatterns ?? [])
       // NOTE: no bracketed-paste framing here — the raw ESC of \x1b[200~ registers
       // as the Escape key in these TUIs (clears the composer / exits dialogs).
       if (launch.stdinPrompt) deliverPromptWhenReady(req.id, launch.stdinPrompt, launch.bracketedPaste ?? false)
@@ -128,6 +149,8 @@ export function registerTerminalIpc(
         rows: req.rows,
         resolved
       })
+      // Status: a shell tab has no fixed tool, so scan against the union.
+      deps.statusHub?.registerPty(req.id, 'shell', unionApprovalPatterns(deps.source.config))
       return { ok: true }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -138,6 +161,7 @@ export function registerTerminalIpc(
   ipcMain.on(TERM.kill, (_e, id: string) => {
     cancelPendingPrompt(id)
     activity.clear(id)
+    deps.statusHub?.dispose(id)
     manager.kill(id)
   })
 
