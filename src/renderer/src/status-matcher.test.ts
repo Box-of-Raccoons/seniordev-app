@@ -63,3 +63,52 @@ describe('matchesPrompt (mechanism)', () => {
     expect(matchesPrompt('waiting for approval', ['no-match-a', 'approval', 'no-match-b'])).toBe(true)
   })
 })
+
+// The gate for step 4: the matcher run against text CAPTURED from real rendered
+// xterm buffers (2026-07-29, ~/.config/SeniorDev/status-scan-debug.txt), not
+// invented text. Patterns here mirror the shipped CLI_PRESETS; a separate
+// main-side test pins the presets themselves to these same captures.
+const CLAUDE_PATTERNS = ['Do you want to proceed\\?', 'Esc to cancel.*Tab to amend']
+const CODEX_PATTERNS = ['Would you like to run the following command\\?', 'Press enter to confirm or esc to cancel']
+
+// A real claude 2.1.212 bash-permission prompt.
+const CLAUDE_PROMPT = [
+  ' Do you want to proceed?',
+  ' ❯ 1. Yes',
+  '   2. No',
+  '',
+  ' Esc to cancel · Tab to amend · ctrl+e to explain'
+].join('\n')
+
+// A real codex-cli 0.146.0 command-approval prompt.
+const CODEX_PROMPT = [
+  '  Would you like to run the following command?',
+  '',
+  '  $ open -a "Google Chrome"',
+  '› 1. Yes, proceed (y)',
+  '',
+  '  Press enter to confirm or esc to cancel'
+].join('\n')
+
+// A captured NON-prompt buffer: an idle shell, plus a line of ordinary codex
+// working output. Neither should read as an approval prompt.
+const IDLE_SHELL = 'unknown1a22c802d291:code hardyspry$ '
+const CODEX_WORKING = '• I’ll list the /home directory entries.'
+
+describe('matchesPrompt against captured buffers', () => {
+  it('detects the claude permission prompt', () => {
+    expect(matchesPrompt(CLAUDE_PROMPT, CLAUDE_PATTERNS)).toBe(true)
+  })
+  it('detects the codex command-approval prompt', () => {
+    expect(matchesPrompt(CODEX_PROMPT, CODEX_PATTERNS)).toBe(true)
+  })
+  it('does not fire on an idle shell or on ordinary agent output', () => {
+    const allPatterns = [...CLAUDE_PATTERNS, ...CODEX_PATTERNS] // shell tabs scan the union (plan section 3)
+    expect(matchesPrompt(IDLE_SHELL, allPatterns)).toBe(false)
+    expect(matchesPrompt(CODEX_WORKING, allPatterns)).toBe(false)
+  })
+  it('does not cross-match: claude patterns miss the codex prompt and vice versa', () => {
+    expect(matchesPrompt(CODEX_PROMPT, CLAUDE_PATTERNS)).toBe(false)
+    expect(matchesPrompt(CLAUDE_PROMPT, CODEX_PATTERNS)).toBe(false)
+  })
+})

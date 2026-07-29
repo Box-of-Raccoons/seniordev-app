@@ -11,7 +11,11 @@ export const CLI_PRESETS = {
       args: ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'auto'],
       outputParser: 'claude-stream-json'
     },
-    resumeArgs: ['--resume', '{{sessionId}}']
+    resumeArgs: ['--resume', '{{sessionId}}'],
+    // Captured 2026-07-29 from a real claude 2.1.212 permission prompt (rendered
+    // xterm buffer, plan section 5). The dialog's own question and footer lines,
+    // which do not appear in ordinary output.
+    approvalPatterns: ['Do you want to proceed\\?', 'Esc to cancel.*Tab to amend']
   },
   codex: {
     command: 'codex',
@@ -29,7 +33,11 @@ export const CLI_PRESETS = {
       args: ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '-'],
       outputParser: 'codex-jsonl'
     },
-    resumeArgs: ['resume', '{{sessionId}}']
+    resumeArgs: ['resume', '{{sessionId}}'],
+    // Captured 2026-07-29 from a real codex-cli 0.146.0 command-approval prompt
+    // (rendered xterm buffer, plan section 5). The dialog's header and footer,
+    // which do not appear in ordinary output.
+    approvalPatterns: ['Would you like to run the following command\\?', 'Press enter to confirm or esc to cancel']
   }
 } as const
 
