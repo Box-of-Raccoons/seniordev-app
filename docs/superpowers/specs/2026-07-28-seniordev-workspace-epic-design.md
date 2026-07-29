@@ -256,7 +256,7 @@ The renderer matches against xterm's parsed buffer rather than the raw byte stre
 sequences and ConPTY chunking are already resolved by the time matching happens.
 
 Patterns live beside `resumeArgs` and `headless.args` in `CLI_PRESETS`
-(`src/main/config/presets.ts`) as `promptPatterns: string[]`, with shipped defaults and
+(`src/main/config/presets.ts`) as `approvalPatterns: string[]`, with shipped defaults and
 `config.yaml` override. When either vendor reshuffles its TUI, this is a config edit rather
 than a release.
 
