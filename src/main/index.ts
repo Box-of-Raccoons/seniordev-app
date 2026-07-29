@@ -15,6 +15,7 @@ import { registerShellIpc } from './ipc/shell-handlers'
 import { registerComposerIpc } from './ipc/composer-handlers'
 import { registerRecentIpc } from './ipc/recent-handlers'
 import { registerClipboardIpc } from './ipc/clipboard-handlers'
+import { registerStatusDebugIpc } from './ipc/status-debug-handlers' // TEMP: S1 step 4 capture
 import { registerAppIpc } from './ipc/app-handlers'
 import { registerConfigIpc } from './ipc/config-handlers'
 import { registerPromptConfigIpc } from './ipc/prompt-config-handlers'
@@ -193,6 +194,9 @@ if (!gotLock) {
     registerComposerIpc({ getConfig: () => store.config, isAvailable: systemCommandAvailable })
     registerRecentIpc()
     registerClipboardIpc()
+    // TEMPORARY (S1 step 4 capture): remove with status-debug-handlers.ts once
+    // approvalPatterns are captured. Ctrl+Shift+Y in a terminal dumps here.
+    console.info('[status-capture] Ctrl+Shift+Y in a terminal dumps its buffer to', registerStatusDebugIpc())
     const startup = parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8'))
     for (const w of startup.warnings ?? []) console.error('[startup]', w)
 

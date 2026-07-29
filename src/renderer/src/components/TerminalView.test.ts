@@ -45,6 +45,9 @@ beforeEach(() => {
     killTerminal: vi.fn(),
     onTerminalData: vi.fn(() => () => {}),
     onTerminalExit: vi.fn(() => () => {}),
+    onStatusScanRequest: vi.fn(() => () => {}),
+    sendStatusScanResult: vi.fn(),
+    debugDumpScan: vi.fn(),
     clipboardReadText: vi.fn(async () => ''),
     clipboardWriteText: vi.fn(),
     spawnTerminal: vi.fn(() => new Promise<SpawnResult>((res) => { resolveSpawn = res }))

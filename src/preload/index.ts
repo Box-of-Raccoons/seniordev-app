@@ -60,6 +60,9 @@ const api = {
     return () => ipcRenderer.off(STATUS.scanRequest, listener)
   },
   sendStatusScanResult: (id: string, promptMatched: boolean): void => ipcRenderer.send(STATUS.scanResult, id, promptMatched),
+  // TEMPORARY (S1 step 4 capture): dump the scanned buffer to a debug file. Remove
+  // with status-debug-handlers.ts once approvalPatterns are captured.
+  debugDumpScan: (id: string, text: string): void => ipcRenderer.send('status:debugDump', id, text),
   onStatusUpdate: (cb: (e: StatusUpdateEvent) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: StatusUpdateEvent): void => cb(payload)
     ipcRenderer.on(STATUS.update, listener)
