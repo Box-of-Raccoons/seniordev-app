@@ -41,6 +41,24 @@ Grok) and renders a chat UI. SeniorDev keeps the pty and the TUI.
 5. Vertical splits or a general split tree. Columns only.
 6. Remote or multi-device access.
 
+### Binding design constraints
+
+`DESIGN.md` and `PRODUCT.md` are the source of truth for anything visual in this epic, and
+`CLAUDE.md` requires reading both before UI work. Four of their rules bind directly here, and
+an earlier draft of this document violated all four:
+
+1. **State is never conveyed by colour alone.** Pair with text, icon, or shape.
+2. **Colours are authored in OKLCH from the `DESIGN.md` frontmatter.** The available state
+   colours are green (success), amber (attention / in-progress), and rust (error). Teal is
+   reserved by the One Signal Rule for one primary action per surface. There is no blue.
+3. **A coloured `border-left` or `border-right` wider than 1px as a stripe accent is an
+   absolute ban.** Use a tonal step between planes instead.
+4. **`prefers-reduced-motion` is honoured on every animation** with a crossfade or instant
+   fallback, and motion ships only when it conveys state.
+
+Target is WCAG 2.1 AA: 4.5:1 for body text, 3:1 for large or bold text, a visible focus state
+on every interactive element, and full keyboard operability.
+
 ## 3. Slices and build order
 
 Ordering is value-first: every slice ships something usable on its own.
@@ -155,14 +173,39 @@ reveals 10, then "show all" reveals everything.
 
 ### 5.1 States
 
-| State | Rendering | Trigger | OS notification |
-| --- | --- | --- | --- |
-| working | amber, solid | any pty data | no |
-| idle | green, solid | quiet 700ms, buffer scan finds no prompt | no |
-| needsYou | red, fast pulse (~1.4s) | quiet 700ms, buffer scan matches a prompt | yes |
-| needsReview | blue, slow pulse (~2.2s) | headless tab exits 0 | yes |
-| failed | hollow red ring, static | any non-zero exit | no |
-| (no live tab) | no dot, dimmed row | no pty for this conversation | n/a |
+| State | Glyph | Colour | Trigger | OS notification |
+| --- | --- | --- | --- | --- |
+| working | half-filled circle | amber | any pty data | no |
+| idle | filled circle | ink-muted | quiet 700ms, buffer scan finds no prompt | no |
+| needsYou | filled triangle, pulsing | amber | quiet 700ms, buffer scan matches a prompt | yes |
+| needsReview | filled diamond | green | headless tab exits 0 | yes |
+| failed | cross | rust | any non-zero exit | no |
+| (no live tab) | none | n/a | no pty for this conversation | n/a |
+
+Every state carries a distinct silhouette. Colour reinforces the state; it never
+carries it alone. This is required by `DESIGN.md` section 2 (The Color-Is-State Rule) and
+`PRODUCT.md` under Accessibility, both of which name a running versus finished session as the
+example case.
+
+Colour assignments follow the documented semantics of the palette rather than convention
+imported from elsewhere:
+
+- **amber** is "warning / in-progress attention", so it covers both working and needsYou. The
+  two are separated by glyph and motion, not hue.
+- **ink-muted** is neutral, which is the honest reading of an interactive session sitting at a
+  prompt. Green is reserved for success and an idle session has not succeeded at anything.
+- **green** is success only, which a completed headless run is.
+- **rust** is errors only.
+- **teal is not available.** The One Signal Rule reserves it for the single primary action per
+  surface. There is no blue in the palette at all.
+
+Glyphs are drawn as inline SVG rather than font characters, since the app ships on both Windows
+and macOS and font glyph rendering differs between them.
+
+**Motion.** Only needsYou pulses, at roughly 1.4s. Motion is permitted here because it conveys
+state, which both design documents sanction, but under `prefers-reduced-motion` the pulse is
+replaced by a static, heavier glyph. The state must remain fully readable with all animation
+disabled.
 
 ### 5.2 Transitions
 
@@ -336,8 +379,14 @@ sidebar and remains resumable. This lands in S3 rather than S1 for the reason in
 
 - Projects sorted by `lastActiveAt` descending, each expanding to its conversations.
 - Conversation display capped 5, then 10, then all.
-- Open rows are marked with a left accent bar plus a lit row background. The status dot is a
-  separate signal, so "is it open" and "what is it doing" never compete for the same glyph.
+- Open rows are marked with a **tonal step**: the row lifts one plane, from `bg` to `surface-2`,
+  exactly as an active tab already does. No border stripe. `DESIGN.md` section 6 bans a coloured
+  `border-left` or `border-right` wider than 1px as a stripe accent, and the Tone-First Rule
+  says to reach for a lighter plane before a border. A 1px hairline was evaluated alongside the
+  tonal step and was not perceptibly different, so it is omitted; it stays available for the
+  selected-row state, which needs its own distinct treatment.
+- The status glyph is a separate signal from the tonal step, so "is it open" and "what is it
+  doing" never compete for the same mark.
 - A conversation with no live tab shows no dot and a dimmed row.
 - `Archived (n)` sits collapsed at the bottom; archived projects can be restored.
 - Clicking a conversation that has a live tab focuses that tab wherever it lives, including in
@@ -449,6 +498,10 @@ Claims in this document that were confirmed by direct observation rather than in
 | `branchPrefix` has no consumer | Grep of the terminal and session launch path |
 | Test baseline | `npx vitest run`, full suite |
 | VS Code has no editor group cap | microsoft/vscode issue #190642, open feature request |
+| The status vocabulary must not rely on colour | `DESIGN.md` section 2 Color-Is-State Rule; `PRODUCT.md` Accessibility |
+| No blue exists in the palette; teal is reserved | `DESIGN.md` frontmatter colours plus the One Signal Rule |
+| A >1px coloured side border is banned | `DESIGN.md` section 6, Don't list |
+| A 1px hairline adds nothing over the tonal step | Rendered both side by side; not perceptibly different |
 
 Claims carried as inference, not confirmed:
 
