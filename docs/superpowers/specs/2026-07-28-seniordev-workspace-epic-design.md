@@ -366,9 +366,23 @@ unexpected schema, or a poll timeout must all resolve to "no resume available fo
 conversation" and never to an error. Read-only access only; the database is in WAL mode and
 concurrent reads are safe.
 
-**Poll rather than query once.** It is not established whether the `threads` row is written at
-spawn or at first user message. Polling with a short backoff and a few-second timeout is
-correct under either answer. See section 10.2.
+**Poll from prompt submission, not from spawn.** Confirmed 2026-07-28: the `threads` row is
+**not** written when codex starts. A codex session left open with nothing typed produces no row
+at all. The row appears at or after the first user message.
+
+This matters because SeniorDev seeds the prompt itself. The real sequence for an agent tab is
+spawn, wait for the TUI to settle, deliver the prompt, submit, and only then does codex write
+the row. So the poll window starts at prompt submission and must tolerate the readiness wait
+ahead of it, which has its own 15 second safety valve (`MAX_WAIT_MS` in
+`src/main/ipc/terminal-handlers.ts`). A three second timer started at spawn would expire before
+the prompt is even delivered.
+
+Two consequences to handle explicitly:
+
+- A conversation where nothing was ever sent has **no resumable id**, and that is correct.
+  There is nothing to resume. Treat it as no-resume-available, never as an error.
+- For a raw Terminal tab where the user runs codex by hand, there is no prompt submission to
+  anchor to. Poll opportunistically until the row appears or the tab exits.
 
 ### 7.2 Auto-close
 
@@ -442,15 +456,18 @@ node in another, never composed.
 
 **Action: open S2 with a short check in the real Electron app before starting the drag work.**
 
-### 10.2 Codex row timing: unverified
+### 10.2 Codex row timing: resolved
 
-Whether the `threads` row appears at spawn or at first user message is not established.
-`updated_at_ms` was 3.7 seconds after `created_at_ms` on the observed row, which is suggestive
-but not proof. The polling design in section 7.1 is correct under either answer, so this does
-not block implementation.
+**Settled 2026-07-28.** A codex session was started interactively with nothing typed, and no
+`threads` row was created. The row is written at or after the first user message, not at spawn.
+Section 7.1 has been corrected accordingly: the poll anchors to prompt submission rather than
+to spawn.
 
-To settle it: start a codex session and do not type anything. If a row appears, it is created
-at spawn.
+Note for anyone re-testing this: it cannot be reproduced from a scripted harness. Codex will
+not boot to a live composer under `script`-allocated pty with piped stdin. With stdin on
+`/dev/null` it takes the immediate EOF and shuts down; with stdin held open by a pipe it emits
+terminal setup and stops. Both runs look like "no row appeared" while proving nothing. The test
+requires a human at a real terminal.
 
 ### 10.3 Undocumented dependency on Codex internals
 
@@ -497,6 +514,7 @@ Claims in this document that were confirmed by direct observation rather than in
 | SeniorDev has no sidebar today | `App.vue:76` renders `<RightPanel>` as the entire shell; no renderer file matches `Sidebar` or `LeftPanel` |
 | `branchPrefix` has no consumer | Grep of the terminal and session launch path |
 | Test baseline | `npx vitest run`, full suite |
+| The Codex `threads` row is not written at spawn | Codex started interactively with nothing typed; row count stayed at 1 |
 | VS Code has no editor group cap | microsoft/vscode issue #190642, open feature request |
 | The status vocabulary must not rely on colour | `DESIGN.md` section 2 Color-Is-State Rule; `PRODUCT.md` Accessibility |
 | No blue exists in the palette; teal is reserved | `DESIGN.md` frontmatter colours plus the One Signal Rule |
