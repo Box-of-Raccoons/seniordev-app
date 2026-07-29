@@ -6,6 +6,7 @@ import { resolveShell } from '../terminal/shell'
 import type { ResolvedCommand } from '../terminal/resolve-command'
 import { TERM, type SpawnTerminalRequest, type SpawnShellRequest, type SpawnResult } from '../../shared/ipc'
 import { resolveExpandedPrompt } from './resolve-prompt'
+import { createSessionActivity } from '../terminal/activity'
 
 export interface TerminalDeps {
   source: ConfigSource
@@ -31,45 +32,42 @@ export function registerTerminalIpc(
   spawner: PtySpawner,
   deps: TerminalDeps
 ): TerminalManager {
-  // Per-session prompt-delivery state: output activity + the live timer handle.
-  const pendingPrompts = new Map<string, { sawData: boolean; lastData: number }>()
-  const promptTimers = new Map<string, NodeJS.Timeout>()
+  // Continuous per-session output activity (see terminal/activity.ts). Prompt
+  // delivery below registers one-shot watches over it; the status monitor will
+  // watch the same source continuously, so quiet is detected in one place.
+  const activity = createSessionActivity()
+  // Canceller for the delivery step currently in flight (a pending quiet watch
+  // or the Enter timeout), so a kill/exit can stop it mid-delivery.
+  const deliveryCancels = new Map<string, () => void>()
 
   function cancelPendingPrompt(id: string): void {
-    const t = promptTimers.get(id)
-    if (t) clearTimeout(t) // clears intervals too — same handle type
-    promptTimers.delete(id)
-    pendingPrompts.delete(id)
+    deliveryCancels.get(id)?.()
+    deliveryCancels.delete(id)
   }
 
   const manager = new TerminalManager(spawner, {
     onData: (id, data) => {
       getSender()?.send(TERM.data, { id, data })
-      const pend = pendingPrompts.get(id)
-      if (pend) { pend.sawData = true; pend.lastData = Date.now() }
+      activity.data(id)
     },
     onExit: (id, exitCode) => {
       getSender()?.send(TERM.exit, { id, exitCode })
       cancelPendingPrompt(id)
+      activity.clear(id)
     }
   })
 
-  // Poll until the session has produced output and then gone quiet for quietMs
-  // (or the max-wait safety valve trips), then run `then`. Reuses pendingPrompts
-  // as the activity window so onData keeps it fresh across both delivery phases.
+  // Resolve `then` once the session has produced output and gone quiet for
+  // quietMs (or the max-wait safety valve trips). A thin caller over the shared
+  // activity tracker: the semantics that make prompt delivery work are unchanged
+  // (each call waits for NEW output after it), only the activity data now lives
+  // for the whole session instead of just while a prompt is pending.
   function waitForQuiet(id: string, quietMs: number, then: () => void): void {
-    const started = Date.now()
-    pendingPrompts.set(id, { sawData: false, lastData: 0 })
-    const iv = setInterval(() => {
-      const pend = pendingPrompts.get(id)
-      if (!pend) { clearInterval(iv); return }
-      const settled = pend.sawData && Date.now() - pend.lastData >= quietMs
-      if (!settled && Date.now() - started < MAX_WAIT_MS) return
-      clearInterval(iv)
-      pendingPrompts.delete(id)
+    const cancel = activity.watch(id, { quietMs, maxWaitMs: MAX_WAIT_MS, pollMs: POLL_MS }, () => {
+      deliveryCancels.delete(id)
       then()
-    }, POLL_MS)
-    promptTimers.set(id, iv)
+    })
+    deliveryCancels.set(id, cancel)
   }
 
   function deliverPromptWhenReady(id: string, prompt: string, bracketedPaste: boolean): void {
@@ -86,10 +84,11 @@ export function registerTerminalIpc(
         waitForQuiet(id, QUIET_MS, () => manager.write(id, '\r'))
       } else {
         // claude's carefully-tuned path is unchanged: Enter a fixed beat later.
-        promptTimers.set(id, setTimeout(() => {
+        const t = setTimeout(() => {
           manager.write(id, '\r')
-          promptTimers.delete(id)
-        }, SUBMIT_DELAY_MS))
+          deliveryCancels.delete(id)
+        }, SUBMIT_DELAY_MS)
+        deliveryCancels.set(id, () => clearTimeout(t))
       }
     })
   }
@@ -138,6 +137,7 @@ export function registerTerminalIpc(
   ipcMain.on(TERM.resize, (_e, id: string, cols: number, rows: number) => manager.resize(id, cols, rows))
   ipcMain.on(TERM.kill, (_e, id: string) => {
     cancelPendingPrompt(id)
+    activity.clear(id)
     manager.kill(id)
   })
 
