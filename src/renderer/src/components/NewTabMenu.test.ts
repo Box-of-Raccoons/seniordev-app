@@ -2,29 +2,41 @@ import { describe, it, expect } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import NewTabMenu from './NewTabMenu.vue'
 
-async function open() {
-  const w = mount(NewTabMenu)
+async function open(props?: Record<string, unknown>) {
+  const w = mount(NewTabMenu, props ? { props } : undefined)
   await flushPromises()
   await w.find('.new-session').trigger('click')
   return w
 }
 
 describe('NewTabMenu', () => {
-  it('offers AI, Open and Terminal when opened', async () => {
-    const w = await open()
-    expect(w.findAll('.menu-item').map((b) => b.text())).toEqual(['AI', 'Open', 'Terminal'])
+  it('offers AI Task, New Session and Terminal when opened (one tool: no submenu)', async () => {
+    const w = await open({ tools: ['claude'] })
+    expect(w.findAll('.menu-item').map((b) => b.text())).toEqual(['AI Task', 'New Session', 'Terminal'])
   })
 
-  it('emits an agent pick (no tool — chosen later in the composer) for AI', async () => {
+  it('emits an agent pick (no tool — chosen later in the composer) for AI Task', async () => {
     const w = await open()
     await w.findAll('.menu-item')[0].trigger('click')
     expect(w.emitted('pick')?.[0]?.[0]).toEqual({ variant: 'agent' })
   })
 
-  it('emits an agent pick seeded into Open mode for Open', async () => {
-    const w = await open()
+  it('emits an Open-mode agent pick for New Session when only one tool is detected', async () => {
+    const w = await open({ tools: ['claude'] })
     await w.findAll('.menu-item')[1].trigger('click')
     expect(w.emitted('pick')?.[0]?.[0]).toEqual({ variant: 'agent', mode: 'open' })
+  })
+
+  it('New Session expands to a per-agent submenu when several tools are detected', async () => {
+    const w = await open({ tools: ['claude', 'codex'] })
+    // Clicking the parent toggles the submenu instead of emitting.
+    await w.findAll('.menu-item')[1].trigger('click')
+    expect(w.emitted('pick')).toBeUndefined()
+    const subs = w.findAll('.menu-item--sub').map((b) => b.text())
+    expect(subs).toEqual(['Claude', 'Codex'])
+    // Choosing an agent emits an Open pick carrying that tool.
+    await w.findAll('.menu-item--sub')[1].trigger('click')
+    expect(w.emitted('pick')?.[0]?.[0]).toEqual({ variant: 'agent', mode: 'open', tool: 'codex' })
   })
 
   it('emits a terminal pick for Terminal', async () => {
@@ -38,6 +50,15 @@ describe('NewTabMenu', () => {
     expect(w.find('.menu').exists()).toBe(true)
     await w.findAll('.menu-item')[0].trigger('click')
     expect(w.find('.menu').exists()).toBe(false)
+  })
+
+  it('anchors the menu with fixed viewport coordinates (escapes ancestor overflow clipping)', async () => {
+    const w = await open()
+    const style = w.find('.menu').attributes('style') ?? ''
+    // Inline top/left are computed from the trigger rect on open, so the menu is
+    // positioned against the viewport rather than clipped inside the sidebar scroll.
+    expect(style).toContain('top:')
+    expect(style).toContain('left:')
   })
 
   it('focuses the first item on open and moves focus with the arrow keys', async () => {
