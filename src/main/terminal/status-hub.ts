@@ -10,7 +10,7 @@
 
 import type { StatusUpdateEvent, TabStatus } from '../../shared/ipc'
 import { matchesPrompt } from '../../shared/prompt-match'
-import { nextStatus, type TabKind } from './status'
+import { nextStatus, resolveExit, type TabKind } from './status'
 
 export interface StatusHubDeps {
   sendUpdate: (ev: StatusUpdateEvent) => void
@@ -67,7 +67,13 @@ export function createStatusHub(deps: StatusHubDeps): StatusHub {
     },
     exit(id, code) {
       const s = sessions.get(id)
-      if (s) push(id, nextStatus(s.status, { type: 'exit', code }, s.kind))
+      if (!s) return
+      // S3: a cleanly-exited interactive/shell tab auto-closes in the renderer, so
+      // it must NOT get a terminal glyph — pushing 'failed' here would flash a red
+      // cross on a normal exit just before the tab vanishes. Suppress that cell and
+      // let the renderer close it. needsReview / failed still push (the tab stays).
+      if (resolveExit(s.kind, code) === 'autoClose') return
+      push(id, nextStatus(s.status, { type: 'exit', code }, s.kind))
     },
     dispose(id) {
       sessions.delete(id)

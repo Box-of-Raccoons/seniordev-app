@@ -9,6 +9,7 @@ import { resolveExpandedPrompt } from './resolve-prompt'
 import { createSessionActivity, type SessionActivity } from '../terminal/activity'
 import type { StatusHub } from '../terminal/status-hub'
 import type { Config } from '../config/schema'
+import type { SessionPersistence } from '../session-persistence'
 
 export interface TerminalDeps {
   source: ConfigSource
@@ -18,6 +19,9 @@ export interface TerminalDeps {
   // Optional so existing tests that exercise only prompt delivery need neither.
   activity?: SessionActivity
   statusHub?: StatusHub
+  // S3 persistence: auto-create the project + conversation on spawn and capture
+  // the resume id. Optional so prompt-delivery tests need not wire it.
+  persistence?: SessionPersistence
 }
 
 // A shell tab has no fixed tool, so it is scanned against every tool's approval
@@ -75,6 +79,7 @@ export function registerTerminalIpc(
       cancelPendingPrompt(id)
       activity.clear(id)
       deps.statusHub?.exit(id, exitCode)
+      deps.persistence?.onTabExit(id) // unpin its project from the live set (S3 archive)
     }
   })
 
@@ -118,7 +123,14 @@ export function registerTerminalIpc(
     try {
       const config = requireConfig(deps.source)
       const expanded = await resolveExpandedPrompt(config, deps.source, req)
-      const launch = buildInteractiveLaunch(config, { ...req, model: expanded?.model }, expanded?.prompt, deps.resolveCommand)
+      // conversationId doubles as the claude --session-id to pre-assign (S3). A
+      // tool without sessionIdArgs (codex) ignores it inside buildInteractiveLaunch.
+      const launch = buildInteractiveLaunch(
+        config,
+        { ...req, sessionId: req.conversationId, model: expanded?.model },
+        expanded?.prompt,
+        deps.resolveCommand
+      )
       manager.spawn(req.id, {
         file: launch.file,
         args: launch.args,
@@ -130,6 +142,20 @@ export function registerTerminalIpc(
       // Status: an agent tab is scanned against its own tool's approval patterns.
       const toolName = req.tool ?? config.defaultTool
       deps.statusHub?.registerPty(req.id, 'interactive', config.cliTools[toolName]?.approvalPatterns ?? [])
+      // S3: persist the project + conversation and capture the resume id. claude
+      // pre-assigns (id == conversationId, known now); codex is discovered from the
+      // rollout dir starting at spawn. Skipped for a caller with no conversationId.
+      if (req.conversationId && deps.persistence) {
+        const preAssigned = (config.cliTools[toolName]?.sessionIdArgs?.length ?? 0) > 0
+        deps.persistence.onAgentSpawn({
+          conversationId: req.conversationId,
+          tool: toolName,
+          cwd: launch.cwd,
+          title: req.title ?? '',
+          ptyId: req.id,
+          preAssignedSessionId: preAssigned ? req.conversationId : undefined
+        })
+      }
       // NOTE: no bracketed-paste framing here — the raw ESC of \x1b[200~ registers
       // as the Escape key in these TUIs (clears the composer / exits dialogs).
       if (launch.stdinPrompt) deliverPromptWhenReady(req.id, launch.stdinPrompt, launch.bracketedPaste ?? false)
@@ -165,6 +191,7 @@ export function registerTerminalIpc(
     cancelPendingPrompt(id)
     activity.clear(id)
     deps.statusHub?.dispose(id)
+    deps.persistence?.onTabExit(id) // unpin its project from the live set (S3 archive)
     manager.kill(id)
   })
 

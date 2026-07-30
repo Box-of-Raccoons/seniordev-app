@@ -6,6 +6,13 @@ export const IPC = { resolveRepo: 'repos:resolve' } as const
 
 export interface SpawnTerminalRequest {
   id: string
+  // S3: the tab's stable conversationId (a crypto.randomUUID). For claude it is
+  // pre-assigned as the CLI's --session-id at spawn; for every tool it keys the
+  // persisted conversation record. Absent for a pre-S3 / test caller.
+  conversationId?: string
+  // The tab title, persisted onto the conversation record so the S4 sidebar shows
+  // the same label the tab did. Absent for a pre-S3 / test caller.
+  title?: string
   tool?: string
   ticketKey?: string
   // The raw composer input (ticket key or free-text description) — fills the
@@ -66,8 +73,22 @@ export const TOOLS = { list: 'tools:list' } as const
 
 // Resolved workspace-layout settings the renderer needs (S2). Read-only scalars
 // derived from config; the renderer re-fetches on CONFIG.changed.
-export const WORKSPACE = { getSettings: 'workspace:getSettings' } as const
+// `save` (S3): the renderer pushes its current pane/tab layout; main persists it
+// (debounced) into workspace.json. Tabs are conversationIds so the layout survives
+// a restart even though the ptyIds do not.
+export const WORKSPACE = { getSettings: 'workspace:getSettings', save: 'workspace:save' } as const
 export interface WorkspaceSettings { minPaneWidth: number }
+export interface WorkspacePaneSnapshot {
+  id: string
+  widthFraction: number
+  tabs: string[] // conversationIds
+  activeTabId: string | null // conversationId of the active tab
+}
+export interface WorkspaceLayout {
+  panes: WorkspacePaneSnapshot[]
+  sidebarWidth: number | null
+  sidebarCollapsed: boolean
+}
 
 export interface StartupSession {
   mode: 'interactive' | 'yolo'

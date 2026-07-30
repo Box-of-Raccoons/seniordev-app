@@ -45,11 +45,29 @@ describe('createStatusHub — pty lifecycle', () => {
     expect(h.updates).toEqual([{ id: 'a', status: 'working' }]) // only the initial
   })
 
-  it('interactive exit 0 → failed (S1 interim), non-zero → failed', () => {
+  it('interactive exit 0 → no glyph (S3 auto-close cell is suppressed)', () => {
     const h = harness()
     h.hub.registerPty('a', 'interactive', [])
     h.hub.exit('a', 0)
+    // The renderer closes the tab; no terminal status is pushed for it.
+    expect(h.updates).toEqual([{ id: 'a', status: 'working' }])
+  })
+
+  it('interactive non-zero exit → failed (the tab stays, failure visible)', () => {
+    const h = harness()
+    h.hub.registerPty('a', 'interactive', [])
+    h.hub.exit('a', 1)
     expect(h.last()).toEqual({ id: 'a', status: 'failed' })
+  })
+
+  it('shell exit 0 → no glyph (auto-close), non-zero → failed', () => {
+    const h = harness()
+    h.hub.registerPty('s', 'shell', [])
+    h.hub.exit('s', 0)
+    expect(h.updates).toEqual([{ id: 's', status: 'working' }])
+    h.hub.registerPty('s2', 'shell', [])
+    h.hub.exit('s2', 130)
+    expect(h.last()).toEqual({ id: 's2', status: 'failed' })
   })
 
   it('empty patterns never fire needsYou (graceful default)', () => {

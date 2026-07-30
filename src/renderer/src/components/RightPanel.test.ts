@@ -19,6 +19,7 @@ beforeEach(() => {
     listShells: vi.fn(async () => ({ shells: ['pwsh'], default: 'pwsh' })),
     listTools: vi.fn(async () => ['claude']),
     getWorkspaceSettings: vi.fn(async () => ({ minPaneWidth: 320 })),
+    saveWorkspace: vi.fn(),
     resolveRepo: vi.fn(async () => null),
     recordRecentFolder: vi.fn(),
     listRecentFolders: vi.fn(async () => []),
@@ -197,16 +198,33 @@ describe('RightPanel', () => {
     expect(composer.attributes('data-variant')).toBe('agent')
   })
 
-  it('marks a tab dead when the run view emits exited', async () => {
-    const exitStubs = {
+  // A run view that emits `exited` with a chosen code, so a test can exercise
+  // both the clean (auto-close) and failed (kept-dead) exit cells of D3 / spec 7.2.
+  function exitStubs(code: number) {
+    return {
       ...stubs,
       TerminalView: {
         props: ['id', 'ticketKey', 'input', 'prompt', 'tool', 'resume', 'cwdOverride', 'shell'],
         emits: ['exited'],
-        template: '<div class="tv" :data-id="id"><button class="trigger-exit" @click="$emit(\'exited\', 0)">exit</button></div>'
+        template: `<div class="tv" :data-id="id"><button class="trigger-exit" @click="$emit('exited', ${code})">exit</button></div>`
       }
     }
-    const w = mount(RightPanel, { global: { stubs: exitStubs } })
+  }
+
+  it('auto-closes a cleanly-exited agent tab (exit 0, spec 7.2)', async () => {
+    const w = mount(RightPanel, { global: { stubs: exitStubs(0) } })
+    await w.find('.pick-ai').trigger('click')
+    await w.find('.go-int').trigger('click')
+    await w.vm.$nextTick()
+    expect(w.findAll('.term-tab')).toHaveLength(1)
+    await w.find('.trigger-exit').trigger('click')
+    await w.vm.$nextTick()
+    // The conversation survives in storage and stays resumable, so the tab closes.
+    expect(w.findAll('.term-tab')).toHaveLength(0)
+  })
+
+  it('marks a tab dead (not closed) on a non-zero exit', async () => {
+    const w = mount(RightPanel, { global: { stubs: exitStubs(1) } })
     await w.find('.pick-ai').trigger('click')
     await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()

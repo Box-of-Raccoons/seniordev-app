@@ -25,9 +25,12 @@ import { systemResolveCommand, systemCommandAvailable } from './terminal/resolve
 import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './deeplink/parse'
 import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery } from './deeplink/delivery'
-import { DEEPLINK, STATUS } from '../shared/ipc'
+import { DEEPLINK, STATUS, WORKSPACE, type WorkspaceLayout } from '../shared/ipc'
 import { createSessionActivity } from './terminal/activity'
 import { createStatusHub } from './terminal/status-hub'
+import { createSessionPersistence, type SessionPersistence } from './session-persistence'
+import { createWorkspaceStore, type WorkspaceStore } from './store/workspace-store'
+import { loadRecent } from './recent-folders'
 import type { TerminalManager } from './terminal/manager'
 import type { YoloRunner } from './headless/runner'
 
@@ -57,6 +60,8 @@ const store = new ConfigStore(resolveConfigPath())
 
 let terminals: TerminalManager | null = null
 let yolo: YoloRunner | null = null
+let persistence: SessionPersistence | null = null
+let workspace: WorkspaceStore | null = null
 let mainWindow: BrowserWindow | null = null
 
 // Warm links are queued until the renderer says it's listening (DEEPLINK.ready);
@@ -69,9 +74,14 @@ const deepLinks = new DeepLinkDelivery({
 })
 
 function createWindow(): void {
+  // S3: restore the last window size/position from workspace.json; fall back to
+  // the default 1400x900 on first run or a corrupt/missing store.
+  const saved = workspace?.getWindowBounds()
   const win = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: saved?.width ?? 1400,
+    height: saved?.height ?? 900,
+    x: saved?.x,
+    y: saved?.y,
     show: false,
     // Show the SeniorDev logo (not Electron's default) on the window/taskbar at
     // runtime. Ignored on macOS (the .app bundle icon wins); matters on Windows
@@ -86,6 +96,11 @@ function createWindow(): void {
     webPreferences: { preload: join(__dirname, '../preload/index.mjs'), sandbox: false }
   })
   mainWindow = win
+  // S3: persist window size/position as the user resizes/moves it. The store
+  // debounces the disk write, so wiring these high-frequency events is cheap.
+  const saveBounds = (): void => workspace?.setWindowBounds(win.getBounds())
+  win.on('resize', saveBounds)
+  win.on('move', saveBounds)
   // Electron hardening (SD-9 S1): remote ticket content renders links as in-app
   // anchors. Never let the webContents open a new window or navigate itself —
   // route http(s) out through the OS browser (the vetted shell.openExternal path)
@@ -222,7 +237,35 @@ if (!gotLock) {
     const statusHub = createStatusHub({ sendUpdate: (ev) => getSender()?.send(STATUS.update, ev) })
     ipcMain.on(STATUS.active, (_e, id: string) => statusHub.active(id))
     ipcMain.on(STATUS.settled, (_e, id: string, text: string) => statusHub.settled(id, text))
-    terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand, activity, statusHub })
+    // S3 persistence: the project + conversation stores and the session-id capture
+    // service. On first run (empty project list) seed from recent-folders so the
+    // sidebar is not empty on day one (spec 4.4). Best-effort; a store failure
+    // must never block a launch, so wrap it.
+    persistence = createSessionPersistence()
+    try {
+      if (persistence.projects.list().length === 0) {
+        persistence.projects.seedFromRecent(loadRecent(), store.config?.defaultTool ?? 'claude')
+      }
+    } catch (err) {
+      console.error('[persistence] seed skipped:', err)
+    }
+    // S3 workspace store: window bounds (restored in createWindow, below) and the
+    // renderer-pushed pane/tab layout. Debounced to disk inside the store.
+    workspace = createWorkspaceStore()
+    ipcMain.on(WORKSPACE.save, (_e, layout: WorkspaceLayout) => workspace?.setLayout(layout))
+    // S3 archive (spec 4.5): archive projects idle past archiveAfterDays, exempting
+    // any with a live tab. Runs now and once daily; reversible; 0 days disables.
+    const runArchive = (): void => {
+      try {
+        const archived = persistence?.runArchive(store.config?.archiveAfterDays ?? 14) ?? []
+        if (archived.length) console.log(`[archive] archived ${archived.length} idle project(s)`)
+      } catch (err) {
+        console.error('[archive]', err)
+      }
+    }
+    runArchive()
+    setInterval(runArchive, 24 * 60 * 60 * 1000).unref?.()
+    terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand, activity, statusHub, persistence })
     yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand, statusHub })
     registerAppIpc()
     registerConfigIpc(store, getSender)
@@ -238,10 +281,14 @@ if (!gotLock) {
   app.on('before-quit', () => {
     terminals?.killAll()
     yolo?.killAll()
+    persistence?.flush()
+    workspace?.flush()
   })
   app.on('window-all-closed', () => {
     terminals?.killAll()
     yolo?.killAll()
+    persistence?.flush()
+    workspace?.flush()
     if (process.platform !== 'darwin') app.quit()
   })
 }

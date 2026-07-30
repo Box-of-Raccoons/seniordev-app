@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import TerminalView from './TerminalView.vue'
 import YoloView from './YoloView.vue'
 import Composer from './Composer.vue'
@@ -9,8 +9,9 @@ import StatusGlyph from './StatusGlyph.vue'
 import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
 import { shouldNotify, notificationText } from '../status-notify'
 import { usePanes, type LiveTab } from '../composables/usePanes'
+import { shouldAutoClose } from '../auto-close'
 import type { ComposerLaunch } from './composer-types'
-import type { TabStatus } from '../../../shared/ipc'
+import type { TabStatus, WorkspaceLayout } from '../../../shared/ipc'
 
 interface Prefill {
   input?: string
@@ -174,6 +175,36 @@ function maybeNotify(prev: TabStatus | undefined, id: string, next: TabStatus): 
   }
 }
 
+// S3: persist the pane/tab layout to workspace.json. Tabs are serialised as
+// conversationIds (stable across restarts), not ptyIds (ephemeral). Debounced so
+// a resize drag or a burst of tab moves collapses into one push; main debounces
+// the disk write again. Per decision D2, this layout is persisted but not
+// re-materialised into tabs on boot — that is the S4 sidebar's job.
+function serializeLayout(): WorkspaceLayout {
+  return {
+    panes: panes.panes.map((p) => ({
+      id: p.id,
+      widthFraction: p.widthFraction,
+      tabs: p.tabs.map((t) => t.conversationId),
+      activeTabId: p.tabs.find((t) => t.ptyId === p.activeTabId)?.conversationId ?? null
+    })),
+    sidebarWidth: null, // no sidebar until S4
+    sidebarCollapsed: false
+  }
+}
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  () => panes.panes,
+  () => {
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => window.api.saveWorkspace(serializeLayout()), 400)
+  },
+  { deep: true }
+)
+onBeforeUnmount(() => {
+  if (saveTimer) clearTimeout(saveTimer)
+})
+
 // Programmatic new tab (boot / reset / deep-link): a default agent composer on
 // the default CLI tool. The New-tab menu drives the explicit tool/terminal choice.
 function newTab(): void {
@@ -270,8 +301,16 @@ function closeTerm(id: string): void {
   delete statuses[id]
 }
 
-function markExited(id: string): void {
-  panes.markExited(id)
+// A tab's pty exited. D3 / spec 7.2: cleanly-exited agent (terminal) or shell tabs
+// close automatically (nothing to look at; agent conversations survive in storage
+// and stay resumable). Everything else stays — YOLO for review, any failure so it
+// is visible — marked dead (line-through) via the existing markExited path.
+function onTabExited(tab: LiveTab, code: number): void {
+  if (shouldAutoClose(tab.kind, code)) {
+    closeTerm(tab.ptyId)
+    return
+  }
+  panes.markExited(tab.ptyId)
 }
 
 // A teleported tab is visible only when it is the active tab of its own pane.
@@ -374,7 +413,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
             :input="entry.tab.input"
             :prompt="entry.tab.prompt"
             :tool="entry.tab.tool"
-            @exited="markExited(entry.tab.ptyId)"
+            @exited="onTabExited(entry.tab, $event)"
             @resume="resumeYolo(entry.tab, $event)"
           />
           <TerminalView
@@ -382,18 +421,20 @@ function isVisible(paneId: string, ptyId: string): boolean {
             :id="entry.tab.ptyId"
             :shell="entry.tab.shell"
             :cwd-override="entry.tab.cwdOverride"
-            @exited="markExited(entry.tab.ptyId)"
+            @exited="onTabExited(entry.tab, $event)"
           />
           <TerminalView
             v-else
             :id="entry.tab.ptyId"
+            :conversation-id="entry.tab.conversationId"
+            :conversation-title="entry.tab.title"
             :ticket-key="entry.tab.ticketKey ?? null"
             :input="entry.tab.input"
             :prompt="entry.tab.prompt"
             :tool="entry.tab.tool"
             :resume="entry.tab.resume"
             :cwd-override="entry.tab.cwdOverride"
-            @exited="markExited(entry.tab.ptyId)"
+            @exited="onTabExited(entry.tab, $event)"
           />
         </div>
       </Teleport>
