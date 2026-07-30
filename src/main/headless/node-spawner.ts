@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { resolveSpawnCommand } from '../terminal/spawn-command'
+import { sanitizeAgentEnv } from '../terminal/agent-env'
 import type { HeadlessSpawner } from './runner'
 
 // Real child_process-backed spawner. Reuses resolveSpawnCommand so a PATH shim
@@ -13,7 +14,11 @@ export const nodeHeadlessSpawner: HeadlessSpawner = (opts) => {
     process.env.ComSpec ?? 'cmd.exe',
     opts.resolved
   )
-  const child = spawn(file, args, { cwd: opts.cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+  // Same env scrub as the interactive spawner (agent-env.ts): keep a headless
+  // claude a normal top-level session, never a nested Claude Code child, whatever
+  // env SeniorDev itself was launched with. Headless persists regardless, but this
+  // keeps both launch paths consistent.
+  const child = spawn(file, args, { cwd: opts.cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: sanitizeAgentEnv(process.env) })
   child.stdout.setEncoding('utf8')
   child.stderr.setEncoding('utf8')
   let exited = false

@@ -33,11 +33,16 @@ export interface Pane {
   activeTabId: string | null
 }
 
-export type NewTab = Omit<LiveTab, 'ptyId' | 'conversationId'>
+// conversationId is normally minted per tab, but a resume-from-sidebar (S4) must
+// carry the ORIGINAL conversation's id so the spawn upserts the same record
+// instead of forking a duplicate sidebar row. Optional: every existing caller
+// omits it and still gets a fresh id.
+export type NewTab = Omit<LiveTab, 'ptyId' | 'conversationId'> & { conversationId?: string }
 
 export interface UsePanes {
   panes: Pane[]
   focusedPaneId: ComputedRef<string | null>
+  leftmostPaneId: ComputedRef<string>
   allTabs: ComputedRef<{ tab: LiveTab; paneId: string }[]>
   hasTabs: ComputedRef<boolean>
   addTab: (partial: NewTab, toPaneId?: string) => LiveTab
@@ -50,6 +55,10 @@ export interface UsePanes {
   resizePane: (leftPaneId: string, deltaFraction: number, minFraction: number) => void
   markExited: (ptyId: string) => void
   find: (ptyId: string) => { tab: LiveTab; pane: Pane } | null
+  // Locate a live tab by its conversationId, across every pane (S4: click a
+  // conversation with a live tab → focus it wherever it lives). At most one live
+  // tab holds a given conversationId, so the first match is the answer.
+  findByConversationId: (conversationId: string) => { ptyId: string; paneId: string } | null
   isActiveInFocusedPane: (ptyId: string) => boolean
 }
 
@@ -97,6 +106,11 @@ export function usePanes(): UsePanes {
     panes.some((p) => p.id === focusedPaneIdRef.value) ? focusedPaneIdRef.value : (panes[0]?.id ?? null)
   )
 
+  // The leftmost column. S4 resumes a conversation into the leftmost pane rather
+  // than the focused one, because focus is invisible state and "it opened where I
+  // was not looking" is a real failure mode. There is always at least one pane.
+  const leftmostPaneId = computed(() => panes[0].id)
+
   // Flat list of every tab with its owning pane id, for the single teleport
   // `v-for` in RightPanel. Order follows pane order then in-pane order.
   const allTabs = computed(() => panes.flatMap((p) => p.tabs.map((tab) => ({ tab, paneId: p.id }))))
@@ -117,7 +131,10 @@ export function usePanes(): UsePanes {
   }
 
   function addTab(partial: NewTab, toPaneId?: string): LiveTab {
-    const tab: LiveTab = { ptyId: newPtyId(), conversationId: newConversationId(), ...partial }
+    // Spread first, then set the ids last so a provided (resume) conversationId is
+    // honoured and a `conversationId: undefined` in partial can never clobber a
+    // freshly minted one.
+    const tab: LiveTab = { ...partial, ptyId: newPtyId(), conversationId: partial.conversationId ?? newConversationId() }
     const pane = targetPane(toPaneId)
     pane.tabs.push(tab)
     pane.activeTabId = tab.ptyId
@@ -237,9 +254,18 @@ export function usePanes(): UsePanes {
     return !!pane && pane.activeTabId === ptyId
   }
 
+  function findByConversationId(conversationId: string): { ptyId: string; paneId: string } | null {
+    for (const pane of panes) {
+      const tab = pane.tabs.find((t) => t.conversationId === conversationId)
+      if (tab) return { ptyId: tab.ptyId, paneId: pane.id }
+    }
+    return null
+  }
+
   return {
     panes,
     focusedPaneId,
+    leftmostPaneId,
     allTabs,
     hasTabs,
     addTab,
@@ -252,6 +278,7 @@ export function usePanes(): UsePanes {
     resizePane,
     markExited,
     find,
+    findByConversationId,
     isActiveInFocusedPane
   }
 }

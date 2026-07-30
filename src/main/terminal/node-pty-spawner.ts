@@ -1,6 +1,7 @@
 import { spawn as ptySpawn } from 'node-pty'
 import type { PtySpawner, PtyProcess } from './manager'
 import { resolveSpawnCommand } from './spawn-command'
+import { sanitizeAgentEnv } from './agent-env'
 
 // The ONLY module that imports the native node-pty. Never import this from a test.
 export const nodePtySpawner: PtySpawner = ({ file, args, cwd, cols, rows, resolved }) => {
@@ -10,7 +11,10 @@ export const nodePtySpawner: PtySpawner = ({ file, args, cwd, cols, rows, resolv
     cwd,
     cols,
     rows,
-    env: process.env as Record<string, string>
+    // Scrub CLAUDECODE / CLAUDE_CODE_* so a spawned claude is a normal top-level
+    // session, not a non-persisting nested child, no matter how SeniorDev itself
+    // was launched (see agent-env.ts).
+    env: sanitizeAgentEnv(process.env)
   })
   const wrapper: PtyProcess = {
     onData: (cb) => { proc.onData(cb) },

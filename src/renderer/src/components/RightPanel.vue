@@ -8,8 +8,15 @@ import EmptyState from './EmptyState.vue'
 import StatusGlyph from './StatusGlyph.vue'
 import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
 import { shouldNotify, notificationText } from '../status-notify'
-import { usePanes, type LiveTab } from '../composables/usePanes'
+import { type LiveTab } from '../composables/usePanes'
+import type { UseWorkspace } from '../composables/useWorkspace'
 import { shouldAutoClose } from '../auto-close'
+import {
+  CONVERSATION_DND_TYPE,
+  resumeTabSpec,
+  conversationDropAction,
+  type ConversationDragPayload
+} from '../composables/sidebar-logic'
 import type { ComposerLaunch } from './composer-types'
 import type { TabStatus, WorkspaceLayout } from '../../../shared/ipc'
 
@@ -19,10 +26,12 @@ interface Prefill {
   role?: string
 }
 
-// S2: the tab + pane model lives in usePanes (spec section 6.4); RightPanel is
-// layout + the S1 status/notification glue. Step 2 renders a single pane; the
-// v-for over panes and the resize splitters land in Step 4.
-const panes = usePanes()
+// S4 / A3: the tab+pane model and per-tab status are lifted into the shared
+// `ws` (useWorkspace) so the Projects sidebar — a sibling under App — reads the
+// same source of truth. RightPanel still OWNS the behaviour over that state: the
+// status/notification glue, the workspace-save watcher, and the layout view.
+const props = defineProps<{ ws: UseWorkspace }>()
+const panes = props.ws.panes
 const { allTabs, hasTabs } = panes
 
 // Teleport targets by pane id. Each pane registers its .pane-slot element here
@@ -123,8 +132,36 @@ function onTabDragEnd(): void {
 function dragId(e: DragEvent): string | null {
   return draggingPtyId.value ?? (e.dataTransfer?.getData('text/plain') || null)
 }
+// A sidebar row drop (S4): distinguished from a tab-reorder drop by its custom
+// dataTransfer type. Returns the parsed payload, or null for a tab drag / bad data.
+function convDrag(e: DragEvent): ConversationDragPayload | null {
+  const raw = e.dataTransfer?.getData(CONVERSATION_DND_TYPE)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as ConversationDragPayload
+  } catch {
+    return null
+  }
+}
+// Land a dropped conversation in this pane: focus/relocate an already-live tab,
+// resume a dead-but-resumable one HERE (the dropped-on pane, not the leftmost —
+// the drag names the target), or ignore a non-resumable one.
+function dropConversation(payload: ConversationDragPayload, paneId: string): void {
+  const live = panes.findByConversationId(payload.id)
+  const act = conversationDropAction(payload, live)
+  if (act.action === 'move') panes.moveTab(act.ptyId, paneId)
+  else if (act.action === 'resume' && payload.agentSessionId) {
+    panes.addTab(resumeTabSpec({ ...payload, agentSessionId: payload.agentSessionId }), paneId)
+  }
+}
 // Drop onto a specific tab: insert the dragged tab at that tab's position.
 function onDropOnTab(e: DragEvent, paneId: string, beforePtyId: string): void {
+  const conv = convDrag(e)
+  if (conv) {
+    draggingPtyId.value = null
+    dropConversation(conv, paneId)
+    return
+  }
   const id = dragId(e)
   draggingPtyId.value = null
   if (!id || id === beforePtyId) return
@@ -134,6 +171,12 @@ function onDropOnTab(e: DragEvent, paneId: string, beforePtyId: string): void {
 }
 // Drop onto empty strip space: append to that pane.
 function onDropOnStrip(e: DragEvent, paneId: string): void {
+  const conv = convDrag(e)
+  if (conv) {
+    draggingPtyId.value = null
+    dropConversation(conv, paneId)
+    return
+  }
   const id = dragId(e)
   draggingPtyId.value = null
   if (id) panes.moveTab(id, paneId)
@@ -149,7 +192,9 @@ function onDropEdge(e: DragEvent, side: 'left' | 'right'): void {
 // reports on STATUS.update. A tab with no entry (composer, or nothing running
 // yet) shows no glyph. Independent of pane layout, so a dragged tab keeps its
 // glyph: the lookup is by ptyId, which a moved tab retains (spec section 3).
-const statuses = reactive<Record<string, TabStatus>>({})
+// Shared through `ws` (A3) so the sidebar draws the same glyphs; RightPanel is the
+// writer (the STATUS.update listener below), the sidebar a reader.
+const statuses = props.ws.statuses
 let offStatus: (() => void) | null = null
 onMounted(() => {
   offStatus = window.api.onStatusUpdate((e) => {
@@ -188,13 +233,15 @@ function serializeLayout(): WorkspaceLayout {
       tabs: p.tabs.map((t) => t.conversationId),
       activeTabId: p.tabs.find((t) => t.ptyId === p.activeTabId)?.conversationId ?? null
     })),
-    sidebarWidth: null, // no sidebar until S4
-    sidebarCollapsed: false
+    // S4: the sidebar geometry now travels in the same layout snapshot. Persisted
+    // here (RightPanel drives the save); the sidebar mutates ws.sidebarWidth/Collapsed.
+    sidebarWidth: props.ws.sidebarWidth.value,
+    sidebarCollapsed: props.ws.sidebarCollapsed.value
   }
 }
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 watch(
-  () => panes.panes,
+  [() => panes.panes, props.ws.sidebarWidth, props.ws.sidebarCollapsed],
   () => {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(() => window.api.saveWorkspace(serializeLayout()), 400)

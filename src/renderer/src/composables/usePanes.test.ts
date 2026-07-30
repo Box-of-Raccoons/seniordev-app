@@ -200,3 +200,46 @@ describe('usePanes helpers', () => {
     expect(p.isActiveInFocusedPane(b.ptyId)).toBe(false)
   })
 })
+
+// S4 additions: the resume path needs to carry a specific conversationId, locate a
+// live tab by it across panes, and know the leftmost pane.
+describe('usePanes S4 sidebar support', () => {
+  it('addTab honours a provided conversationId (resume reuses the record id)', () => {
+    const p = usePanes()
+    const t = p.addTab({ ...composer, conversationId: 'conv-original' })
+    expect(t.conversationId).toBe('conv-original')
+  })
+
+  it('addTab still mints when conversationId is absent or undefined', () => {
+    const p = usePanes()
+    const a = p.addTab(composer)
+    const b = p.addTab({ ...composer, conversationId: undefined })
+    expect(a.conversationId).toBeTruthy()
+    expect(b.conversationId).toBeTruthy()
+    expect(a.conversationId).not.toBe(b.conversationId)
+  })
+
+  it('findByConversationId locates a tab across panes and returns null when absent', () => {
+    const p = usePanes()
+    const a = p.addTab({ ...composer, conversationId: 'conv-a' })
+    const b = p.addTab({ ...composer, conversationId: 'conv-b' })
+    p.moveToNewPane(b.ptyId, 'right') // b now lives in a second pane
+    const foundA = p.findByConversationId('conv-a')
+    const foundB = p.findByConversationId('conv-b')
+    expect(foundA).toEqual({ ptyId: a.ptyId, paneId: p.panes[0].id })
+    expect(foundB).toEqual({ ptyId: b.ptyId, paneId: p.panes[1].id })
+    expect(p.findByConversationId('conv-missing')).toBeNull()
+  })
+
+  it('leftmostPaneId tracks the first column as panes are added on the left', () => {
+    const p = usePanes()
+    const a = p.addTab(composer)
+    expect(p.leftmostPaneId.value).toBe(p.panes[0].id)
+    const b = p.addTab(composer)
+    p.moveToNewPane(b.ptyId, 'left') // new column unshifted to the front
+    expect(p.leftmostPaneId.value).toBe(p.panes[0].id)
+    expect(p.findByConversationId(b.conversationId)?.paneId).toBe(p.leftmostPaneId.value)
+    // The original tab is no longer leftmost.
+    expect(p.findByConversationId(a.conversationId)?.paneId).not.toBe(p.leftmostPaneId.value)
+  })
+})

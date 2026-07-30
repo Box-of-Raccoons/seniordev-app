@@ -76,8 +76,12 @@ export const TOOLS = { list: 'tools:list' } as const
 // `save` (S3): the renderer pushes its current pane/tab layout; main persists it
 // (debounced) into workspace.json. Tabs are conversationIds so the layout survives
 // a restart even though the ptyIds do not.
-export const WORKSPACE = { getSettings: 'workspace:getSettings', save: 'workspace:save' } as const
+// `getSidebar` (S4): the renderer reads the persisted sidebar width/collapsed on
+// mount to restore it (window bounds are restored main-side; the sidebar geometry
+// travels through the layout, so the renderer needs a read for it).
+export const WORKSPACE = { getSettings: 'workspace:getSettings', save: 'workspace:save', getSidebar: 'workspace:getSidebar' } as const
 export interface WorkspaceSettings { minPaneWidth: number }
+export interface SidebarState { width: number | null; collapsed: boolean }
 export interface WorkspacePaneSnapshot {
   id: string
   widthFraction: number
@@ -89,6 +93,50 @@ export interface WorkspaceLayout {
   sidebarWidth: number | null
   sidebarCollapsed: boolean
 }
+
+// S4 Projects sidebar. Read-only wire shapes for the persisted stores (the
+// renderer must not import from main/store, which pulls in electron/fs) — these
+// mirror `Project` / `Conversation` structurally, so a handler can return the
+// store objects directly. `SIDEBAR.changed` is a one-way main→renderer nudge: a
+// spawn created/updated a project or conversation, codex discovery filled an
+// agentSessionId, or the archive job / a restore moved a project — re-fetch. Live
+// tab open/close is renderer-reactive (usePanes) and needs no event.
+export interface ProjectInfo {
+  id: string
+  title: string
+  path: string
+  defaultTool: string
+  worktreeDefault: boolean
+  lastActiveAt: number
+  archivedAt: number | null
+  createdAt: number
+  updatedAt: number
+}
+export interface ConversationInfo {
+  id: string
+  projectId: string
+  title: string
+  tool: string
+  // The stored resume id. null ⇒ never captured (codex where nothing ran, or
+  // discovery missed).
+  agentSessionId: string | null
+  // Whether a resume would actually work, computed fresh at list time: the agent
+  // must have PERSISTED a resumable transcript for agentSessionId. A non-null
+  // agentSessionId is not enough — claude pre-assigns the id at spawn but only
+  // writes the transcript once a session has content, so an empty session has an
+  // id but nothing to resume. The sidebar drives its inert/resumable state off
+  // THIS, never off agentSessionId alone, so it never offers a resume that fails.
+  resumable: boolean
+  cwd: string
+  worktreePath: string | null
+  branch: string | null
+  lastActiveAt: number
+  createdAt: number
+  archivedAt: number | null
+}
+export const PROJECTS = { list: 'projects:list', setArchived: 'projects:setArchived' } as const
+export const CONVERSATIONS = { list: 'conversations:list' } as const
+export const SIDEBAR = { changed: 'sidebar:changed' } as const
 
 export interface StartupSession {
   mode: 'interactive' | 'yolo'
