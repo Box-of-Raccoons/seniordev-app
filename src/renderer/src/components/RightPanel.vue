@@ -388,6 +388,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
             v-else
             :id="entry.tab.ptyId"
             :conversation-id="entry.tab.conversationId"
+            :conversation-title="entry.tab.title"
             :ticket-key="entry.tab.ticketKey ?? null"
             :input="entry.tab.input"
             :prompt="entry.tab.prompt"

@@ -7,7 +7,7 @@ import { TERM_BG, TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
 import { clipboardAction } from '../terminal-clipboard'
 import { readBufferText, normalizeForStability, stepIdle, initialIdleState, type IdleState } from '../status-matcher'
 
-const props = defineProps<{ id: string; conversationId?: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string }>()
+const props = defineProps<{ id: string; conversationId?: string; conversationTitle?: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string }>()
 const emit = defineEmits<{ (e: 'exited', code: number): void }>()
 const host = ref<HTMLDivElement | null>(null)
 let term: Terminal | null = null
@@ -96,6 +96,7 @@ onMounted(async () => {
       : await window.api.spawnTerminal({
           id: props.id,
           conversationId: props.conversationId,
+          title: props.conversationTitle,
           ticketKey: props.ticketKey ?? undefined,
           input: props.input,
           cwdOverride: props.cwdOverride,

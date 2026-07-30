@@ -9,6 +9,7 @@ import { resolveExpandedPrompt } from './resolve-prompt'
 import { createSessionActivity, type SessionActivity } from '../terminal/activity'
 import type { StatusHub } from '../terminal/status-hub'
 import type { Config } from '../config/schema'
+import type { SessionPersistence } from '../session-persistence'
 
 export interface TerminalDeps {
   source: ConfigSource
@@ -18,6 +19,9 @@ export interface TerminalDeps {
   // Optional so existing tests that exercise only prompt delivery need neither.
   activity?: SessionActivity
   statusHub?: StatusHub
+  // S3 persistence: auto-create the project + conversation on spawn and capture
+  // the resume id. Optional so prompt-delivery tests need not wire it.
+  persistence?: SessionPersistence
 }
 
 // A shell tab has no fixed tool, so it is scanned against every tool's approval
@@ -137,6 +141,19 @@ export function registerTerminalIpc(
       // Status: an agent tab is scanned against its own tool's approval patterns.
       const toolName = req.tool ?? config.defaultTool
       deps.statusHub?.registerPty(req.id, 'interactive', config.cliTools[toolName]?.approvalPatterns ?? [])
+      // S3: persist the project + conversation and capture the resume id. claude
+      // pre-assigns (id == conversationId, known now); codex is discovered from the
+      // rollout dir starting at spawn. Skipped for a caller with no conversationId.
+      if (req.conversationId && deps.persistence) {
+        const preAssigned = (config.cliTools[toolName]?.sessionIdArgs?.length ?? 0) > 0
+        deps.persistence.onAgentSpawn({
+          conversationId: req.conversationId,
+          tool: toolName,
+          cwd: launch.cwd,
+          title: req.title ?? '',
+          preAssignedSessionId: preAssigned ? req.conversationId : undefined
+        })
+      }
       // NOTE: no bracketed-paste framing here — the raw ESC of \x1b[200~ registers
       // as the Escape key in these TUIs (clears the composer / exits dialogs).
       if (launch.stdinPrompt) deliverPromptWhenReady(req.id, launch.stdinPrompt, launch.bracketedPaste ?? false)

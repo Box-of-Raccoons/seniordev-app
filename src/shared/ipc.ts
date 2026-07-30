@@ -10,6 +10,9 @@ export interface SpawnTerminalRequest {
   // pre-assigned as the CLI's --session-id at spawn; for every tool it keys the
   // persisted conversation record. Absent for a pre-S3 / test caller.
   conversationId?: string
+  // The tab title, persisted onto the conversation record so the S4 sidebar shows
+  // the same label the tab did. Absent for a pre-S3 / test caller.
+  title?: string
   tool?: string
   ticketKey?: string
   // The raw composer input (ticket key or free-text description) — fills the
