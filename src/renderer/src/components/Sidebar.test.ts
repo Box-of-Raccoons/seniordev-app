@@ -1,0 +1,165 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import Sidebar from './Sidebar.vue'
+import { useWorkspace, type UseWorkspace } from '../composables/useWorkspace'
+import type { ProjectInfo, ConversationInfo } from '../../../shared/ipc'
+
+function project(over: Partial<ProjectInfo>): ProjectInfo {
+  return {
+    id: 'p1', title: 'app', path: '/app', defaultTool: 'claude', worktreeDefault: false,
+    lastActiveAt: 0, archivedAt: null, createdAt: 0, updatedAt: 0, ...over
+  }
+}
+function conv(over: Partial<ConversationInfo>): ConversationInfo {
+  return {
+    id: 'c', projectId: 'p1', title: 't', tool: 'claude', agentSessionId: 'sid', resumable: true,
+    cwd: '/app', worktreePath: null, branch: null, lastActiveAt: 0, createdAt: 0, archivedAt: null, ...over
+  }
+}
+
+let changedCb: (() => void) | null = null
+function setApi(projects: ProjectInfo[], conversations: ConversationInfo[]): { setProjectArchived: ReturnType<typeof vi.fn> } {
+  const setProjectArchived = vi.fn(async () => {})
+  ;(window as unknown as { api: unknown }).api = {
+    listProjects: vi.fn(async () => projects),
+    listConversations: vi.fn(async () => conversations),
+    onSidebarChanged: vi.fn((cb: () => void) => { changedCb = cb; return () => {} }),
+    setProjectArchived
+  }
+  return { setProjectArchived }
+}
+
+const stubs = { StatusGlyph: { props: ['status'], template: '<span class="glyph" :data-status="status" />' } }
+
+async function mountSidebar(ws: UseWorkspace) {
+  const w = mount(Sidebar, { props: { ws }, global: { stubs } })
+  await flushPromises()
+  return w
+}
+
+beforeEach(() => {
+  changedCb = null
+})
+
+describe('Sidebar', () => {
+  it('renders active projects with their conversations, newest first', async () => {
+    setApi(
+      [project({ id: 'p1', title: 'app' })],
+      [conv({ id: 'c1', title: 'older', lastActiveAt: 10 }), conv({ id: 'c2', title: 'newer', lastActiveAt: 20 })]
+    )
+    const w = await mountSidebar(useWorkspace())
+    const labels = w.findAll('.conv .label').map((n) => n.text())
+    expect(labels).toEqual(['newer', 'older'])
+  })
+
+  it('labels each row with its agent tool (claude vs codex)', async () => {
+    setApi(
+      [project({ id: 'p1' })],
+      [conv({ id: 'c1', title: 'a', tool: 'claude', lastActiveAt: 20 }), conv({ id: 'c2', title: 'b', tool: 'codex', lastActiveAt: 10 })]
+    )
+    const w = await mountSidebar(useWorkspace())
+    expect(w.findAll('.conv .tool').map((n) => n.text())).toEqual(['claude', 'codex'])
+  })
+
+  it('clicking a resumable dead conversation resumes it into the leftmost pane with its own id', async () => {
+    setApi([project({})], [conv({ id: 'conv-x', agentSessionId: 'sess-x', cwd: '/app', tool: 'claude' })])
+    const ws = useWorkspace()
+    const w = await mountSidebar(ws)
+    await w.find('.conv').trigger('click')
+    const leftmost = ws.panes.panes[0]
+    const spawned = leftmost.tabs.find((t) => t.conversationId === 'conv-x')
+    expect(spawned).toBeTruthy()
+    // Reuses the record id (no duplicate row) and carries the resume session id.
+    expect(spawned!.resume).toEqual({ sessionId: 'sess-x' })
+    expect(spawned!.cwdOverride).toBe('/app')
+    expect(spawned!.kind).toBe('terminal')
+  })
+
+  it('clicking an open conversation focuses its live tab instead of resuming', async () => {
+    const ws = useWorkspace()
+    // Pre-open a live tab for the conversation, so its row renders as open.
+    const live = ws.panes.addTab({ title: 'live', kind: 'terminal', variant: 'agent', conversationId: 'conv-open' })
+    setApi([project({})], [conv({ id: 'conv-open', agentSessionId: 'sess' })])
+    const w = await mountSidebar(ws)
+    const focusSpy = vi.spyOn(ws.panes, 'focusTab')
+    const before = ws.panes.panes[0].tabs.length
+    await w.find('.conv').trigger('click')
+    expect(focusSpy).toHaveBeenCalledWith(ws.panes.panes[0].id, live.ptyId)
+    expect(ws.panes.panes[0].tabs).toHaveLength(before) // focused, not spawned
+  })
+
+  it('a non-resumable dead conversation is inert (disabled, no spawn on click)', async () => {
+    const ws = useWorkspace()
+    setApi([project({})], [conv({ id: 'c-null', agentSessionId: null, resumable: false })])
+    const w = await mountSidebar(ws)
+    const row = w.find('.conv')
+    expect(row.attributes('disabled')).toBeDefined()
+    expect(w.find('.conv .tag').text()).toBe('no resume')
+    await row.trigger('click')
+    expect(ws.panes.panes[0].tabs).toHaveLength(0) // nothing spawned
+  })
+
+  it('an id-present-but-not-resumable conversation is inert (the empty-session bug)', async () => {
+    // The regression: agentSessionId is set (claude pre-assigns at spawn) but the
+    // main-side check found no transcript, so resumable is false. The row must be
+    // inert and must not spawn a doomed resume.
+    const ws = useWorkspace()
+    setApi([project({})], [conv({ id: 'c-empty', agentSessionId: 'has-id', resumable: false })])
+    const w = await mountSidebar(ws)
+    const row = w.find('.conv')
+    expect(row.attributes('disabled')).toBeDefined()
+    expect(w.find('.conv .tag').text()).toBe('no resume')
+    await row.trigger('click')
+    expect(ws.panes.panes[0].tabs).toHaveLength(0) // no broken resume spawned
+  })
+
+  it('restores an archived project and re-fetches', async () => {
+    const { setProjectArchived } = setApi(
+      [project({ id: 'pa', title: 'gone', archivedAt: 5 })],
+      []
+    )
+    const w = await mountSidebar(useWorkspace())
+    await w.find('.arch-head').trigger('click') // expand Archived (n)
+    await w.find('.restore').trigger('click')
+    expect(setProjectArchived).toHaveBeenCalledWith('pa', false)
+  })
+
+  it('re-fetches when main signals a sidebar change', async () => {
+    setApi([project({ id: 'p1', title: 'first' })], [])
+    const w = await mountSidebar(useWorkspace())
+    expect(w.text()).toContain('first')
+    // Main renames/adds via a fresh dataset, then nudges.
+    ;(window.api.listProjects as ReturnType<typeof vi.fn>).mockResolvedValue([project({ id: 'p2', title: 'second' })])
+    changedCb?.()
+    await flushPromises()
+    expect(w.text()).toContain('second')
+  })
+
+  it('collapse and expand toggle the shared state and swap to the rail', async () => {
+    setApi([project({})], [])
+    const ws = useWorkspace()
+    const w = await mountSidebar(ws)
+    expect(w.find('.rail').exists()).toBe(false)
+    await w.find('.sb-head .icon-btn').trigger('click') // collapse
+    expect(ws.sidebarCollapsed.value).toBe(true)
+    expect(w.find('.rail').exists()).toBe(true)
+    await w.find('.rail .icon-btn').trigger('click') // expand
+    expect(ws.sidebarCollapsed.value).toBe(false)
+    expect(w.find('.sidebar').exists()).toBe(true)
+  })
+
+  it('keyboard resize nudges the width within bounds', async () => {
+    setApi([project({})], [])
+    const ws = useWorkspace()
+    ws.sidebarWidth.value = 300
+    const w = await mountSidebar(ws)
+    await w.find('.sb-grip').trigger('keydown', { key: 'ArrowRight' })
+    expect(ws.sidebarWidth.value).toBe(316)
+    await w.find('.sb-grip').trigger('keydown', { key: 'ArrowLeft' })
+    expect(ws.sidebarWidth.value).toBe(300)
+    // Clamps at the max.
+    ws.sidebarWidth.value = 480
+    await w.find('.sb-grip').trigger('keydown', { key: 'ArrowRight' })
+    expect(ws.sidebarWidth.value).toBe(480)
+  })
+})

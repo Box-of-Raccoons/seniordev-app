@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, PROJECTS, CONVERSATIONS, SIDEBAR, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent, WorkspaceLayout } from '../shared/ipc'
+import type { ProjectInfo, ConversationInfo, SidebarState } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
 import type { StatusUpdateEvent } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
@@ -21,6 +22,17 @@ const api = {
   listTools: (): Promise<string[]> => ipcRenderer.invoke(TOOLS.list),
   getWorkspaceSettings: (): Promise<WorkspaceSettings> => ipcRenderer.invoke(WORKSPACE.getSettings),
   saveWorkspace: (layout: WorkspaceLayout): void => ipcRenderer.send(WORKSPACE.save, layout),
+  // S4 Projects sidebar: read the persisted projects/conversations + sidebar
+  // geometry, restore an archived project, and subscribe to the change nudge.
+  listProjects: (): Promise<ProjectInfo[]> => ipcRenderer.invoke(PROJECTS.list),
+  listConversations: (): Promise<ConversationInfo[]> => ipcRenderer.invoke(CONVERSATIONS.list),
+  setProjectArchived: (id: string, archived: boolean): Promise<void> => ipcRenderer.invoke(PROJECTS.setArchived, id, archived),
+  getSidebarState: (): Promise<SidebarState> => ipcRenderer.invoke(WORKSPACE.getSidebar),
+  onSidebarChanged: (cb: () => void): (() => void) => {
+    const listener = (): void => cb()
+    ipcRenderer.on(SIDEBAR.changed, listener)
+    return () => ipcRenderer.off(SIDEBAR.changed, listener)
+  },
   writeTerminal: (id: string, data: string): void => ipcRenderer.send(TERM.write, id, data),
   resizeTerminal: (id: string, cols: number, rows: number): void => ipcRenderer.send(TERM.resize, id, cols, rows),
   killTerminal: (id: string): void => ipcRenderer.send(TERM.kill, id),

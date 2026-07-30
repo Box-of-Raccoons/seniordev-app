@@ -25,7 +25,8 @@ import { systemResolveCommand, systemCommandAvailable } from './terminal/resolve
 import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './deeplink/parse'
 import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery } from './deeplink/delivery'
-import { DEEPLINK, STATUS, WORKSPACE, type WorkspaceLayout } from '../shared/ipc'
+import { DEEPLINK, STATUS, WORKSPACE, SIDEBAR, type WorkspaceLayout } from '../shared/ipc'
+import { registerSidebarIpc } from './ipc/sidebar-handlers'
 import { createSessionActivity } from './terminal/activity'
 import { createStatusHub } from './terminal/status-hub'
 import { createSessionPersistence, type SessionPersistence } from './session-persistence'
@@ -241,18 +242,25 @@ if (!gotLock) {
     // service. On first run (empty project list) seed from recent-folders so the
     // sidebar is not empty on day one (spec 4.4). Best-effort; a store failure
     // must never block a launch, so wrap it.
-    persistence = createSessionPersistence()
+    persistence = createSessionPersistence({ onChange: () => getSender()?.send(SIDEBAR.changed) })
     try {
       if (persistence.projects.list().length === 0) {
         persistence.projects.seedFromRecent(loadRecent(), store.config?.defaultTool ?? 'claude')
       }
+      // Backfill codex ids the live poll missed on prior runs (the rollout files
+      // persist on disk), so a real codex session isn't stuck showing inert.
+      const filled = persistence.backfillCodexSessions()
+      if (filled) console.log(`[persistence] backfilled ${filled} codex session id(s)`)
     } catch (err) {
-      console.error('[persistence] seed skipped:', err)
+      console.error('[persistence] seed/backfill skipped:', err)
     }
     // S3 workspace store: window bounds (restored in createWindow, below) and the
     // renderer-pushed pane/tab layout. Debounced to disk inside the store.
     workspace = createWorkspaceStore()
     ipcMain.on(WORKSPACE.save, (_e, layout: WorkspaceLayout) => workspace?.setLayout(layout))
+    // S4: read-only projects/conversations + restore + sidebar-geometry read for
+    // the Projects sidebar. Registered once both stores exist.
+    registerSidebarIpc({ persistence, workspace, getSender })
     // S3 archive (spec 4.5): archive projects idle past archiveAfterDays, exempting
     // any with a live tab. Runs now and once daily; reversible; 0 days disables.
     const runArchive = (): void => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createSessionPersistence } from './session-persistence'
@@ -143,5 +143,160 @@ describe('session persistence: archive with live-tab exemption', () => {
     p.onAgentSpawn({ conversationId: 'c', tool: 'claude', cwd: '/x', title: 't', ptyId: 'pty', preAssignedSessionId: 'c' })
     p.onTabExit('pty')
     expect(p.runArchive(0)).toEqual([])
+  })
+})
+
+// S4: the sidebar re-fetches on onChange, so it must fire exactly at the moments
+// the stored set changes — a spawn, a codex id resolving, and an actual archival.
+describe('session persistence: onChange sidebar nudge', () => {
+  let dir: string
+  const now = (): number => 1000
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('fires once on a claude spawn (record created)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    let m = 0
+    const { projects, conversations } = stores(dir, now, () => `p-${++m}`)
+    let changes = 0
+    const p = createSessionPersistence({ projects, conversations, discover: async () => null, onChange: () => (changes += 1) })
+    p.onAgentSpawn({ conversationId: 'c', tool: 'claude', cwd: '/x', title: 't', preAssignedSessionId: 'c' })
+    expect(changes).toBe(1)
+  })
+
+  it('fires again when codex discovery resolves an id', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    let m = 0
+    const { projects, conversations } = stores(dir, now, () => `p-${++m}`)
+    let changes = 0
+    const p = createSessionPersistence({ projects, conversations, discover: async () => 'codex-id', onChange: () => (changes += 1) })
+    p.onAgentSpawn({ conversationId: 'c', tool: 'codex', cwd: '/x', title: 't' })
+    expect(changes).toBe(1) // spawn
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(changes).toBe(2) // discovery resolved
+  })
+
+  it('does not fire on a discovery miss (agentSessionId stays null)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    let m = 0
+    const { projects, conversations } = stores(dir, now, () => `p-${++m}`)
+    let changes = 0
+    const p = createSessionPersistence({ projects, conversations, discover: async () => null, onChange: () => (changes += 1) })
+    p.onAgentSpawn({ conversationId: 'c', tool: 'codex', cwd: '/x', title: 't' })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(changes).toBe(1) // only the spawn, no id to fill
+  })
+
+  it('fires on an actual archival, not on a 0-day no-op', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    const DAY = 86_400_000
+    let clock = 1_000_000_000_000
+    let m = 0
+    const projects = createProjectsStore({ file: join(dir, 'projects.json'), now: () => clock, newId: () => `p-${++m}` })
+    const conversations = createConversationsStore({ file: join(dir, 'conversations.json'), now: () => clock })
+    let changes = 0
+    const p = createSessionPersistence({ projects, conversations, now: () => clock, discover: async () => null, onChange: () => (changes += 1) })
+    p.onAgentSpawn({ conversationId: 'c', tool: 'claude', cwd: '/idle', title: 't', ptyId: 'pty', preAssignedSessionId: 'c' })
+    p.onTabExit('pty')
+    changes = 0 // reset after the spawn's nudge
+    expect(p.runArchive(0)).toEqual([]) // disabled → no change
+    expect(changes).toBe(0)
+    clock += 20 * DAY
+    expect(p.runArchive(14)).toHaveLength(1) // archived → one nudge
+    expect(changes).toBe(1)
+  })
+
+  it('fires on tab exit (a finished session may now be resumable)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    let m = 0
+    const { projects, conversations } = stores(dir, now, () => `p-${++m}`)
+    let changes = 0
+    const p = createSessionPersistence({ projects, conversations, discover: async () => null, onChange: () => (changes += 1) })
+    p.onAgentSpawn({ conversationId: 'c', tool: 'claude', cwd: '/x', title: 't', ptyId: 'pty', preAssignedSessionId: 'c' })
+    changes = 0 // reset after the spawn nudge
+    p.onTabExit('pty')
+    expect(changes).toBe(1)
+  })
+
+  it('a throwing onChange never breaks persistence', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    let m = 0
+    const { projects, conversations } = stores(dir, now, () => `p-${++m}`)
+    const p = createSessionPersistence({
+      projects,
+      conversations,
+      discover: async () => null,
+      onChange: () => {
+        throw new Error('sender gone')
+      }
+    })
+    expect(() => p.onAgentSpawn({ conversationId: 'c', tool: 'claude', cwd: '/x', title: 't', preAssignedSessionId: 'c' })).not.toThrow()
+    expect(conversations.get('c')?.agentSessionId).toBe('c')
+  })
+})
+
+// The live poll can miss a codex id (its 20s window loses the race); the rollout
+// persists on disk, so backfill re-discovers it. A real UUIDv7 whose embedded time
+// is known lets us place the conversation's createdAt inside the backfill window.
+describe('session persistence: codex backfill', () => {
+  let dir: string
+  const CODEX_UUID = '019fb310-96b4-7920-ab44-2e7f14960f8c' // decodes to 1785415636660 ms
+  const NEAR = 1785415635466 // ~1.2s before the id time → inside the backfill window
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+  })
+
+  function withRollout(cwd: string, hasUserTurn = true): { sessionsDir: string } {
+    const sessionsDir = join(dir, 'sessions')
+    const day = join(sessionsDir, '2026', '07', '30')
+    mkdirSync(day, { recursive: true })
+    const lines = [JSON.stringify({ type: 'session_meta', payload: { cwd } })]
+    if (hasUserTurn) lines.push(JSON.stringify({ type: 'event_msg', payload: { type: 'user_message' } }))
+    writeFileSync(join(day, `rollout-2026-07-30T08-47-16-${CODEX_UUID}.jsonl`), lines.join('\n') + '\n')
+    return { sessionsDir }
+  }
+
+  it('fills a null codex id from a matching on-disk rollout, and nudges the sidebar', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    const { sessionsDir } = withRollout('/repo')
+    const projects = createProjectsStore({ file: join(dir, 'projects.json'), now: () => NEAR, newId: () => 'proj' })
+    const conversations = createConversationsStore({ file: join(dir, 'conversations.json'), now: () => NEAR })
+    let changes = 0
+    const p = createSessionPersistence({ projects, conversations, sessionsDir, discover: async () => null, onChange: () => (changes += 1) })
+    conversations.upsert({ id: 'cx', projectId: 'proj', title: 't', tool: 'codex', cwd: '/repo', agentSessionId: null })
+    changes = 0
+    expect(p.backfillCodexSessions()).toBe(1)
+    expect(conversations.get('cx')?.agentSessionId).toBe(CODEX_UUID)
+    expect(changes).toBe(1)
+  })
+
+  it('leaves the id null when no rollout matches, and does not nudge', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    const { sessionsDir } = withRollout('/other-cwd') // rollout cwd mismatches
+    const projects = createProjectsStore({ file: join(dir, 'projects.json'), now: () => NEAR, newId: () => 'proj' })
+    const conversations = createConversationsStore({ file: join(dir, 'conversations.json'), now: () => NEAR })
+    let changes = 0
+    const p = createSessionPersistence({ projects, conversations, sessionsDir, discover: async () => null, onChange: () => (changes += 1) })
+    conversations.upsert({ id: 'cx', projectId: 'proj', title: 't', tool: 'codex', cwd: '/repo', agentSessionId: null })
+    changes = 0
+    expect(p.backfillCodexSessions()).toBe(0)
+    expect(conversations.get('cx')?.agentSessionId).toBeNull()
+    expect(changes).toBe(0)
+  })
+
+  it('skips codex conversations that already have an id, and non-codex tools', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    const { sessionsDir } = withRollout('/repo')
+    const projects = createProjectsStore({ file: join(dir, 'projects.json'), now: () => NEAR, newId: () => 'proj' })
+    const conversations = createConversationsStore({ file: join(dir, 'conversations.json'), now: () => NEAR })
+    const p = createSessionPersistence({ projects, conversations, sessionsDir, discover: async () => null })
+    conversations.upsert({ id: 'has-id', projectId: 'proj', title: 't', tool: 'codex', cwd: '/repo', agentSessionId: 'kept' })
+    conversations.upsert({ id: 'claude-c', projectId: 'proj', title: 't', tool: 'claude', cwd: '/repo', agentSessionId: null })
+    expect(p.backfillCodexSessions()).toBe(0)
+    expect(conversations.get('has-id')?.agentSessionId).toBe('kept')
+    expect(conversations.get('claude-c')?.agentSessionId).toBeNull()
   })
 })

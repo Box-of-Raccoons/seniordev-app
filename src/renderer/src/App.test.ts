@@ -21,6 +21,7 @@ const rightMoveActiveTab = vi.fn()
 const stubs = {
   RightPanel: {
     name: 'RightPanel',
+    props: ['ws'],
     template: '<div class="right" />',
     methods: {
       startStartupSession: rightStartStartup,
@@ -31,6 +32,7 @@ const stubs = {
       moveActiveTab: rightMoveActiveTab
     }
   },
+  Sidebar: { name: 'Sidebar', props: ['ws'], template: '<div class="sidebar-stub" />' },
   AboutModal: { name: 'AboutModal', template: '<div class="about-stub" />' },
   AppConfigModal: { name: 'AppConfigModal', template: '<div class="appcfg-stub" />' },
   PromptConfigModal: { name: 'PromptConfigModal', template: '<div class="promptcfg-stub" />' },

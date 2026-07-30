@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RightPanel from './RightPanel.vue'
+import { useWorkspace } from '../composables/useWorkspace'
 import type { StatusUpdateEvent } from '../../../shared/ipc'
 
 // Captured so tests can drive status updates as if from main.
@@ -62,8 +63,11 @@ const stubs = {
   }
 }
 
+// A3: RightPanel now reads the shared workspace state from a `ws` prop. The
+// factory is plain (no lifecycle hooks), so a fresh one per mount is fine and
+// gives each test an isolated pane/status model, exactly as before the lift.
 function mountRP() {
-  return mount(RightPanel, { global: { stubs } })
+  return mount(RightPanel, { props: { ws: useWorkspace() }, global: { stubs } })
 }
 
 describe('RightPanel', () => {
@@ -212,7 +216,7 @@ describe('RightPanel', () => {
   }
 
   it('auto-closes a cleanly-exited agent tab (exit 0, spec 7.2)', async () => {
-    const w = mount(RightPanel, { global: { stubs: exitStubs(0) } })
+    const w = mount(RightPanel, { props: { ws: useWorkspace() }, global: { stubs: exitStubs(0) } })
     await w.find('.pick-ai').trigger('click')
     await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()
@@ -224,7 +228,7 @@ describe('RightPanel', () => {
   })
 
   it('marks a tab dead (not closed) on a non-zero exit', async () => {
-    const w = mount(RightPanel, { global: { stubs: exitStubs(1) } })
+    const w = mount(RightPanel, { props: { ws: useWorkspace() }, global: { stubs: exitStubs(1) } })
     await w.find('.pick-ai').trigger('click')
     await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()
@@ -262,6 +266,33 @@ describe('RightPanel', () => {
     // A non-attention state never notifies.
     statusCb!({ id: bgId, status: 'idle' })
     expect(NotificationMock).toHaveBeenCalledTimes(1)
+  })
+
+  // S4: a sidebar row dropped on a pane strip carries a conversation payload under
+  // a custom dataTransfer type (distinct from a tab-reorder drop's ptyId).
+  function convDataTransfer(payload: object) {
+    return { getData: (t: string) => (t === 'application/x-sd-conversation' ? JSON.stringify(payload) : '') }
+  }
+
+  it('resumes a dropped sidebar conversation into the target pane', async () => {
+    const w = mountRP()
+    await w.find('.pick-ai').trigger('click') // a pane with a strip now exists
+    const payload = { id: 'conv-d', title: 'resumed one', tool: 'claude', cwd: '/w', agentSessionId: 'sess-d' }
+    await w.find('.term-tabs').trigger('drop', { dataTransfer: convDataTransfer(payload) })
+    await w.vm.$nextTick()
+    const tv = w.findAll('.tv').find((n) => n.attributes('data-resume') === 'sess-d')
+    expect(tv).toBeTruthy() // spawned with the resume session id
+    expect(w.text()).toContain('resumed one')
+  })
+
+  it('ignores a dropped non-resumable conversation (agentSessionId null)', async () => {
+    const w = mountRP()
+    await w.find('.pick-ai').trigger('click')
+    expect(w.findAll('.term-tab')).toHaveLength(1)
+    const payload = { id: 'c-null', title: 'nope', tool: 'codex', cwd: '/w', agentSessionId: null }
+    await w.find('.term-tabs').trigger('drop', { dataTransfer: convDataTransfer(payload) })
+    await w.vm.$nextTick()
+    expect(w.findAll('.term-tab')).toHaveLength(1) // nothing spawned
   })
 
   it('yolo resume opens a terminal tab with resume + cwdOverride', async () => {
