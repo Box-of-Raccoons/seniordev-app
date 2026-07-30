@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
+import type { StatusUpdateEvent } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
 
 const api = {
@@ -50,6 +51,16 @@ const api = {
     const listener = (_e: IpcRendererEvent, payload: YoloExitEvent): void => cb(payload)
     ipcRenderer.on(YOLO.exit, listener)
     return () => ipcRenderer.off(YOLO.exit, listener)
+  },
+  // S1 status: the renderer reports its buffer as active (content changed) or
+  // settled (stable → main scans the text), and receives per-tab status updates
+  // to draw the glyph.
+  sendStatusActive: (id: string): void => ipcRenderer.send(STATUS.active, id),
+  sendStatusSettled: (id: string, text: string): void => ipcRenderer.send(STATUS.settled, id, text),
+  onStatusUpdate: (cb: (e: StatusUpdateEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: StatusUpdateEvent): void => cb(payload)
+    ipcRenderer.on(STATUS.update, listener)
+    return () => ipcRenderer.off(STATUS.update, listener)
   },
   onMenuAction: (cb: (action: MenuAction) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, action: MenuAction): void => cb(action)

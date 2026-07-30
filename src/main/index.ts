@@ -21,11 +21,13 @@ import { registerPromptConfigIpc } from './ipc/prompt-config-handlers'
 import { installMenu } from './menu'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
 import { nodeHeadlessSpawner } from './headless/node-spawner'
-import { systemResolveCommand } from './terminal/resolve-command'
+import { systemResolveCommand, systemCommandAvailable } from './terminal/resolve-command'
 import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './deeplink/parse'
 import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery } from './deeplink/delivery'
-import { DEEPLINK } from '../shared/ipc'
+import { DEEPLINK, STATUS } from '../shared/ipc'
+import { createSessionActivity } from './terminal/activity'
+import { createStatusHub } from './terminal/status-hub'
 import type { TerminalManager } from './terminal/manager'
 import type { YoloRunner } from './headless/runner'
 
@@ -190,7 +192,7 @@ if (!gotLock) {
       return repo ? { key: repo.key, path: repo.path, tool: cfg.defaultTool } : null
     })
     registerShellIpc()
-    registerComposerIpc({ getConfig: () => store.config, resolveCommand: systemResolveCommand })
+    registerComposerIpc({ getConfig: () => store.config, isAvailable: systemCommandAvailable })
     registerRecentIpc()
     registerClipboardIpc()
     const startup = parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8'))
@@ -212,8 +214,16 @@ if (!gotLock) {
     registerPromptsIpc(store.prompts)
     const getSender = (): Electron.WebContents | undefined =>
       BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents
-    terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand })
-    yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand })
+    // S1 status. The activity tracker still backs prompt delivery (byte-quiet).
+    // The hub turns events into glyph updates; idle is detected renderer-side by
+    // buffer-content stability (these TUIs never go byte-quiet) and arrives as
+    // STATUS.active / STATUS.settled.
+    const activity = createSessionActivity()
+    const statusHub = createStatusHub({ sendUpdate: (ev) => getSender()?.send(STATUS.update, ev) })
+    ipcMain.on(STATUS.active, (_e, id: string) => statusHub.active(id))
+    ipcMain.on(STATUS.settled, (_e, id: string, text: string) => statusHub.settled(id, text))
+    terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand, activity, statusHub })
+    yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand, statusHub })
     registerAppIpc()
     registerConfigIpc(store, getSender)
     registerPromptConfigIpc(store, getSender)

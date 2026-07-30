@@ -10,9 +10,6 @@ vi.mock('electron', () => ({
 
 import { registerComposerIpc, agentTools } from './composer-handlers'
 import type { Config } from '../config/schema'
-import type { ResolvedCommand } from '../terminal/resolve-command'
-
-const resolved = { kind: 'exe' } as unknown as ResolvedCommand
 
 const config = {
   defaultTool: 'claude',
@@ -65,10 +62,15 @@ describe('registerComposerIpc', () => {
     expect(res.shells).toContain(res.default)
   })
 
-  it('tools:list returns the resolvable agent tools (default always included)', async () => {
-    // Only claude resolves on PATH → codex is dropped, but the default stays.
-    registerComposerIpc({ getConfig: () => config, resolveCommand: (c) => (c === 'claude' ? resolved : undefined) })
+  it('tools:list returns the available agent tools (default always included)', async () => {
+    // codex is not installed → dropped, but the default (claude) stays.
+    registerComposerIpc({ getConfig: () => config, isAvailable: (c) => c === 'claude' })
     expect(await handlers.get('tools:list')!({})).toEqual(['claude'])
+  })
+
+  it('tools:list offers a non-default tool once it is available (e.g. codex on macOS)', async () => {
+    registerComposerIpc({ getConfig: () => config, isAvailable: (c) => c === 'claude' || c === 'codex' })
+    expect(await handlers.get('tools:list')!({})).toEqual(['claude', 'codex'])
   })
 })
 
@@ -77,12 +79,12 @@ describe('agentTools', () => {
     expect(agentTools(config)[0]).toBe('claude')
   })
 
-  it('includes a non-default tool only when its command resolves', () => {
-    expect(agentTools(config, (c) => (c === 'codex' ? resolved : undefined))).toEqual(['claude', 'codex'])
-    expect(agentTools(config, () => undefined)).toEqual(['claude'])
+  it('includes a non-default tool only when its command is available', () => {
+    expect(agentTools(config, (c) => c === 'codex')).toEqual(['claude', 'codex'])
+    expect(agentTools(config, () => false)).toEqual(['claude'])
   })
 
-  it('keeps the default tool even if it does not resolve', () => {
-    expect(agentTools(config, () => undefined)).toContain('claude')
+  it('keeps the default tool even if it is not available', () => {
+    expect(agentTools(config, () => false)).toContain('claude')
   })
 })

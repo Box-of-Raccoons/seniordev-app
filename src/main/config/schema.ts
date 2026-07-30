@@ -23,7 +23,12 @@ export const CliToolSchema = z.object({
   // don't consume the markers (claude), where the raw ESC acts as the Escape key.
   bracketedPaste: z.boolean().optional(),
   headless: HeadlessSchema.optional(),
-  resumeArgs: z.array(z.string()).optional()
+  resumeArgs: z.array(z.string()).optional(),
+  // Regex sources the S1 buffer scan matches against a quiet TUI to tell "waiting
+  // on you at an approval prompt" from ordinary idle output. Default [] so a tool
+  // with none configured degrades to no prompt detection rather than throwing;
+  // a config.yaml can add or replace patterns when a vendor reshuffles its TUI.
+  approvalPatterns: z.array(z.string()).default([])
 })
 
 export const ForgeSchema = z.object({

@@ -10,6 +10,8 @@ vi.mock('electron', () => ({
 }))
 
 import { registerTerminalIpc } from './terminal-handlers'
+import { createSessionActivity } from '../terminal/activity'
+import { createStatusHub } from '../terminal/status-hub'
 import type { PtyProcess, PtySpawner } from '../terminal/manager'
 import type { Config } from '../config/schema'
 import type { Ticket } from '../../shared/types'
@@ -135,6 +137,27 @@ describe('registerTerminalIpc', () => {
     expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
     // The submit is a bare Enter — never wrapped.
     expect(pty.write).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
+  })
+
+  it('delivers the prompt normally with the status hub attached, and registers the tab', async () => {
+    // The status hub no longer touches the activity tracker (idle detection moved
+    // to the renderer), but it still registers pty tabs and receives exit. Prove
+    // delivery is unaffected and the tab is registered working on spawn.
+    vi.useFakeTimers()
+    const pty = fakePty()
+    const activity = createSessionActivity()
+    const updates: { id: string; status: string }[] = []
+    const statusHub = createStatusHub({ sendUpdate: (e) => updates.push(e) })
+    registerTerminalIpc(() => undefined, () => pty as unknown as PtyProcess, { source, activity, statusHub })
+    await handleMap.get('pty:spawn')!({}, { id: 'a', ticketKey: 'PROJ-1', prompt: { name: 'p' }, cols: 80, rows: 24 })
+    expect(updates).toContainEqual({ id: 'a', status: 'working' }) // hub registered the tab
+
+    pty.emitData('boot screen')
+    await vi.advanceTimersByTimeAsync(800)
+    expect(pty.write).toHaveBeenNthCalledWith(1, 'Do PROJ-1')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
     vi.useRealTimers()
   })
 

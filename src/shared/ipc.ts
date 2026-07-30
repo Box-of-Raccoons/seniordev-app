@@ -104,6 +104,27 @@ export const YOLO = {
   exit: 'yolo:exit', kill: 'yolo:kill', caps: 'yolo:caps'
 } as const
 
+// S1 status system. The five per-tab glyph states (spec 5.1). This is the wire
+// type shared between the main-process state machine (terminal/status.ts) and
+// the renderer that draws the glyph; the machine LOGIC stays in main.
+export type TabStatus = 'working' | 'idle' | 'needsYou' | 'needsReview' | 'failed'
+
+// Idle detection is renderer-side, by RENDERED-BUFFER stability rather than pty
+// byte silence: the interactive TUIs repaint (cursor blink) every ~600ms, so the
+// byte stream never goes quiet, but xterm collapses those repaints into a buffer
+// whose text is stable. The renderer polls its own buffer and reports `active`
+// when the text changes and `settled` (with the text) when it has been stable a
+// beat. Main matches the settled text against the tool's approvalPatterns and
+// pushes the resulting `update` back for the glyph.
+export interface StatusActiveEvent { id: string }
+export interface StatusSettledEvent { id: string; text: string }
+export interface StatusUpdateEvent { id: string; status: TabStatus }
+export const STATUS = {
+  active: 'status:active', // renderer → main (buffer text changed → working)
+  settled: 'status:settled', // renderer → main (buffer text stable → scan for a prompt)
+  update: 'status:update' // main → renderer (the resolved glyph state)
+} as const
+
 export type MenuAction = 'new-session' | 'app-config' | 'prompt-config' | 'about'
 export const MENU = { action: 'menu:action' } as const
 

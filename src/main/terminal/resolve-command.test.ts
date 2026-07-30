@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { resolveCommandPath } from './resolve-command'
+import { posix } from 'node:path'
+import { resolveCommandPath, commandAvailable } from './resolve-command'
 
 // Windows fs is case-insensitive; the fake mirrors that so PATHEXT casing
 // (e.g. '.EXE') still matches a lowercased present path.
@@ -103,5 +104,32 @@ describe('resolveCommandPath', () => {
     })
     expect(r.kind).toBe('exe')
     expect(r.path.toLowerCase()).toBe('c:\\a\\foo.exe')
+  })
+})
+
+describe('commandAvailable', () => {
+  const posixOpts = (present: string[]): { sep: string; join: (d: string, f: string) => string; exists: (p: string) => boolean } => ({
+    sep: ':',
+    join: posix.join,
+    exists: (p) => new Set(present).has(p)
+  })
+
+  it('finds a bare command installed in a PATH dir (POSIX)', () => {
+    // The macOS/Linux case that was broken: codex under ~/.local/bin.
+    const r = commandAvailable('codex', { path: '/usr/bin:/Users/h/.local/bin', ...posixOpts(['/Users/h/.local/bin/codex']) })
+    expect(r).toBe(true)
+  })
+
+  it('returns false when the command is in no PATH dir', () => {
+    expect(commandAvailable('codex', { path: '/usr/bin:/bin', ...posixOpts([]) })).toBe(false)
+  })
+
+  it('checks an explicit path directly, never PATH-searching', () => {
+    expect(commandAvailable('/opt/tools/codex', { path: '/usr/bin', ...posixOpts(['/opt/tools/codex']) })).toBe(true)
+    expect(commandAvailable('/opt/tools/codex', { path: '/opt/tools/codex', ...posixOpts([]) })).toBe(false)
+  })
+
+  it('skips empty PATH segments', () => {
+    expect(commandAvailable('codex', { path: '::/usr/bin:', ...posixOpts(['/usr/bin/codex']) })).toBe(true)
   })
 })
