@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import TerminalView from './TerminalView.vue'
 import YoloView from './YoloView.vue'
 import Composer from './Composer.vue'
-import NewTabMenu from './NewTabMenu.vue'
 import EmptyState from './EmptyState.vue'
 import StatusGlyph from './StatusGlyph.vue'
 import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
@@ -286,16 +285,11 @@ onBeforeUnmount(() => {
 })
 
 // Programmatic new tab (boot / reset / deep-link): a default agent composer on
-// the default CLI tool. The New-tab menu drives the explicit tool/terminal choice.
+// the default CLI tool. Used by the native "New Session" menu (App) as a fallback;
+// the primary launch path is now the Projects sidebar (S6), which opens sessions
+// scoped to a project via ws.panes.addTab directly.
 function newTab(): void {
   panes.addTab({ title: 'New session', kind: 'composer', variant: 'agent' })
-}
-
-// The menu picks agent-vs-terminal (the agent CLI is chosen later in the
-// composer's tool picker) plus, for the Open item, the composer's start mode.
-function onPick(p: { variant: 'agent' | 'terminal'; mode?: 'task' | 'open' }, paneId?: string): void {
-  const title = p.variant === 'terminal' ? 'New shell' : p.mode === 'open' ? 'Open session' : 'New session'
-  panes.addTab({ title, kind: 'composer', variant: p.variant, initialMode: p.mode }, paneId)
 }
 
 // Open a prefilled agent composer (used by the deep-link entry point). The user
@@ -450,13 +444,10 @@ function isVisible(paneId: string, ptyId: string): boolean {
                 <button class="term-tab__close" :aria-label="`Close ${tab.title}`" @click="closeTerm(tab.ptyId)">×</button>
               </div>
             </nav>
-            <!-- + sits right after the last tab (Windows Terminal style): dropping
-                 flex:1 on .term-tabs stops the tabs stretching and shoving it right. -->
-            <NewTabMenu @pick="onPick($event, pane.id)" />
           </div>
 
           <div class="term-body">
-            <EmptyState v-if="!pane.tabs.length" :image="raccoonAsleepUrl" caption='No sessions yet. Start one with "+".' />
+            <EmptyState v-if="!pane.tabs.length" :image="raccoonAsleepUrl" caption="No sessions yet. Launch one from a project in the sidebar." />
             <div class="pane-slot" :ref="(el) => setSlot(pane.id, el as Element | null)"></div>
             <!-- Drop overlay: only present mid-drag, so it sits above xterm just long
                  enough to catch a session (or tab) dropped onto the live view, then

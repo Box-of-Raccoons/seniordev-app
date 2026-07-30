@@ -4,6 +4,10 @@ import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 // `mode` rides only on the 'Open' pick: it seeds the composer straight into Open
 // (unprompted) mode. 'AI' leaves it undefined (composer defaults to Task).
 const emit = defineEmits<{ (e: 'pick', payload: { variant: 'agent' | 'terminal'; mode?: 'task' | 'open' }): void }>()
+// `ghost` (S6): a muted trigger for the per-project launcher in the sidebar, so it
+// does not spend teal (One Signal Rule reserves teal for the composer's Launch).
+// `label` overrides the trigger glyph/text (e.g. a "New Project" button).
+const props = defineProps<{ ghost?: boolean; label?: string }>()
 
 const open = ref(false)
 const wrap = ref<HTMLElement | null>(null)
@@ -17,6 +21,15 @@ async function toggle(): Promise<void> {
     items()[0]?.focus()
   }
 }
+
+// S6: open the menu programmatically (New Project pops the new row's menu). Exposed
+// so a parent can call it via a template ref.
+async function openMenu(): Promise<void> {
+  open.value = true
+  await nextTick()
+  items()[0]?.focus()
+}
+defineExpose({ openMenu })
 
 function items(): HTMLButtonElement[] {
   return menu.value ? Array.from(menu.value.querySelectorAll<HTMLButtonElement>('.menu-item')) : []
@@ -67,7 +80,15 @@ function pickTerminal(): void {
 
 <template>
   <div ref="wrap" class="newtab">
-    <button class="new-session" aria-haspopup="menu" :aria-expanded="open" aria-label="New session" title="New session" @click="toggle">+</button>
+    <button
+      class="new-session"
+      :class="{ 'new-session--ghost': props.ghost }"
+      aria-haspopup="menu"
+      :aria-expanded="open"
+      :aria-label="props.label ?? 'New session'"
+      :title="props.label ?? 'New session'"
+      @click="toggle"
+    >{{ props.label ?? '+' }}</button>
     <div v-if="open" ref="menu" class="menu" role="menu" @keydown="onMenuKeydown">
       <button class="menu-item" role="menuitem" @click="pickAgent">AI</button>
       <button class="menu-item" role="menuitem" @click="pickOpen">Open</button>
@@ -84,6 +105,14 @@ function pickTerminal(): void {
   border-radius: var(--radius-sm); padding: 4px 12px; cursor: pointer; font-weight: 600; font-size: 16px; line-height: 1.2;
 }
 .new-session:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+/* Ghost trigger (S6 sidebar launchers): muted, no teal, so it reads as secondary
+   next to a project name and never competes with the composer's one teal action. */
+.new-session--ghost {
+  background: transparent; color: var(--ink-muted); font-weight: 600;
+  padding: 2px 8px; font-size: 15px;
+}
+.new-session--ghost:hover { color: var(--ink); background: var(--surface); }
+.new-session--ghost:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
 .menu {
   position: absolute; left: 0; top: calc(100% + 4px); z-index: 20; min-width: 160px;
   background: var(--surface-2); border: 1px solid var(--hairline-strong);

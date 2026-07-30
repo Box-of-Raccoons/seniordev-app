@@ -28,6 +28,10 @@ const api = {
   listProjects: (): Promise<ProjectInfo[]> => ipcRenderer.invoke(PROJECTS.list),
   listConversations: (): Promise<ConversationInfo[]> => ipcRenderer.invoke(CONVERSATIONS.list),
   setProjectArchived: (id: string, archived: boolean): Promise<void> => ipcRenderer.invoke(PROJECTS.setArchived, id, archived),
+  // S6: create/refresh a project from a picked folder (New Project); restore an
+  // archived conversation.
+  ensureProject: (folder: string): Promise<ProjectInfo> => ipcRenderer.invoke(PROJECTS.ensure, folder),
+  setConversationArchived: (id: string, archived: boolean): Promise<void> => ipcRenderer.invoke(CONVERSATIONS.setArchived, id, archived),
   getSidebarState: (): Promise<SidebarState> => ipcRenderer.invoke(WORKSPACE.getSidebar),
   onSidebarChanged: (cb: () => void): (() => void) => {
     const listener = (): void => cb()

@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref, computed } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref, computed, nextTick } from 'vue'
 import StatusGlyph from './StatusGlyph.vue'
 import WorktreeTeardownDialog from './WorktreeTeardownDialog.vue'
+import NewTabMenu from './NewTabMenu.vue'
 import type { UseWorkspace } from '../composables/useWorkspace'
 import {
   activeProjectsByRecency,
   archivedProjects,
   conversationsForProject,
+  archivedConversationsForProject,
   capConversations,
   rowState,
   resumeTabSpec,
+  composerTabSpec,
+  openSessionTabSpec,
+  terminalTabSpec,
   conversationDragPayload,
   teardownOffersWorktree,
   CONVERSATION_DND_TYPE,
@@ -48,10 +53,16 @@ async function refresh(): Promise<void> {
     // A read failure must never blank the sidebar mid-session; keep the last data.
   }
 }
+// The default shell for an instant Terminal launch (S6). Resolved once on mount.
+const defaultShell = ref('')
 onMounted(() => {
   void refresh()
   // Main nudges on any stored change (a spawn, codex id discovery, archive/restore).
   offChange = window.api.onSidebarChanged(() => void refresh())
+  window.api
+    .listShells()
+    .then((s) => (defaultShell.value = s.default))
+    .catch(() => (defaultShell.value = ''))
 })
 onBeforeUnmount(() => offChange?.())
 
@@ -175,6 +186,53 @@ async function restoreProject(id: string): Promise<void> {
   void refresh()
 }
 
+// S6: launch directly into a project. AI opens a folder-locked composer; Open and
+// Terminal spawn immediately. Everything opens into the LEFTMOST pane (never
+// surprise-open where the user is not looking); a drag targets a specific pane.
+function launchInProject(project: ProjectInfo, pick: { variant: 'agent' | 'terminal'; mode?: 'task' | 'open' }): void {
+  const left = props.ws.panes.leftmostPaneId.value
+  if (pick.variant === 'terminal') {
+    props.ws.panes.addTab(terminalTabSpec(project, defaultShell.value || 'bash'), left)
+  } else if (pick.mode === 'open') {
+    props.ws.panes.addTab(openSessionTabSpec(project), left)
+  } else {
+    props.ws.panes.addTab(composerTabSpec(project), left)
+  }
+}
+
+// Per-project launcher menu refs, so New Project can pop the new row's menu.
+const menuRefs = new Map<string, { openMenu: () => void }>()
+function setMenuRef(id: string, el: unknown): void {
+  if (el) menuRefs.set(id, el as { openMenu: () => void })
+  else menuRefs.delete(id)
+}
+
+// New Project: pick a folder, create/refresh the project, then open its launcher so
+// the flow is folder -> choose -> running in one motion.
+async function newProject(): Promise<void> {
+  const folder = await window.api.pickFolder()
+  if (!folder) return
+  const project = await window.api.ensureProject(folder)
+  await refresh()
+  collapsedProjects.delete(project.id) // ensure it is expanded
+  await nextTick()
+  menuRefs.get(project.id)?.openMenu()
+}
+
+// Archived-conversations reveal (S6 restore), per project.
+const archivedConvOpen = reactive(new Set<string>())
+function toggleArchivedConvs(projectId: string): void {
+  if (archivedConvOpen.has(projectId)) archivedConvOpen.delete(projectId)
+  else archivedConvOpen.add(projectId)
+}
+function archivedConvsFor(projectId: string): ConversationInfo[] {
+  return archivedConversationsForProject(conversations.value, projectId)
+}
+async function restoreConversation(id: string): Promise<void> {
+  await window.api.setConversationArchived(id, false)
+  void refresh()
+}
+
 // Collapsed rail keeps live status visible at a glance.
 const railGlyphs = computed<TabStatus[]>(() =>
   props.ws.panes.allTabs.value
@@ -251,14 +309,25 @@ function onGripKey(e: KeyboardEvent): void {
     </div>
 
     <div class="sb-scroll">
-      <p v-if="!activeProjects.length" class="sb-empty">No projects yet. Launch a session to start one.</p>
+      <button class="new-project" @click="newProject">
+        <span class="new-project__plus" aria-hidden="true">+</span> New project
+      </button>
+
+      <p v-if="!activeProjects.length" class="sb-empty">No projects yet. Start one with "New project".</p>
 
       <template v-for="project in activeProjects" :key="project.id">
-        <button class="proj" :aria-expanded="isExpanded(project.id)" @click="toggleProject(project.id)">
-          <span class="tw" :class="{ 'tw--open': isExpanded(project.id) }">▸</span>
-          <span class="name">{{ project.title }}</span>
-          <span class="count">{{ projectConversations(project.id).length }}</span>
-        </button>
+        <div class="proj-row">
+          <button class="proj" :aria-expanded="isExpanded(project.id)" @click="toggleProject(project.id)">
+            <span class="tw" :class="{ 'tw--open': isExpanded(project.id) }">▸</span>
+            <span class="name">{{ project.title }}</span>
+            <span class="count">{{ projectConversations(project.id).length }}</span>
+          </button>
+          <NewTabMenu
+            :ref="(el) => setMenuRef(project.id, el)"
+            ghost
+            @pick="launchInProject(project, $event)"
+          />
+        </div>
 
         <div v-if="isExpanded(project.id)" class="convs">
           <div v-for="conv in capView(project.id).visible" :key="conv.id" class="conv-row">
@@ -290,6 +359,24 @@ function onGripKey(e: KeyboardEvent): void {
           >
             {{ capLabel(capView(project.id).next!, capView(project.id).visible.length, capView(project.id).total) }}
           </button>
+
+          <!-- S6: archived conversations, revealed on demand, each restorable. -->
+          <template v-if="archivedConvsFor(project.id).length">
+            <button
+              class="arch-convs-head"
+              :aria-expanded="archivedConvOpen.has(project.id)"
+              @click="toggleArchivedConvs(project.id)"
+            >
+              <span class="tw" :class="{ 'tw--open': archivedConvOpen.has(project.id) }">▸</span>
+              Archived ({{ archivedConvsFor(project.id).length }})
+            </button>
+            <div v-if="archivedConvOpen.has(project.id)" class="arch-convs">
+              <div v-for="conv in archivedConvsFor(project.id)" :key="conv.id" class="arch-conv-row">
+                <span class="label">{{ conv.title || 'session' }}</span>
+                <button class="restore" @click="restoreConversation(conv.id)">Restore</button>
+              </div>
+            </div>
+          </template>
         </div>
       </template>
     </div>
@@ -364,6 +451,22 @@ function onGripKey(e: KeyboardEvent): void {
 .sb-scroll { overflow-y: auto; padding: 6px 6px 12px; flex: 1; min-height: 0; }
 .sb-empty { color: var(--ink-muted); font-size: 13px; padding: 10px 10px; margin: 0; }
 
+/* New Project: the sidebar's one prominent action. Kept restrained (ghost with a
+   hairline), not teal, to respect the One Signal Rule across the app. */
+.new-project {
+  display: flex; align-items: center; gap: 6px; width: 100%; margin-bottom: 6px;
+  padding: 7px 10px; border: 1px solid var(--hairline-strong); background: transparent;
+  color: var(--ink-soft); font: inherit; font-size: 13px; font-weight: 600;
+  border-radius: var(--radius-sm); cursor: pointer; text-align: left;
+}
+.new-project:hover { color: var(--ink); background: var(--surface); }
+.new-project:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+.new-project__plus { color: var(--ink-muted); font-size: 15px; line-height: 1; }
+
+/* Project row: the expand button + the per-project launcher beside it. */
+.proj-row { display: flex; align-items: center; }
+.proj-row .proj { flex: 1; min-width: 0; }
+
 .proj {
   display: flex; align-items: center; gap: 6px; width: 100%;
   padding: 6px 8px; border: 0; background: transparent; cursor: pointer;
@@ -425,6 +528,19 @@ function onGripKey(e: KeyboardEvent): void {
 }
 .showmore:hover { color: var(--ink-soft); background: var(--surface); }
 .showmore:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+
+/* Archived conversations reveal (S6 restore), nested under a project. */
+.arch-convs-head {
+  display: flex; align-items: center; gap: 6px; margin: 2px 0 2px 26px; padding: 3px 6px;
+  background: transparent; border: 0; color: var(--ink-muted);
+  font-family: var(--font-mono, Consolas, monospace); font-size: 11px; cursor: pointer;
+  border-radius: 6px; text-align: left;
+}
+.arch-convs-head:hover { color: var(--ink-soft); background: var(--surface); }
+.arch-convs-head:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+.arch-convs { display: flex; flex-direction: column; gap: 1px; }
+.arch-conv-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 34px; color: var(--ink-muted); font-size: 13px; }
+.arch-conv-row .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .archived { border-top: 1px solid var(--hairline); padding: 6px; }
 .arch-head {

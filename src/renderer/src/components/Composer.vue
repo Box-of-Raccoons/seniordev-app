@@ -19,6 +19,10 @@ const props = defineProps<{
   initialInput?: string
   initialFolder?: string
   initialRole?: string
+  // S6: when launched from a project, the folder is fixed to the project. The name
+  // is shown as a read-only header instead of the folder picker, and the folder is
+  // pinned to initialFolder.
+  projectName?: string
 }>()
 const emit = defineEmits<{ (e: 'launch', payload: ComposerLaunch): void }>()
 
@@ -55,6 +59,8 @@ const shells = ref<string[]>([])
 const tools = ref<string[]>([])
 const yoloAvailable = ref(false)
 
+// S6: launched from a project → the folder is fixed; hide the picker, show a header.
+const locked = computed(() => !!props.projectName)
 const isTerminal = computed(() => props.variant === 'terminal')
 // Only the 'task' mode surfaces the role/description/YOLO controls; 'open' hides
 // them and launches the agent with nothing.
@@ -291,7 +297,14 @@ async function launch(): Promise<void> {
         >Open</button>
       </div>
 
-      <div class="field">
+      <!-- S6: launched from a project — the folder is the project, shown as a
+           read-only header instead of the picker. -->
+      <div v-if="locked" class="proj-header">
+        <span class="proj-header__label">Project</span>
+        <span class="proj-header__name">{{ projectName }}</span>
+      </div>
+
+      <div v-if="!locked" class="field">
         <label class="flabel" for="composer-folder">Folder</label>
         <div class="folder-row">
           <input
@@ -431,6 +444,10 @@ async function launch(): Promise<void> {
 .composer__inner { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 15px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .flabel { font-size: 12px; font-weight: 600; color: var(--ink-soft); }
+/* S6 project header: the fixed launch scope, in place of the folder picker. */
+.proj-header { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; }
+.proj-header__label { font-size: 12px; font-weight: 600; color: var(--ink-muted); }
+.proj-header__name { font-size: 14px; font-weight: 600; color: var(--ink); }
 
 .control {
   background: var(--surface); color: var(--ink);

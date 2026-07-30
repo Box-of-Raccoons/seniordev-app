@@ -261,6 +261,26 @@ describe('Composer', () => {
     expect(term.find('.wt-check').exists()).toBe(false)
   })
 
+  it('project-locked mode hides the folder picker, shows a project header, and still launches with the folder', async () => {
+    setWtInfo({ isRepo: false })
+    const w = mount(Composer, {
+      props: { variant: 'agent', tool: 'claude', projectName: 'my-app', initialFolder: 'C:/code/my-app' }
+    })
+    await flushPromises()
+    // No folder field; a read-only project header instead.
+    expect(w.find('#composer-folder').exists()).toBe(false)
+    expect(w.find('.proj-header__name').text()).toBe('my-app')
+    // Launch is enabled (folder is pinned) and carries the project folder.
+    await w.find('form').trigger('submit')
+    expect(w.emitted('launch')?.[0]?.[0]).toMatchObject({ mode: 'interactive', folder: 'C:/code/my-app' })
+  })
+
+  it('non-locked mode still shows the folder field (regression guard)', async () => {
+    const w = await mountComposer('agent')
+    expect(w.find('#composer-folder').exists()).toBe(true)
+    expect(w.find('.proj-header').exists()).toBe(false)
+  })
+
   it('launches on Ctrl+Enter in Open mode (no textarea to carry the shortcut)', async () => {
     ;(window.api as unknown as { listRecentFolders: unknown }).listRecentFolders = vi.fn(async () => ['C:/code/app'])
     const w = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialMode: 'open' } })

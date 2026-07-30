@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RightPanel from './RightPanel.vue'
-import { useWorkspace } from '../composables/useWorkspace'
+import { useWorkspace, type UseWorkspace } from '../composables/useWorkspace'
+import type { NewTab } from '../composables/usePanes'
 import type { StatusUpdateEvent } from '../../../shared/ipc'
 
 // Captured so tests can drive status updates as if from main.
@@ -30,13 +31,6 @@ beforeEach(() => {
   }
 })
 
-const NewTabMenu = {
-  emits: ['pick'],
-  template: `<div class="newtab-stub">
-    <button class="pick-ai" @click="$emit('pick', { variant: 'agent' })">c</button>
-    <button class="pick-term" @click="$emit('pick', { variant: 'terminal' })">t</button>
-  </div>`
-}
 const Composer = {
   name: 'Composer',
   props: ['variant', 'tool'],
@@ -49,7 +43,6 @@ const Composer = {
   </div>`
 }
 const stubs = {
-  NewTabMenu,
   Composer,
   TerminalView: {
     props: ['id', 'ticketKey', 'input', 'prompt', 'tool', 'resume', 'cwdOverride', 'shell', 'worktreePath', 'branch', 'worktreeChoice'],
@@ -71,6 +64,20 @@ function mountRP() {
   return mount(RightPanel, { props: { ws: useWorkspace() }, global: { stubs } })
 }
 
+// S6 removed the per-pane + menu; the sidebar now seeds sessions via ws.panes.
+// These helpers do the same through the component's own ws prop, so the existing
+// cases keep exercising the real add-tab path without a menu to click.
+async function seedAgent(w: ReturnType<typeof mountRP>): Promise<void> {
+  const spec: NewTab = { title: 'New session', kind: 'composer', variant: 'agent', initialMode: 'task' }
+  ;(w.props('ws') as UseWorkspace).panes.addTab(spec)
+  await w.vm.$nextTick()
+}
+async function seedTerm(w: ReturnType<typeof mountRP>): Promise<void> {
+  const spec: NewTab = { title: 'New shell', kind: 'composer', variant: 'terminal' }
+  ;(w.props('ws') as UseWorkspace).panes.addTab(spec)
+  await w.vm.$nextTick()
+}
+
 describe('RightPanel', () => {
   it('starts with no tabs and a mascot empty state', () => {
     const w = mountRP()
@@ -80,15 +87,15 @@ describe('RightPanel', () => {
 
   it('renders a single pane with no splitter until a second pane exists', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     expect(w.findAll('.pane')).toHaveLength(1)
     expect(w.findAll('.pane-splitter')).toHaveLength(0)
   })
 
   it('dragging a tab to the right edge spins off a second pane with a splitter', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click')
-    await w.find('.pick-ai').trigger('click') // two tabs, one pane
+    await seedAgent(w)
+    await seedAgent(w) // two tabs, one pane
     const tabs = w.findAll('.term-tab')
     await tabs[1].trigger('dragstart') // sets draggingPtyId → edge zones activate
     await w.find('.pane-edge--right').trigger('drop')
@@ -103,8 +110,8 @@ describe('RightPanel', () => {
 
   it('dropping a tab on another pane strip moves it and collapses the emptied pane', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click')
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
+    await seedAgent(w)
     await w.findAll('.term-tab')[1].trigger('dragstart')
     await w.find('.pane-edge--right').trigger('drop') // now two panes, one tab each
     await w.vm.$nextTick()
@@ -118,26 +125,26 @@ describe('RightPanel', () => {
     expect(w.findAll('.term-tab')).toHaveLength(2)
   })
 
-  it('picking AI from the menu opens an agent composer tab', async () => {
+  it('renders an agent composer for an agent composer tab', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     expect(w.findAll('.term-tab')).toHaveLength(1)
     expect(w.find('.composer-stub').attributes('data-variant')).toBe('agent')
-    // The tool is chosen in the composer, not at pick time, so no tool rides in.
+    // The tool is chosen in the composer, not at seed time, so no tool rides in.
     expect(w.find('.composer-stub').attributes('data-tool')).toBeUndefined()
     expect(w.text()).toContain('New session')
   })
 
-  it('picking Terminal opens a terminal-variant composer', async () => {
+  it('renders a terminal-variant composer for a terminal composer tab', async () => {
     const w = mountRP()
-    await w.find('.pick-term').trigger('click')
+    await seedTerm(w)
     expect(w.find('.composer-stub').attributes('data-variant')).toBe('terminal')
     expect(w.text()).toContain('New shell')
   })
 
   it('launching interactive morphs into a terminal carrying the chosen tool', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()
     expect(w.find('.composer-stub').exists()).toBe(false)
@@ -148,7 +155,7 @@ describe('RightPanel', () => {
 
   it('S5: a worktree launch makes the worktree path the terminal cwd (not the folder)', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     await w.find('.go-wt').trigger('click')
     await w.vm.$nextTick()
     const tv = w.find('.tv')
@@ -160,7 +167,7 @@ describe('RightPanel', () => {
 
   it('launching with YOLO morphs into a yolo view', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     await w.find('.go-yolo').trigger('click')
     await w.vm.$nextTick()
     expect(w.findAll('.yv')).toHaveLength(1)
@@ -169,7 +176,7 @@ describe('RightPanel', () => {
 
   it('launching Terminal mode morphs into a raw shell', async () => {
     const w = mountRP()
-    await w.find('.pick-term').trigger('click')
+    await seedTerm(w)
     await w.find('.go-term').trigger('click')
     await w.vm.$nextTick()
     const tv = w.find('.tv')
@@ -180,8 +187,8 @@ describe('RightPanel', () => {
 
   it('opens multiple tabs and closes one', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click')
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
+    await seedAgent(w)
     expect(w.findAll('.term-tab')).toHaveLength(2)
     await w.findAll('.term-tab__close')[0].trigger('click')
     expect(w.findAll('.term-tab')).toHaveLength(1)
@@ -189,7 +196,7 @@ describe('RightPanel', () => {
 
   it('each tab has a labeled button close control', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     const close = w.find('.term-tab__close')
     expect(close.element.tagName).toBe('BUTTON')
     expect(close.attributes('aria-label')).toMatch(/^Close /)
@@ -230,7 +237,7 @@ describe('RightPanel', () => {
 
   it('auto-closes a cleanly-exited agent tab (exit 0, spec 7.2)', async () => {
     const w = mount(RightPanel, { props: { ws: useWorkspace() }, global: { stubs: exitStubs(0) } })
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()
     expect(w.findAll('.term-tab')).toHaveLength(1)
@@ -242,7 +249,7 @@ describe('RightPanel', () => {
 
   it('marks a tab dead (not closed) on a non-zero exit', async () => {
     const w = mount(RightPanel, { props: { ws: useWorkspace() }, global: { stubs: exitStubs(1) } })
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()
     await w.find('.trigger-exit').trigger('click')
@@ -256,10 +263,10 @@ describe('RightPanel', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true) // window focused
 
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     await w.find('.go-int').trigger('click') // tab 1 → terminal
     await w.vm.$nextTick()
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     await w.find('.go-int').trigger('click') // tab 2 → terminal, now the active tab
     await w.vm.$nextTick()
 
@@ -289,7 +296,7 @@ describe('RightPanel', () => {
 
   it('resumes a dropped sidebar conversation into the target pane', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click') // a pane with a strip now exists
+    await seedAgent(w) // a pane with a strip now exists
     const payload = { id: 'conv-d', title: 'resumed one', tool: 'claude', cwd: '/w', agentSessionId: 'sess-d' }
     await w.find('.term-tabs').trigger('drop', { dataTransfer: convDataTransfer(payload) })
     await w.vm.$nextTick()
@@ -300,7 +307,7 @@ describe('RightPanel', () => {
 
   it('ignores a dropped non-resumable conversation (agentSessionId null)', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     expect(w.findAll('.term-tab')).toHaveLength(1)
     const payload = { id: 'c-null', title: 'nope', tool: 'codex', cwd: '/w', agentSessionId: null }
     await w.find('.term-tabs').trigger('drop', { dataTransfer: convDataTransfer(payload) })
@@ -312,7 +319,7 @@ describe('RightPanel', () => {
   // column with that session; dropped on a pane's body overlay it opens in THAT pane.
   it('dropping a conversation on the right shoulder opens it in a new split column', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click') // one pane, one tab
+    await seedAgent(w) // one pane, one tab
     const payload = { id: 'conv-e', title: 'edge one', tool: 'claude', cwd: '/w', agentSessionId: 'sess-e' }
     await w.find('.pane-edge--right').trigger('drop', { dataTransfer: convDataTransfer(payload) })
     await w.vm.$nextTick()
@@ -323,7 +330,7 @@ describe('RightPanel', () => {
 
   it('dropping a conversation on the pane body overlay opens it in that pane', async () => {
     const w = mountRP()
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     const payload = { id: 'conv-b', title: 'body one', tool: 'claude', cwd: '/w', agentSessionId: 'sess-b' }
     await w.find('.pane-drop').trigger('drop', { dataTransfer: convDataTransfer(payload) })
     await w.vm.$nextTick()
@@ -337,7 +344,7 @@ describe('RightPanel', () => {
     // is exactly what v-show="dragActive" drives.
     const ws = useWorkspace()
     const w = mount(RightPanel, { props: { ws }, global: { stubs } })
-    await w.find('.pick-ai').trigger('click')
+    await seedAgent(w)
     expect(w.find('.pane-drop').attributes('style')).toContain('display: none')
     expect(w.find('.pane-edge--right').attributes('style')).toContain('display: none')
     ws.draggingConversation.value = true

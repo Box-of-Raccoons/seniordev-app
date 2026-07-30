@@ -262,7 +262,7 @@ if (!gotLock) {
     ipcMain.on(WORKSPACE.save, (_e, layout: WorkspaceLayout) => workspace?.setLayout(layout))
     // S4: read-only projects/conversations + restore + sidebar-geometry read for
     // the Projects sidebar. Registered once both stores exist.
-    registerSidebarIpc({ persistence, workspace, getSender })
+    registerSidebarIpc({ persistence, workspace, getSender, source: store })
     // S5: worktree info/create/teardown. All git shelling goes through nodeGitRunner
     // (the only child_process-for-git module); configDir is where worktrees live.
     registerWorktreeIpc({ gitRunner: nodeGitRunner, source: store, persistence, configDir: defaultConfigDir(), getSender })
