@@ -9,6 +9,7 @@ import StatusGlyph from './StatusGlyph.vue'
 import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
 import { shouldNotify, notificationText } from '../status-notify'
 import { usePanes, type LiveTab } from '../composables/usePanes'
+import { shouldAutoClose } from '../auto-close'
 import type { ComposerLaunch } from './composer-types'
 import type { TabStatus, WorkspaceLayout } from '../../../shared/ipc'
 
@@ -300,8 +301,16 @@ function closeTerm(id: string): void {
   delete statuses[id]
 }
 
-function markExited(id: string): void {
-  panes.markExited(id)
+// A tab's pty exited. D3 / spec 7.2: cleanly-exited agent (terminal) or shell tabs
+// close automatically (nothing to look at; agent conversations survive in storage
+// and stay resumable). Everything else stays — YOLO for review, any failure so it
+// is visible — marked dead (line-through) via the existing markExited path.
+function onTabExited(tab: LiveTab, code: number): void {
+  if (shouldAutoClose(tab.kind, code)) {
+    closeTerm(tab.ptyId)
+    return
+  }
+  panes.markExited(tab.ptyId)
 }
 
 // A teleported tab is visible only when it is the active tab of its own pane.
@@ -404,7 +413,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
             :input="entry.tab.input"
             :prompt="entry.tab.prompt"
             :tool="entry.tab.tool"
-            @exited="markExited(entry.tab.ptyId)"
+            @exited="onTabExited(entry.tab, $event)"
             @resume="resumeYolo(entry.tab, $event)"
           />
           <TerminalView
@@ -412,7 +421,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
             :id="entry.tab.ptyId"
             :shell="entry.tab.shell"
             :cwd-override="entry.tab.cwdOverride"
-            @exited="markExited(entry.tab.ptyId)"
+            @exited="onTabExited(entry.tab, $event)"
           />
           <TerminalView
             v-else
@@ -425,7 +434,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
             :tool="entry.tab.tool"
             :resume="entry.tab.resume"
             :cwd-override="entry.tab.cwdOverride"
-            @exited="markExited(entry.tab.ptyId)"
+            @exited="onTabExited(entry.tab, $event)"
           />
         </div>
       </Teleport>
