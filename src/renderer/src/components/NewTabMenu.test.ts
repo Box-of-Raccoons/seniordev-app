@@ -10,27 +10,27 @@ async function open(props?: Record<string, unknown>) {
 }
 
 describe('NewTabMenu', () => {
-  it('offers AI Task, New Session and Terminal when opened (one tool: no submenu)', async () => {
+  it('offers New Session, AI Task and Terminal when opened (one tool: no submenu)', async () => {
     const w = await open({ tools: ['claude'] })
-    expect(w.findAll('.menu-item').map((b) => b.text())).toEqual(['AI Task', 'New Session', 'Terminal'])
+    expect(w.findAll('.menu-item').map((b) => b.text())).toEqual(['New Session', 'AI Task', 'Terminal'])
   })
 
   it('emits an agent pick (no tool — chosen later in the composer) for AI Task', async () => {
     const w = await open()
-    await w.findAll('.menu-item')[0].trigger('click')
+    await w.findAll('.menu-item').find((b) => b.text() === 'AI Task')!.trigger('click')
     expect(w.emitted('pick')?.[0]?.[0]).toEqual({ variant: 'agent' })
   })
 
   it('emits an Open-mode agent pick for New Session when only one tool is detected', async () => {
     const w = await open({ tools: ['claude'] })
-    await w.findAll('.menu-item')[1].trigger('click')
+    await w.findAll('.menu-item')[0].trigger('click') // New Session is first now
     expect(w.emitted('pick')?.[0]?.[0]).toEqual({ variant: 'agent', mode: 'open' })
   })
 
   it('New Session expands to a per-agent submenu when several tools are detected', async () => {
     const w = await open({ tools: ['claude', 'codex'] })
-    // Clicking the parent toggles the submenu instead of emitting.
-    await w.findAll('.menu-item')[1].trigger('click')
+    // Clicking the parent (first item) toggles the submenu instead of emitting.
+    await w.findAll('.menu-item')[0].trigger('click')
     expect(w.emitted('pick')).toBeUndefined()
     const subs = w.findAll('.menu-item--sub').map((b) => b.text())
     expect(subs).toEqual(['Claude', 'Codex'])
