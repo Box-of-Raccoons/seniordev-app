@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
-import type { StatusScanRequest, StatusUpdateEvent } from '../shared/ipc'
+import type { StatusUpdateEvent } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
 
 const api = {
@@ -52,17 +52,11 @@ const api = {
     ipcRenderer.on(YOLO.exit, listener)
     return () => ipcRenderer.off(YOLO.exit, listener)
   },
-  // S1 status: the renderer answers scan requests (scanning its xterm buffer for
-  // an approval prompt) and receives per-tab status updates to draw the glyph.
-  onStatusScanRequest: (cb: (e: StatusScanRequest) => void): (() => void) => {
-    const listener = (_e: IpcRendererEvent, payload: StatusScanRequest): void => cb(payload)
-    ipcRenderer.on(STATUS.scanRequest, listener)
-    return () => ipcRenderer.off(STATUS.scanRequest, listener)
-  },
-  sendStatusScanResult: (id: string, promptMatched: boolean): void => ipcRenderer.send(STATUS.scanResult, id, promptMatched),
-  // TEMPORARY (S1 step 4 capture): dump the scanned buffer to a debug file. Remove
-  // with status-debug-handlers.ts once approvalPatterns are captured.
-  debugDumpScan: (id: string, text: string): void => ipcRenderer.send('status:debugDump', id, text),
+  // S1 status: the renderer reports its buffer as active (content changed) or
+  // settled (stable → main scans the text), and receives per-tab status updates
+  // to draw the glyph.
+  sendStatusActive: (id: string): void => ipcRenderer.send(STATUS.active, id),
+  sendStatusSettled: (id: string, text: string): void => ipcRenderer.send(STATUS.settled, id, text),
   onStatusUpdate: (cb: (e: StatusUpdateEvent) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: StatusUpdateEvent): void => cb(payload)
     ipcRenderer.on(STATUS.update, listener)

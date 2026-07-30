@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchesPrompt, readBufferText, type ScanBuffer } from './status-matcher'
+import { readBufferText, normalizeForStability, stepIdle, initialIdleState, type ScanBuffer } from './status-matcher'
 
 // A fake xterm buffer: `lines` are the rows from baseY downward.
 function fakeBuffer(lines: string[], baseY = 0): ScanBuffer {
@@ -14,101 +14,83 @@ function fakeBuffer(lines: string[], baseY = 0): ScanBuffer {
 
 describe('readBufferText', () => {
   it('reads `rows` lines from baseY and joins them with newlines', () => {
-    const buf = fakeBuffer(['line one', 'line two', 'line three'])
-    expect(readBufferText(buf, 3)).toBe('line one\nline two\nline three')
+    expect(readBufferText(fakeBuffer(['a', 'b', 'c']), 3)).toBe('a\nb\nc')
   })
-
   it('starts at baseY, not 0, for a scrolled buffer', () => {
-    const buf = fakeBuffer(['visible a', 'visible b'], 100)
-    expect(readBufferText(buf, 2)).toBe('visible a\nvisible b')
+    expect(readBufferText(fakeBuffer(['x', 'y'], 100), 2)).toBe('x\ny')
   })
-
   it('treats a missing line as empty rather than throwing', () => {
-    const buf = fakeBuffer(['only line'])
-    expect(readBufferText(buf, 3)).toBe('only line\n\n')
+    expect(readBufferText(fakeBuffer(['only']), 3)).toBe('only\n\n')
   })
 })
 
-// These test the matcher MECHANISM with synthetic patterns. The real default
-// approvalPatterns are authored from CAPTURED rendered buffers (plan section 5);
-// the captured-text tests are added once those samples exist (step 4 completion).
-describe('matchesPrompt (mechanism)', () => {
-  it('no patterns → never matches (the graceful default)', () => {
-    expect(matchesPrompt('Do you want to proceed?', [])).toBe(false)
+describe('normalizeForStability', () => {
+  // The exact two frames captured 2026-07-29: the tool bullet ⏺ blinks to a space.
+  const ON = '⏺ Listing 1 directory…'
+  const OFF = '  Listing 1 directory…'
+
+  it('collapses the blinking ⏺ bullet so the two blink frames compare equal', () => {
+    expect(normalizeForStability(ON)).toBe(normalizeForStability(OFF))
   })
 
-  it('matches when a pattern regex hits the buffer text', () => {
-    expect(matchesPrompt('  ❯ 1. Yes\n  2. No', ['❯\\s*1\\.\\s*Yes'])).toBe(true)
+  it('leaves the approval menu (❯ 1. Yes) intact for scanning', () => {
+    expect(normalizeForStability(' ❯ 1. Yes\n   2. No')).toContain('❯ 1. Yes')
   })
 
-  it('does not match when no pattern hits', () => {
-    expect(matchesPrompt('building project...\ncompiled ok', ['Do you want to proceed'])).toBe(false)
-  })
-
-  it('is case-insensitive', () => {
-    expect(matchesPrompt('ALLOW THIS ACTION?', ['allow this action'])).toBe(true)
-  })
-
-  it('skips a malformed regex and still tries the others', () => {
-    // '(' is an invalid regex source; it must be skipped, not thrown, and the
-    // valid pattern after it must still match.
-    expect(matchesPrompt('proceed? (y/n)', ['(', 'proceed\\?'])).toBe(true)
-  })
-
-  it('ignores empty pattern strings', () => {
-    expect(matchesPrompt('anything', ['', ''])).toBe(false)
-  })
-
-  it('matches if ANY of several patterns hits', () => {
-    expect(matchesPrompt('waiting for approval', ['no-match-a', 'approval', 'no-match-b'])).toBe(true)
+  it('does not touch ordinary text', () => {
+    expect(normalizeForStability('building project...')).toBe('building project...')
   })
 })
 
-// The gate for step 4: the matcher run against text CAPTURED from real rendered
-// xterm buffers (2026-07-29, ~/.config/SeniorDev/status-scan-debug.txt), not
-// invented text. Patterns here mirror the shipped CLI_PRESETS; a separate
-// main-side test pins the presets themselves to these same captures.
-const CLAUDE_PATTERNS = ['Do you want to proceed\\?', 'Esc to cancel.*Tab to amend']
-const CODEX_PATTERNS = ['Would you like to run the following command\\?', 'Press enter to confirm or esc to cancel']
+// stepIdle is the buffer-stability decision. It must treat a repaint that renders
+// the SAME text as "unchanged" (so a ~600ms cursor-blink stream still settles),
+// and only settle once the text has held still for the quiet window.
+describe('stepIdle', () => {
+  const Q = 700
 
-// A real claude 2.1.212 bash-permission prompt.
-const CLAUDE_PROMPT = [
-  ' Do you want to proceed?',
-  ' ❯ 1. Yes',
-  '   2. No',
-  '',
-  ' Esc to cancel · Tab to amend · ctrl+e to explain'
-].join('\n')
-
-// A real codex-cli 0.146.0 command-approval prompt.
-const CODEX_PROMPT = [
-  '  Would you like to run the following command?',
-  '',
-  '  $ open -a "Google Chrome"',
-  '› 1. Yes, proceed (y)',
-  '',
-  '  Press enter to confirm or esc to cancel'
-].join('\n')
-
-// A captured NON-prompt buffer: an idle shell, plus a line of ordinary codex
-// working output. Neither should read as an approval prompt.
-const IDLE_SHELL = 'unknown1a22c802d291:code hardyspry$ '
-const CODEX_WORKING = '• I’ll list the /home directory entries.'
-
-describe('matchesPrompt against captured buffers', () => {
-  it('detects the claude permission prompt', () => {
-    expect(matchesPrompt(CLAUDE_PROMPT, CLAUDE_PATTERNS)).toBe(true)
+  it('a content change while settled reports active and resets to active phase', () => {
+    let s = { lastText: 'old', lastChangeTs: 0, phase: 'settled' as const }
+    const r = stepIdle(s, 'new', 1000, Q)
+    expect(r.emit).toBe('active')
+    expect(r.state).toEqual({ lastText: 'new', lastChangeTs: 1000, phase: 'active' })
   })
-  it('detects the codex command-approval prompt', () => {
-    expect(matchesPrompt(CODEX_PROMPT, CODEX_PATTERNS)).toBe(true)
+
+  it('a content change while already active does not re-report active', () => {
+    let s = { lastText: 'a', lastChangeTs: 0, phase: 'active' as const }
+    const r = stepIdle(s, 'b', 500, Q)
+    expect(r.emit).toBeNull()
+    expect(r.state.lastChangeTs).toBe(500) // timer reset by the change
   })
-  it('does not fire on an idle shell or on ordinary agent output', () => {
-    const allPatterns = [...CLAUDE_PATTERNS, ...CODEX_PATTERNS] // shell tabs scan the union (plan section 3)
-    expect(matchesPrompt(IDLE_SHELL, allPatterns)).toBe(false)
-    expect(matchesPrompt(CODEX_WORKING, allPatterns)).toBe(false)
+
+  it('an unchanged repaint before the quiet window does NOT settle', () => {
+    let s = { lastText: 'same', lastChangeTs: 0, phase: 'active' as const }
+    const r = stepIdle(s, 'same', 600, Q) // only 600ms of stability
+    expect(r.emit).toBeNull()
+    expect(r.state.phase).toBe('active')
   })
-  it('does not cross-match: claude patterns miss the codex prompt and vice versa', () => {
-    expect(matchesPrompt(CODEX_PROMPT, CLAUDE_PATTERNS)).toBe(false)
-    expect(matchesPrompt(CLAUDE_PROMPT, CODEX_PATTERNS)).toBe(false)
+
+  it('unchanged for the full quiet window → settled, reported once', () => {
+    let s = { lastText: 'same', lastChangeTs: 0, phase: 'active' as const }
+    const r1 = stepIdle(s, 'same', 700, Q)
+    expect(r1.emit).toBe('settled')
+    expect(r1.state.phase).toBe('settled')
+    // already settled → no repeat on the next unchanged poll
+    const r2 = stepIdle(r1.state, 'same', 1200, Q)
+    expect(r2.emit).toBeNull()
+  })
+
+  it('the cursor-blink case: identical repaints across time still settle', () => {
+    // Simulate polls at 350ms with byte-identical buffer text (the confirmed
+    // real behaviour of the blinking-dot prompt).
+    let s = initialIdleState(0)
+    s = stepIdle(s, 'PROMPT', 350, Q).state // first content → active phase, timer at 350
+    const a = stepIdle(s, 'PROMPT', 700, Q) // 350ms stable
+    expect(a.emit).toBeNull()
+    const b = stepIdle(a.state, 'PROMPT', 1050, Q) // 700ms stable
+    expect(b.emit).toBe('settled')
+  })
+
+  it('initialIdleState starts active with the mount time as the change mark', () => {
+    expect(initialIdleState(42)).toEqual({ lastText: '', lastChangeTs: 42, phase: 'active' })
   })
 })

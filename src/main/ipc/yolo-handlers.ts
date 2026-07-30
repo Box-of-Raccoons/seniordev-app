@@ -19,7 +19,7 @@ export function registerYoloIpc(
   const runner = new YoloRunner(spawner, {
     onLog: (id, text) => {
       getSender()?.send(YOLO.log, { id, text })
-      deps.statusHub?.data(id)
+      deps.statusHub?.active(id)
     },
     onPr: (id, url, term) => getSender()?.send(YOLO.pr, { id, url, term }),
     onExit: (id, e) => {

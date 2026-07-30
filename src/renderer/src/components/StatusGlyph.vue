@@ -78,12 +78,15 @@ const LABELS: Record<TabStatus, string> = {
 .bounce { transform-box: fill-box; transform-origin: center; animation: sd-bounce 1.4s ease-in-out infinite; }
 
 /* Motion conveys state, so it must survive with animation off: working goes
-   static (still a solid amber circle), needsYou swaps to the heavier triangle. */
-.rm-only { display: none; }
+   static (still a solid amber circle), needsYou swaps to the heavier triangle.
+   These display toggles are scoped under .status-glyph so they out-specify the
+   `.status-glyph svg { display: block }` rule above (which would otherwise force
+   the hidden variant back on and render two triangles). */
+.status-glyph .rm-only { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  .work-pulse { animation: none; }
-  .bounce { animation: none; }
-  .rm-hide { display: none; }
-  .rm-only { display: inline-flex; }
+  .status-glyph .work-pulse { animation: none; }
+  .status-glyph .bounce { animation: none; }
+  .status-glyph .rm-hide { display: none; }
+  .status-glyph .rm-only { display: inline-flex; }
 }
 </style>

@@ -12,10 +12,12 @@ export const CLI_PRESETS = {
       outputParser: 'claude-stream-json'
     },
     resumeArgs: ['--resume', '{{sessionId}}'],
-    // Captured 2026-07-29 from a real claude 2.1.212 permission prompt (rendered
-    // xterm buffer, plan section 5). The dialog's own question and footer lines,
-    // which do not appear in ordinary output.
-    approvalPatterns: ['Do you want to proceed\\?', 'Esc to cancel.*Tab to amend']
+    // An approval prompt's selection menu: the cursor glyph, a NUMBERED option, a
+    // word. Validated 2026-07-29 against captured claude 2.1.212 prompts (❯ U+276F)
+    // and codex 0.146.0 (› U+203A). The numbered-option requirement is what keeps
+    // it off slash-command menus like /mcp, which use the same cursor but list
+    // names ("❯ claude.ai Gmail") with no "N." Structure by Hardy; chars from capture.
+    approvalPatterns: ['[❯›]\\s+\\d+\\.\\s+\\w']
   },
   codex: {
     command: 'codex',
@@ -34,10 +36,9 @@ export const CLI_PRESETS = {
       outputParser: 'codex-jsonl'
     },
     resumeArgs: ['resume', '{{sessionId}}'],
-    // Captured 2026-07-29 from a real codex-cli 0.146.0 command-approval prompt
-    // (rendered xterm buffer, plan section 5). The dialog's header and footer,
-    // which do not appear in ordinary output.
-    approvalPatterns: ['Would you like to run the following command\\?', 'Press enter to confirm or esc to cancel']
+    // Same tool-agnostic selection-menu pattern as claude (see there). Codex's
+    // cursor glyph is › (U+203A); the pattern's char class covers both.
+    approvalPatterns: ['[❯›]\\s+\\d+\\.\\s+\\w']
   }
 } as const
 

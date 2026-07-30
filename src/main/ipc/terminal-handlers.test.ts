@@ -140,32 +140,24 @@ describe('registerTerminalIpc', () => {
     vi.useRealTimers()
   })
 
-  it('still delivers the prompt when the status hub shares the same activity tracker', async () => {
-    // The core-path risk of the orchestration: the hub arms a CONTINUOUS quiet
-    // watch on the same activity instance that prompt delivery uses. Prove the two
-    // watches coexist and delivery is unaffected, under the same fake-timer harness.
+  it('delivers the prompt normally with the status hub attached, and registers the tab', async () => {
+    // The status hub no longer touches the activity tracker (idle detection moved
+    // to the renderer), but it still registers pty tabs and receives exit. Prove
+    // delivery is unaffected and the tab is registered working on spawn.
     vi.useFakeTimers()
     const pty = fakePty()
     const activity = createSessionActivity()
-    const scanRequests: unknown[] = []
     const updates: { id: string; status: string }[] = []
-    const statusHub = createStatusHub({
-      activity,
-      sendScanRequest: (r) => scanRequests.push(r),
-      sendUpdate: (e) => updates.push(e)
-    })
+    const statusHub = createStatusHub({ sendUpdate: (e) => updates.push(e) })
     registerTerminalIpc(() => undefined, () => pty as unknown as PtyProcess, { source, activity, statusHub })
     await handleMap.get('pty:spawn')!({}, { id: 'a', ticketKey: 'PROJ-1', prompt: { name: 'p' }, cols: 80, rows: 24 })
     expect(updates).toContainEqual({ id: 'a', status: 'working' }) // hub registered the tab
 
     pty.emitData('boot screen')
     await vi.advanceTimersByTimeAsync(800)
-    // Delivery fires exactly as without the hub…
     expect(pty.write).toHaveBeenNthCalledWith(1, 'Do PROJ-1')
     await vi.advanceTimersByTimeAsync(300)
     expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
-    // …and the hub's own watch observed the same quiet and asked for a scan.
-    expect(scanRequests).toContainEqual({ id: 'a', patterns: [] })
     vi.useRealTimers()
   })
 

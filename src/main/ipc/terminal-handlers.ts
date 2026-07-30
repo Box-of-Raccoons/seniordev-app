@@ -64,8 +64,11 @@ export function registerTerminalIpc(
   const manager = new TerminalManager(spawner, {
     onData: (id, data) => {
       getSender()?.send(TERM.data, { id, data })
+      // Feeds prompt delivery's byte-quiet watch only. Status "working" is NOT
+      // driven from here: these TUIs repaint every ~600ms, so every byte would
+      // pin the tab to working and it could never settle to idle. The renderer
+      // reports working from real buffer-CONTENT change instead (STATUS.active).
       activity.data(id)
-      deps.statusHub?.data(id)
     },
     onExit: (id, exitCode) => {
       getSender()?.send(TERM.exit, { id, exitCode })

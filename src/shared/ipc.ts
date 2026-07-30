@@ -109,17 +109,20 @@ export const YOLO = {
 // the renderer that draws the glyph; the machine LOGIC stays in main.
 export type TabStatus = 'working' | 'idle' | 'needsYou' | 'needsReview' | 'failed'
 
-// Quiet detection lives in main, the buffer scan in the renderer (spec 5.4). On
-// each quiet event main sends a scanRequest carrying the tool's approvalPatterns;
-// the renderer scans that tab's xterm buffer and replies with scanResult; main
-// feeds the result to the state machine and pushes the resulting `update` back.
-export interface StatusScanRequest { id: string; patterns: string[] }
-export interface StatusScanResult { id: string; promptMatched: boolean }
+// Idle detection is renderer-side, by RENDERED-BUFFER stability rather than pty
+// byte silence: the interactive TUIs repaint (cursor blink) every ~600ms, so the
+// byte stream never goes quiet, but xterm collapses those repaints into a buffer
+// whose text is stable. The renderer polls its own buffer and reports `active`
+// when the text changes and `settled` (with the text) when it has been stable a
+// beat. Main matches the settled text against the tool's approvalPatterns and
+// pushes the resulting `update` back for the glyph.
+export interface StatusActiveEvent { id: string }
+export interface StatusSettledEvent { id: string; text: string }
 export interface StatusUpdateEvent { id: string; status: TabStatus }
 export const STATUS = {
-  scanRequest: 'status:scanRequest', // main → renderer
-  scanResult: 'status:scanResult', // renderer → main
-  update: 'status:update' // main → renderer
+  active: 'status:active', // renderer → main (buffer text changed → working)
+  settled: 'status:settled', // renderer → main (buffer text stable → scan for a prompt)
+  update: 'status:update' // main → renderer (the resolved glyph state)
 } as const
 
 export type MenuAction = 'new-session' | 'app-config' | 'prompt-config' | 'about'

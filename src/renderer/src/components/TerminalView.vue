@@ -5,7 +5,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { TERM_BG, TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
 import { clipboardAction } from '../terminal-clipboard'
-import { matchesPrompt, readBufferText } from '../status-matcher'
+import { readBufferText, normalizeForStability, stepIdle, initialIdleState, type IdleState } from '../status-matcher'
 
 const props = defineProps<{ id: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string }>()
 const emit = defineEmits<{ (e: 'exited', code: number): void }>()
@@ -14,7 +14,11 @@ let term: Terminal | null = null
 let fit: FitAddon | null = null
 let offData: (() => void) | null = null
 let offExit: (() => void) | null = null
-let offScan: (() => void) | null = null
+// S1 status: poll the buffer for content stability and report active/settled.
+let statusPoll: ReturnType<typeof setInterval> | null = null
+let idle: IdleState | null = null
+const STATUS_POLL_MS = 350
+const STATUS_QUIET_MS = 700
 let ro: ResizeObserver | null = null
 let onContextMenu: ((e: MouseEvent) => void) | null = null
 
@@ -51,13 +55,6 @@ onMounted(async () => {
   // Ctrl+V and the Shift variants copy/paste) lives in clipboardAction.
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== 'keydown') return true
-    // TEMPORARY (S1 step 4 capture): Ctrl+Shift+Y dumps the scanned buffer to a
-    // file so approvalPatterns can be authored from real rendered text. Remove
-    // with status-debug-handlers.ts once patterns are captured.
-    if (e.ctrlKey && e.shiftKey && (e.key === 'Y' || e.key === 'y') && term) {
-      window.api.debugDumpScan(props.id, readBufferText(term.buffer.active, term.rows))
-      return false
-    }
     const action = clipboardAction(e, term?.hasSelection() ?? false)
     if (action === 'copy') { copySelection(); return false }
     if (action === 'paste') { pasteText(); return false }
@@ -77,16 +74,10 @@ onMounted(async () => {
   offExit = window.api.onTerminalExit((e) => {
     if (e.id === props.id) {
       term?.write(`\r\n[process exited: ${e.exitCode}]\r\n`)
+      // Stop polling a dead tab; main owns the exit status now.
+      if (statusPoll) { clearInterval(statusPoll); statusPoll = null }
       emit('exited', e.exitCode)
     }
-  })
-  // S1 status: main asks (on quiet) whether THIS tab's buffer shows an approval
-  // prompt. Scan the rendered buffer and reply. Same id-filter as data/exit above
-  // (grounding 1.3: component-local, no renderer-wide registry).
-  offScan = window.api.onStatusScanRequest((req) => {
-    if (req.id !== props.id || !term) return
-    const text = readBufferText(term.buffer.active, term.rows)
-    window.api.sendStatusScanResult(props.id, matchesPrompt(text, req.patterns))
   })
 
   try {
@@ -129,13 +120,29 @@ onMounted(async () => {
     if (term) window.api.resizeTerminal(props.id, term.cols, term.rows)
   })
   ro.observe(host.value)
+
+  // S1 status: poll the rendered buffer for content stability. A change reports
+  // `active` (working); staying stable for STATUS_QUIET_MS reports `settled` with
+  // the text for main to scan. Immune to cursor-blink repaints, which leave the
+  // buffer text unchanged. See stepIdle.
+  idle = initialIdleState(Date.now())
+  statusPoll = setInterval(() => {
+    if (!term?.buffer?.active || !idle) return
+    // Compare stability on text with blinking glyphs neutralized, so a lone
+    // blinking bullet doesn't stop the screen from ever settling.
+    const text = normalizeForStability(readBufferText(term.buffer.active, term.rows))
+    const { state, emit } = stepIdle(idle, text, Date.now(), STATUS_QUIET_MS)
+    idle = state
+    if (emit === 'active') window.api.sendStatusActive(props.id)
+    else if (emit === 'settled') window.api.sendStatusSettled(props.id, text)
+  }, STATUS_POLL_MS)
 })
 
 onBeforeUnmount(() => {
   unmounted = true
   offData?.()
   offExit?.()
-  offScan?.()
+  if (statusPoll) { clearInterval(statusPoll); statusPoll = null }
   ro?.disconnect()
   if (onContextMenu) host.value?.removeEventListener('contextmenu', onContextMenu)
   window.api.killTerminal(props.id)

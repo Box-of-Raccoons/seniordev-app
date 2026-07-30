@@ -1,139 +1,108 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { createStatusHub } from './status-hub'
-import type { SessionActivity } from './activity'
-import type { StatusScanRequest, StatusUpdateEvent } from '../../shared/ipc'
+import type { StatusUpdateEvent } from '../../shared/ipc'
 
-// A fake activity tracker whose quiet watch we fire on demand. Mirrors the real
-// one-shot watch: `watch` stores the callback; the hub re-arms by calling watch
-// again, so `fireQuiet` always invokes the latest.
 function harness() {
-  const watchers = new Map<string, () => void>()
   const updates: StatusUpdateEvent[] = []
-  const scans: StatusScanRequest[] = []
-  const activity: SessionActivity = {
-    data: vi.fn(),
-    clear: vi.fn(),
-    watch: (id, _opts, onQuiet) => {
-      watchers.set(id, onQuiet)
-      return () => { if (watchers.get(id) === onQuiet) watchers.delete(id) }
-    }
-  }
-  const hub = createStatusHub({
-    activity,
-    sendScanRequest: (r) => scans.push(r),
-    sendUpdate: (e) => updates.push(e)
-  })
-  return {
-    hub,
-    updates,
-    scans,
-    fireQuiet: (id: string) => watchers.get(id)?.(),
-    isArmed: (id: string) => watchers.has(id)
-  }
+  const hub = createStatusHub({ sendUpdate: (e) => updates.push(e) })
+  return { hub, updates, last: () => updates.at(-1) }
 }
 
+const PROMPT = ['Do you want to proceed\\?'] // a real captured claude pattern
+
 describe('createStatusHub — pty lifecycle', () => {
-  it('registers working and arms a quiet watch', () => {
+  it('registers working', () => {
     const h = harness()
-    h.hub.registerPty('a', 'interactive', ['Proceed\\?'])
+    h.hub.registerPty('a', 'interactive', PROMPT)
     expect(h.updates).toEqual([{ id: 'a', status: 'working' }])
-    expect(h.isArmed('a')).toBe(true)
   })
 
-  it('on quiet it asks the renderer to scan, then transitions on the reply', () => {
+  it('settled text with no prompt → idle; with a prompt → needsYou', () => {
     const h = harness()
-    h.hub.registerPty('a', 'interactive', ['Proceed\\?'])
-    h.fireQuiet('a')
-    expect(h.scans).toEqual([{ id: 'a', patterns: ['Proceed\\?'] }])
-    // No state change until the reply comes back.
-    expect(h.updates).toEqual([{ id: 'a', status: 'working' }])
-
-    h.hub.scanResult('a', false)
-    expect(h.updates.at(-1)).toEqual({ id: 'a', status: 'idle' })
+    h.hub.registerPty('a', 'interactive', PROMPT)
+    h.hub.settled('a', 'building project...\ncompiled ok')
+    expect(h.last()).toEqual({ id: 'a', status: 'idle' })
+    h.hub.active('a') // output resumed
+    expect(h.last()).toEqual({ id: 'a', status: 'working' })
+    h.hub.settled('a', ' Do you want to proceed?\n ❯ 1. Yes\n   2. No')
+    expect(h.last()).toEqual({ id: 'a', status: 'needsYou' })
   })
 
-  it('a matched scan → needsYou', () => {
+  it('a re-scan can flip idle → needsYou without an intervening active', () => {
     const h = harness()
-    h.hub.registerPty('a', 'interactive', ['Proceed\\?'])
-    h.fireQuiet('a')
-    h.hub.scanResult('a', true)
-    expect(h.updates.at(-1)).toEqual({ id: 'a', status: 'needsYou' })
+    h.hub.registerPty('a', 'interactive', PROMPT)
+    h.hub.settled('a', 'idle output')
+    expect(h.last()).toEqual({ id: 'a', status: 'idle' })
+    h.hub.settled('a', 'Do you want to proceed?')
+    expect(h.last()).toEqual({ id: 'a', status: 'needsYou' })
   })
 
-  it('re-arms after each quiet so later turns are scanned too', () => {
-    const h = harness()
-    h.hub.registerPty('a', 'interactive', ['Proceed\\?'])
-    h.fireQuiet('a')
-    h.hub.scanResult('a', false) // idle
-    h.hub.data('a') // working again
-    expect(h.updates.at(-1)).toEqual({ id: 'a', status: 'working' })
-    h.fireQuiet('a') // still armed → second scan request
-    expect(h.scans).toHaveLength(2)
-  })
-
-  it('does not push redundant updates (working output stays working silently)', () => {
+  it('does not push redundant updates', () => {
     const h = harness()
     h.hub.registerPty('a', 'interactive', [])
-    h.hub.data('a')
-    h.hub.data('a')
+    h.hub.active('a')
+    h.hub.active('a')
     expect(h.updates).toEqual([{ id: 'a', status: 'working' }]) // only the initial
   })
 
-  it('interactive exit 0 → failed (S1 interim), non-zero → failed; watch stops', () => {
+  it('interactive exit 0 → failed (S1 interim), non-zero → failed', () => {
     const h = harness()
     h.hub.registerPty('a', 'interactive', [])
     h.hub.exit('a', 0)
-    expect(h.updates.at(-1)).toEqual({ id: 'a', status: 'failed' })
-    expect(h.isArmed('a')).toBe(false)
+    expect(h.last()).toEqual({ id: 'a', status: 'failed' })
+  })
+
+  it('empty patterns never fire needsYou (graceful default)', () => {
+    const h = harness()
+    h.hub.registerPty('a', 'shell', [])
+    h.hub.settled('a', 'Do you want to proceed?')
+    expect(h.last()).toEqual({ id: 'a', status: 'idle' })
   })
 })
 
 describe('createStatusHub — headless lifecycle', () => {
-  it('registers working, never arms a scan, and resolves on exit', () => {
+  it('registers working, is never settled, resolves on exit', () => {
     const h = harness()
     h.hub.registerHeadless('y')
     expect(h.updates).toEqual([{ id: 'y', status: 'working' }])
-    expect(h.isArmed('y')).toBe(false) // headless is never scanned
-
-    h.hub.data('y') // a log line keeps it working
-    expect(h.updates).toEqual([{ id: 'y', status: 'working' }])
-
+    h.hub.active('y') // a log line keeps it working
+    h.hub.settled('y', 'Do you want to proceed?') // headless is never scanned
+    expect(h.updates).toEqual([{ id: 'y', status: 'working' }]) // unchanged
     h.hub.exit('y', 0)
-    expect(h.updates.at(-1)).toEqual({ id: 'y', status: 'needsReview' })
+    expect(h.last()).toEqual({ id: 'y', status: 'needsReview' })
   })
 
   it('headless non-zero exit → failed', () => {
     const h = harness()
     h.hub.registerHeadless('y')
     h.hub.exit('y', 1)
-    expect(h.updates.at(-1)).toEqual({ id: 'y', status: 'failed' })
+    expect(h.last()).toEqual({ id: 'y', status: 'failed' })
   })
 })
 
 describe('createStatusHub — housekeeping', () => {
   it('ignores events for unknown ids', () => {
     const h = harness()
-    h.hub.data('ghost')
-    h.hub.scanResult('ghost', true)
+    h.hub.active('ghost')
+    h.hub.settled('ghost', 'x')
     h.hub.exit('ghost', 0)
     expect(h.updates).toEqual([])
   })
 
-  it('dispose cancels the watch and forgets the session', () => {
+  it('dispose forgets the session', () => {
     const h = harness()
     h.hub.registerPty('a', 'shell', [])
     h.hub.dispose('a')
-    expect(h.isArmed('a')).toBe(false)
-    h.hub.data('a') // forgotten → no-op
+    h.hub.active('a') // forgotten → no-op
     expect(h.updates).toEqual([{ id: 'a', status: 'working' }])
   })
 
   it('a full pty turn: working → idle → working → needsYou → failed', () => {
     const h = harness()
-    h.hub.registerPty('a', 'interactive', ['Proceed\\?'])
-    h.fireQuiet('a'); h.hub.scanResult('a', false) // idle
-    h.hub.data('a') // working
-    h.fireQuiet('a'); h.hub.scanResult('a', true) // needsYou
+    h.hub.registerPty('a', 'interactive', PROMPT)
+    h.hub.settled('a', 'done') // idle
+    h.hub.active('a') // working
+    h.hub.settled('a', 'Do you want to proceed?') // needsYou
     h.hub.exit('a', 1) // failed
     expect(h.updates.map((u) => u.status)).toEqual(['working', 'idle', 'working', 'needsYou', 'failed'])
   })
