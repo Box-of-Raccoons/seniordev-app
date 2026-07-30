@@ -21,6 +21,18 @@ export function menuTemplate(send: (action: MenuAction) => void, dev = false): M
     },
     { role: 'editMenu' },
     {
+      label: 'Panes',
+      submenu: [
+        // Move the active tab to the pane on either side, spilling into a new edge
+        // column past the last pane. No accelerator here: a menu accelerator loses
+        // to a focused xterm (which consumes the keydown), so the keyboard binding
+        // lives in a capture-phase handler in the renderer (see App.vue). These
+        // stay as focus-independent mouse actions and discoverability.
+        { label: 'Move Tab to Left Pane (Cmd/Ctrl+Shift+Left)', click: () => send('move-tab-left') },
+        { label: 'Move Tab to Right Pane (Cmd/Ctrl+Shift+Right)', click: () => send('move-tab-right') }
+      ]
+    },
+    {
       label: 'Config',
       submenu: [
         { label: 'App Config…', click: () => send('app-config') },

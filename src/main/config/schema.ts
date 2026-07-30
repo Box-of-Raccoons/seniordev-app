@@ -52,7 +52,11 @@ export const ConfigSchema = z.object({
   repos: z.array(RepoSchema).default([]),
   promptsDir: z.string().optional(),
   yoloPreamble: z.string().optional(),
-  yoloRecap: z.string().optional()
+  yoloRecap: z.string().optional(),
+  // Minimum width, in px, a workspace pane can be resized to (S2 split panes).
+  // Configurable because VS Code's fixed ~329px minimum is their single
+  // most-requested change in this area; 320 is a sensible default.
+  minPaneWidth: z.number().int().positive().default(320)
 })
 
 export type Config = z.infer<typeof ConfigSchema>

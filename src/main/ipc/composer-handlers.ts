@@ -1,6 +1,6 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import type { Config } from '../config/schema'
-import { REPOS, DIALOG, SHELLS, TOOLS, type RepoInfo, type ShellsInfo } from '../../shared/ipc'
+import { REPOS, DIALOG, SHELLS, TOOLS, WORKSPACE, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../../shared/ipc'
 import { listRepos } from '../config/repos'
 import { shellsForPlatform, defaultShell } from '../terminal/shell'
 
@@ -54,5 +54,13 @@ export function registerComposerIpc(deps: ComposerDeps): void {
   ipcMain.handle(TOOLS.list, (): string[] => {
     const cfg = deps.getConfig()
     return cfg ? agentTools(cfg, deps.isAvailable) : []
+  })
+
+  // Resolved layout scalars for the renderer's pane system. Falls back to the
+  // schema default (320) when config hasn't loaded yet, so the renderer always
+  // gets a usable minimum.
+  ipcMain.handle(WORKSPACE.getSettings, (): WorkspaceSettings => {
+    const cfg = deps.getConfig()
+    return { minPaneWidth: cfg?.minPaneWidth ?? 320 }
   })
 }

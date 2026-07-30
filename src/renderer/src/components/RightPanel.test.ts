@@ -18,6 +18,7 @@ beforeEach(() => {
     listPrompts: vi.fn(async () => []), listRepos: vi.fn(async () => []),
     listShells: vi.fn(async () => ({ shells: ['pwsh'], default: 'pwsh' })),
     listTools: vi.fn(async () => ['claude']),
+    getWorkspaceSettings: vi.fn(async () => ({ minPaneWidth: 320 })),
     resolveRepo: vi.fn(async () => null),
     recordRecentFolder: vi.fn(),
     listRecentFolders: vi.fn(async () => []),
@@ -69,6 +70,46 @@ describe('RightPanel', () => {
     const w = mountRP()
     expect(w.findAll('.term-tab')).toHaveLength(0)
     expect(w.find('img.empty-state__art').exists()).toBe(true)
+  })
+
+  it('renders a single pane with no splitter until a second pane exists', async () => {
+    const w = mountRP()
+    await w.find('.pick-ai').trigger('click')
+    expect(w.findAll('.pane')).toHaveLength(1)
+    expect(w.findAll('.pane-splitter')).toHaveLength(0)
+  })
+
+  it('dragging a tab to the right edge spins off a second pane with a splitter', async () => {
+    const w = mountRP()
+    await w.find('.pick-ai').trigger('click')
+    await w.find('.pick-ai').trigger('click') // two tabs, one pane
+    const tabs = w.findAll('.term-tab')
+    await tabs[1].trigger('dragstart') // sets draggingPtyId → edge zones activate
+    await w.find('.pane-edge--right').trigger('drop')
+    await w.vm.$nextTick()
+    expect(w.findAll('.pane')).toHaveLength(2)
+    expect(w.findAll('.pane-splitter')).toHaveLength(1)
+    // One tab landed in each pane.
+    const panes = w.findAll('.pane')
+    expect(panes[0].findAll('.term-tab')).toHaveLength(1)
+    expect(panes[1].findAll('.term-tab')).toHaveLength(1)
+  })
+
+  it('dropping a tab on another pane strip moves it and collapses the emptied pane', async () => {
+    const w = mountRP()
+    await w.find('.pick-ai').trigger('click')
+    await w.find('.pick-ai').trigger('click')
+    await w.findAll('.term-tab')[1].trigger('dragstart')
+    await w.find('.pane-edge--right').trigger('drop') // now two panes, one tab each
+    await w.vm.$nextTick()
+    // Drag the lone tab of pane 2 onto pane 1's strip.
+    const pane2Tab = w.findAll('.pane')[1].find('.term-tab')
+    await pane2Tab.trigger('dragstart')
+    await w.findAll('.pane')[0].find('.term-tabs').trigger('drop')
+    await w.vm.$nextTick()
+    expect(w.findAll('.pane')).toHaveLength(1) // emptied pane removed
+    expect(w.findAll('.pane-splitter')).toHaveLength(0)
+    expect(w.findAll('.term-tab')).toHaveLength(2)
   })
 
   it('picking AI from the menu opens an agent composer tab', async () => {
