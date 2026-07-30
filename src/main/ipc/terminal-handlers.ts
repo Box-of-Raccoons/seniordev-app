@@ -153,7 +153,12 @@ export function registerTerminalIpc(
           cwd: launch.cwd,
           title: req.title ?? '',
           ptyId: req.id,
-          preAssignedSessionId: preAssigned ? req.conversationId : undefined
+          preAssignedSessionId: preAssigned ? req.conversationId : undefined,
+          // S5: recorded on the conversation (worktreePath/branch) and used to
+          // remember the project's last checkbox choice (worktreeDefault).
+          worktreePath: req.worktreePath,
+          branch: req.branch,
+          worktreeDefault: req.worktreeDefault
         })
       }
       // NOTE: no bracketed-paste framing here — the raw ESC of \x1b[200~ registers

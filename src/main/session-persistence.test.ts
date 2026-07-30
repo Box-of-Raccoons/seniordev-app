@@ -300,3 +300,53 @@ describe('session persistence: codex backfill', () => {
     expect(conversations.get('claude-c')?.agentSessionId).toBeNull()
   })
 })
+
+describe('session persistence: S5 worktree threading', () => {
+  let dir: string
+  const now = (): number => 1000
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('records worktreePath/branch on the conversation and remembers worktreeDefault on the project', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    let m = 0
+    const { projects, conversations } = stores(dir, now, () => `proj-${++m}`)
+    const p = createSessionPersistence({ projects, conversations, discover: async () => null })
+    p.onAgentSpawn({
+      conversationId: 'c1',
+      tool: 'claude',
+      cwd: '/repo',
+      title: 't',
+      preAssignedSessionId: 'c1',
+      worktreePath: '/cfg/worktrees/repo/feat',
+      branch: 'feat',
+      worktreeDefault: true
+    })
+    expect(conversations.get('c1')).toMatchObject({ worktreePath: '/cfg/worktrees/repo/feat', branch: 'feat' })
+    expect(projects.list()[0].worktreeDefault).toBe(true)
+  })
+
+  it('a resume (no worktree fields) does NOT wipe a recorded worktreePath/branch', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    let m = 0
+    const { projects, conversations } = stores(dir, now, () => `proj-${++m}`)
+    const p = createSessionPersistence({ projects, conversations, discover: async () => null })
+    p.onAgentSpawn({ conversationId: 'c1', tool: 'claude', cwd: '/repo', title: 't', preAssignedSessionId: 'c1', worktreePath: '/wt/x', branch: 'x', worktreeDefault: true })
+    // Re-spawn the SAME conversation with no worktree fields (a sidebar resume).
+    p.onAgentSpawn({ conversationId: 'c1', tool: 'claude', cwd: '/repo', title: 't', preAssignedSessionId: 'c1' })
+    expect(conversations.get('c1')).toMatchObject({ worktreePath: '/wt/x', branch: 'x' })
+  })
+
+  it('a launch without worktreeDefault leaves a project\'s remembered choice untouched', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    let m = 0
+    const { projects, conversations } = stores(dir, now, () => `proj-${++m}`)
+    const p = createSessionPersistence({ projects, conversations, discover: async () => null })
+    // First launch remembers "true".
+    p.onAgentSpawn({ conversationId: 'c1', tool: 'claude', cwd: '/repo', title: 't', preAssignedSessionId: 'c1', worktreeDefault: true })
+    // A later Open-mode / terminal launch carries no worktreeDefault → must not reset it.
+    p.onAgentSpawn({ conversationId: 'c2', tool: 'claude', cwd: '/repo', title: 't2', preAssignedSessionId: 'c2' })
+    expect(projects.list()[0].worktreeDefault).toBe(true)
+  })
+})

@@ -174,4 +174,40 @@ describe('registerTerminalIpc', () => {
     expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
     vi.useRealTimers()
   })
+
+  it('S5: spawns the agent in the WORKTREE cwd and records worktreePath/branch/worktreeDefault', async () => {
+    const pty = fakePty()
+    let opts: { cwd: string } | undefined
+    const spawner: PtySpawner = (o) => {
+      opts = o
+      return pty as unknown as PtyProcess
+    }
+    const onAgentSpawn = vi.fn()
+    const persistence = { onAgentSpawn, onTabExit: vi.fn() } as unknown as import('../session-persistence').SessionPersistence
+    registerTerminalIpc(() => undefined, spawner, { source, persistence })
+    await handleMap.get('pty:spawn')!(
+      {},
+      {
+        id: 'a',
+        conversationId: 'conv-1',
+        tool: 'claude',
+        cols: 80,
+        rows: 24,
+        cwdOverride: '/cfg/worktrees/repo/feat', // RightPanel set this to the worktree path
+        worktreePath: '/cfg/worktrees/repo/feat',
+        branch: 'feat',
+        worktreeDefault: true
+      }
+    )
+    // Item 1: the worktree path reaches node-pty as the spawn cwd, not just the record.
+    expect(opts?.cwd).toBe('/cfg/worktrees/repo/feat')
+    expect(onAgentSpawn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-1',
+        worktreePath: '/cfg/worktrees/repo/feat',
+        branch: 'feat',
+        worktreeDefault: true
+      })
+    )
+  })
 })

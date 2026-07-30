@@ -7,7 +7,7 @@ import { TERM_BG, TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
 import { clipboardAction } from '../terminal-clipboard'
 import { readBufferText, normalizeForStability, stepIdle, initialIdleState, type IdleState } from '../status-matcher'
 
-const props = defineProps<{ id: string; conversationId?: string; conversationTitle?: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string }>()
+const props = defineProps<{ id: string; conversationId?: string; conversationTitle?: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string; worktreePath?: string; branch?: string; worktreeChoice?: boolean }>()
 const emit = defineEmits<{ (e: 'exited', code: number): void }>()
 const host = ref<HTMLDivElement | null>(null)
 let term: Terminal | null = null
@@ -104,7 +104,13 @@ onMounted(async () => {
           rows: term.rows,
           prompt: props.prompt ? { name: props.prompt.name, text: props.prompt.text } : undefined,
           resume: props.resume ? { sessionId: props.resume.sessionId } : undefined,
-          tool: props.tool
+          tool: props.tool,
+          // S5: recorded on the conversation (worktreePath/branch) and used to
+          // remember the project's checkbox choice (worktreeDefault). cwdOverride
+          // already carries the worktree path, so the agent spawns there.
+          worktreePath: props.worktreePath,
+          branch: props.branch,
+          worktreeDefault: props.worktreeChoice
         })
     // Closed mid-spawn → term is already disposed; don't write to it.
     if (unmounted) return

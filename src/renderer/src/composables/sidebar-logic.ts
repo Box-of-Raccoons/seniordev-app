@@ -25,13 +25,20 @@ export function archivedProjects(projects: ProjectInfo[]): ProjectInfo[] {
 }
 
 // A project's live (non-archived) conversations, most-recently-active first.
-// Nothing archives conversations in S4, but the archivedAt filter keeps the view
-// correct by construction if that ever changes.
+// S5 archives a conversation on teardown, and this archivedAt filter is what drops
+// it from the list — the S4 groundwork now has a consumer.
 export function conversationsForProject(conversations: ConversationInfo[], projectId: string): ConversationInfo[] {
   return conversations
     .filter((c) => c.projectId === projectId && c.archivedAt === null)
     .slice()
     .sort((a, b) => b.lastActiveAt - a.lastActiveAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+}
+
+// Whether a conversation's teardown should offer to remove a worktree (S5): only
+// when it actually ran in one. The archive itself is always offered; the worktree
+// checkbox appears only for a conversation that has a worktreePath.
+export function teardownOffersWorktree(conv: Pick<ConversationInfo, 'worktreePath'>): boolean {
+  return !!conv.worktreePath
 }
 
 // The disclosure cap (spec: 5, then "show more" → 10, then "show all" →

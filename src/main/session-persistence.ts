@@ -29,6 +29,13 @@ export interface AgentSpawnInfo {
   // Present when the launch pre-assigned the id on argv (claude --session-id):
   // it is the id (== conversationId), stored at once. Absent ⇒ discover it.
   preAssignedSessionId?: string
+  // S5: set when the launch ran in a git worktree — recorded on the conversation
+  // so teardown can offer to remove it. worktreeDefault is the Task-mode checkbox
+  // state (present only for a Task-mode agent launch); it updates the project's
+  // remembered choice. Absent on every other launch, so those never clobber it.
+  worktreePath?: string
+  branch?: string
+  worktreeDefault?: boolean
 }
 
 export interface SessionPersistence {
@@ -108,13 +115,21 @@ export function createSessionPersistence(deps?: {
     onAgentSpawn(info) {
       const project = projects.ensureForCwd(info.cwd, { defaultTool: info.tool })
       if (info.ptyId) livePtys.set(info.ptyId, project.id)
+      // Remember the last per-project worktree choice, but only when the launch
+      // actually carried one (a Task-mode agent launch). Other launches leave it.
+      if (info.worktreeDefault !== undefined) projects.setWorktreeDefault(project.id, info.worktreeDefault)
       conversations.upsert({
         id: info.conversationId,
         projectId: project.id,
         title: info.title,
         tool: info.tool,
         cwd: info.cwd,
-        agentSessionId: info.preAssignedSessionId ?? null
+        agentSessionId: info.preAssignedSessionId ?? null,
+        // Pass through undefined (not null) when absent so a resume of a worktree
+        // conversation — which re-enters here with no worktree fields — leaves the
+        // stored worktreePath/branch intact rather than wiping them.
+        worktreePath: info.worktreePath,
+        branch: info.branch
       })
       // The project + conversation now exist / are refreshed → the sidebar has a
       // new (or re-activated) row to draw.

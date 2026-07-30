@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, reactive, ref, computed } from 'vue'
 import StatusGlyph from './StatusGlyph.vue'
+import WorktreeTeardownDialog from './WorktreeTeardownDialog.vue'
 import type { UseWorkspace } from '../composables/useWorkspace'
 import {
   activeProjectsByRecency,
@@ -10,6 +11,7 @@ import {
   rowState,
   resumeTabSpec,
   conversationDragPayload,
+  teardownOffersWorktree,
   CONVERSATION_DND_TYPE,
   type CapLevel
 } from '../composables/sidebar-logic'
@@ -125,6 +127,45 @@ function onRowDragStart(e: DragEvent, conv: ConversationInfo): void {
   if (!e.dataTransfer) return
   e.dataTransfer.effectAllowed = 'move'
   e.dataTransfer.setData(CONVERSATION_DND_TYPE, JSON.stringify(conversationDragPayload(conv)))
+  // Light up the pane drop targets (edge shoulders + per-pane overlay) for this drag.
+  props.ws.draggingConversation.value = true
+}
+function onRowDragEnd(): void {
+  props.ws.draggingConversation.value = false
+}
+
+// S5 teardown: archive a conversation and optionally remove its worktree. The
+// dialog owns the confirm + the opt-in worktree checkbox; a removal failure (a
+// dirty tree) is reported without blocking the archive.
+const teardownConv = ref<ConversationInfo | null>(null)
+const teardownFailure = ref<string | null>(null)
+function openTeardown(conv: ConversationInfo): void {
+  teardownConv.value = conv
+  teardownFailure.value = null
+}
+function cancelTeardown(): void {
+  teardownConv.value = null
+  teardownFailure.value = null
+}
+async function confirmTeardown(payload: { removeWorktree: boolean }): Promise<void> {
+  const conv = teardownConv.value
+  if (!conv) return
+  try {
+    const res = await window.api.teardownConversation({ conversationId: conv.id, removeWorktree: payload.removeWorktree })
+    // A worktree-removal failure keeps the dialog open reporting the reason; the
+    // archive has already applied, so refresh drops the row from the list.
+    if (res.worktree && !res.worktree.ok) {
+      teardownFailure.value = res.worktree.error ?? 'unknown error'
+      void refresh()
+      return
+    }
+  } catch {
+    // A teardown IPC failure is non-fatal; leave the dialog open with a note.
+    teardownFailure.value = 'teardown failed'
+    return
+  }
+  teardownConv.value = null
+  void refresh()
 }
 
 async function restoreProject(id: string): Promise<void> {
@@ -185,8 +226,13 @@ function onGripKey(e: KeyboardEvent): void {
 </script>
 
 <template>
-  <!-- Collapsed: a slim rail with an expand control and the live glyphs. -->
-  <aside v-if="ws.sidebarCollapsed.value" class="rail" aria-label="Projects (collapsed)">
+  <div class="sb-host">
+    <!-- Single root (this div) so App's :style (flex: 0 0 <width>px) falls through
+         onto it. The teardown dialog is a sibling of the rail/sidebar INSIDE this
+         root, not a third template root; multiple template roots would make the
+         component a fragment and drop that flex sizing, collapsing the work area. -->
+    <!-- Collapsed: a slim rail with an expand control and the live glyphs. -->
+    <aside v-if="ws.sidebarCollapsed.value" class="rail" aria-label="Projects (collapsed)">
     <button class="icon-btn" aria-label="Expand sidebar" title="Expand sidebar" @click="expand">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3.5 L10.5 8 L6 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
@@ -215,21 +261,28 @@ function onGripKey(e: KeyboardEvent): void {
         </button>
 
         <div v-if="isExpanded(project.id)" class="convs">
-          <button
-            v-for="conv in capView(project.id).visible"
-            :key="conv.id"
-            class="conv"
-            :class="convClasses(conv)"
-            :disabled="isInert(conv)"
-            :draggable="!isInert(conv)"
-            @click="clickConversation(conv)"
-            @dragstart="onRowDragStart($event, conv)"
-          >
-            <span class="glyph-cell"><StatusGlyph :status="glyphFor(conv)" /></span>
-            <span class="label">{{ conv.title || 'session' }}</span>
-            <span class="tool">{{ conv.tool }}</span>
-            <span v-if="isInert(conv)" class="tag">no resume</span>
-          </button>
+          <div v-for="conv in capView(project.id).visible" :key="conv.id" class="conv-row">
+            <button
+              class="conv"
+              :class="convClasses(conv)"
+              :disabled="isInert(conv)"
+              :draggable="!isInert(conv)"
+              @click="clickConversation(conv)"
+              @dragstart="onRowDragStart($event, conv)"
+              @dragend="onRowDragEnd"
+            >
+              <span class="glyph-cell"><StatusGlyph :status="glyphFor(conv)" /></span>
+              <span class="label">{{ conv.title || 'session' }}</span>
+              <span class="tool">{{ conv.tool }}</span>
+              <span v-if="isInert(conv)" class="tag">no resume</span>
+            </button>
+            <button
+              class="conv-x"
+              :aria-label="`Archive ${conv.title || 'session'}`"
+              title="Archive conversation"
+              @click.stop="openTeardown(conv)"
+            >×</button>
+          </div>
           <button
             v-if="capView(project.id).next"
             class="showmore"
@@ -266,9 +319,26 @@ function onGripKey(e: KeyboardEvent): void {
       @keydown="onGripKey"
     ></div>
   </aside>
+
+  <!-- S5 teardown confirm (archive + optional worktree removal). -->
+  <WorktreeTeardownDialog
+    v-if="teardownConv"
+    :title="`Archive ${teardownConv.title || 'session'}?`"
+    :worktree-path="teardownOffersWorktree(teardownConv) ? teardownConv.worktreePath : null"
+    :failure="teardownFailure"
+    @confirm="confirmTeardown"
+    @cancel="cancelTeardown"
+  />
+  </div>
 </template>
 
 <style scoped>
+/* Single template root that App sizes via a fallthrough flex style; the rail or
+   sidebar fills it. A plain flex column so the active aside stretches to full
+   height. */
+.sb-host { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; }
+.sb-host > .rail, .sb-host > .sidebar { flex: 1; min-height: 0; }
+
 /* The sidebar sits on the deepest plane (bg) so it reads as recessed against the
    work area (surface); an open row lifts to surface-2 (DESIGN Tone-First). */
 .sidebar {
@@ -311,6 +381,20 @@ function onGripKey(e: KeyboardEvent): void {
 .proj .count { color: var(--ink-muted); font-family: var(--font-mono, Consolas, monospace); font-size: 11px; }
 
 .convs { display: flex; flex-direction: column; gap: 1px; margin: 1px 0 4px; }
+/* Row wrapper: the conversation button + a hover/focus teardown control. The
+   control can't nest inside the button (invalid HTML), so it sits beside it. */
+.conv-row { position: relative; display: flex; align-items: stretch; }
+.conv-row .conv { flex: 1; min-width: 0; }
+.conv-x {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  background: var(--surface-2); border: 0; color: var(--ink-muted);
+  width: 20px; height: 20px; border-radius: var(--radius-sm); cursor: pointer;
+  line-height: 1; font-size: 14px; opacity: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.conv-row:hover .conv-x, .conv-x:focus-visible { opacity: 1; }
+.conv-x:hover { color: var(--ink); }
+.conv-x:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
 .conv {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 8px 5px 26px; border-radius: var(--radius-sm);

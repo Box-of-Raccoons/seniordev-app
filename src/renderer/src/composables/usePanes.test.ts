@@ -103,6 +103,21 @@ describe('usePanes moves', () => {
     expect(p.panes[0].tabs.map((t) => t.ptyId)).toEqual([a.ptyId])
   })
 
+  it('addEdgePane creates an empty column on the given side and returns its id', () => {
+    const p = usePanes()
+    p.addTab(composer) // pane 0 has a tab
+    const rightId = p.addEdgePane('right')
+    expect(p.panes).toHaveLength(2)
+    expect(p.panes[1].id).toBe(rightId)
+    expect(p.panes[1].tabs).toHaveLength(0) // empty, unlike moveToNewPane
+    expect(sumFractions(p.panes)).toBeCloseTo(1)
+    // 'left' inserts at the front.
+    const leftId = p.addEdgePane('left')
+    expect(p.panes[0].id).toBe(leftId)
+    expect(p.panes).toHaveLength(3)
+    expect(sumFractions(p.panes)).toBeCloseTo(1)
+  })
+
   it('moveTab across panes cleans up an emptied source pane', () => {
     const p = usePanes()
     const a = p.addTab(composer)

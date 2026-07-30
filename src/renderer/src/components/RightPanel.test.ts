@@ -45,15 +45,16 @@ const Composer = {
     <button class="go-int" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'orchestrator', input: 'ISC-835', ticketKey: 'ISC-835', yolo: false, tool: 'claude' })">i</button>
     <button class="go-yolo" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'fix-bug', input: 'do it', yolo: true, tool: 'claude' })">y</button>
     <button class="go-term" @click="$emit('launch', { mode: 'terminal', folder: 'C:/proj/api', shell: 'pwsh' })">t</button>
+    <button class="go-wt" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'orchestrator', input: 'do', tool: 'claude', worktreePath: '/cfg/worktrees/x/feat', branch: 'feat', worktreeChoice: true })">w</button>
   </div>`
 }
 const stubs = {
   NewTabMenu,
   Composer,
   TerminalView: {
-    props: ['id', 'ticketKey', 'input', 'prompt', 'tool', 'resume', 'cwdOverride', 'shell'],
+    props: ['id', 'ticketKey', 'input', 'prompt', 'tool', 'resume', 'cwdOverride', 'shell', 'worktreePath', 'branch', 'worktreeChoice'],
     template:
-      '<div class="tv" :data-id="id" :data-tool="tool" :data-cwd="cwdOverride" :data-shell="shell" :data-input="input" :data-resume="resume && resume.sessionId" />'
+      '<div class="tv" :data-id="id" :data-tool="tool" :data-cwd="cwdOverride" :data-shell="shell" :data-input="input" :data-resume="resume && resume.sessionId" :data-worktree="worktreePath" :data-branch="branch" />'
   },
   YoloView: {
     props: ['id', 'ticketKey', 'input', 'prompt', 'tool'],
@@ -143,6 +144,18 @@ describe('RightPanel', () => {
     expect(w.find('.tv').attributes('data-tool')).toBe('claude')
     expect(w.find('.tv').attributes('data-input')).toBe('ISC-835')
     expect(w.text()).toContain('orchestrator · ISC-835')
+  })
+
+  it('S5: a worktree launch makes the worktree path the terminal cwd (not the folder)', async () => {
+    const w = mountRP()
+    await w.find('.pick-ai').trigger('click')
+    await w.find('.go-wt').trigger('click')
+    await w.vm.$nextTick()
+    const tv = w.find('.tv')
+    // cwdOverride is the WORKTREE path, so the spawn (and node-pty) runs there.
+    expect(tv.attributes('data-cwd')).toBe('/cfg/worktrees/x/feat')
+    expect(tv.attributes('data-worktree')).toBe('/cfg/worktrees/x/feat')
+    expect(tv.attributes('data-branch')).toBe('feat')
   })
 
   it('launching with YOLO morphs into a yolo view', async () => {
@@ -293,6 +306,44 @@ describe('RightPanel', () => {
     await w.find('.term-tabs').trigger('drop', { dataTransfer: convDataTransfer(payload) })
     await w.vm.$nextTick()
     expect(w.findAll('.term-tab')).toHaveLength(1) // nothing spawned
+  })
+
+  // S5 follow-up: a sidebar conversation dropped on a shoulder spins off a NEW split
+  // column with that session; dropped on a pane's body overlay it opens in THAT pane.
+  it('dropping a conversation on the right shoulder opens it in a new split column', async () => {
+    const w = mountRP()
+    await w.find('.pick-ai').trigger('click') // one pane, one tab
+    const payload = { id: 'conv-e', title: 'edge one', tool: 'claude', cwd: '/w', agentSessionId: 'sess-e' }
+    await w.find('.pane-edge--right').trigger('drop', { dataTransfer: convDataTransfer(payload) })
+    await w.vm.$nextTick()
+    expect(w.findAll('.pane')).toHaveLength(2) // a new column was created
+    const tv = w.findAll('.tv').find((n) => n.attributes('data-resume') === 'sess-e')
+    expect(tv).toBeTruthy()
+  })
+
+  it('dropping a conversation on the pane body overlay opens it in that pane', async () => {
+    const w = mountRP()
+    await w.find('.pick-ai').trigger('click')
+    const payload = { id: 'conv-b', title: 'body one', tool: 'claude', cwd: '/w', agentSessionId: 'sess-b' }
+    await w.find('.pane-drop').trigger('drop', { dataTransfer: convDataTransfer(payload) })
+    await w.vm.$nextTick()
+    expect(w.findAll('.pane')).toHaveLength(1) // same pane, no new column
+    expect(w.findAll('.tv').find((n) => n.attributes('data-resume') === 'sess-b')).toBeTruthy()
+  })
+
+  it('the shoulders and pane overlay light up during a sidebar conversation drag', async () => {
+    // Assert the v-show effect on the inline style directly: isVisible()'s
+    // ancestor walk is unreliable on a detached test mount, but the display toggle
+    // is exactly what v-show="dragActive" drives.
+    const ws = useWorkspace()
+    const w = mount(RightPanel, { props: { ws }, global: { stubs } })
+    await w.find('.pick-ai').trigger('click')
+    expect(w.find('.pane-drop').attributes('style')).toContain('display: none')
+    expect(w.find('.pane-edge--right').attributes('style')).toContain('display: none')
+    ws.draggingConversation.value = true
+    await w.vm.$nextTick()
+    expect(w.find('.pane-drop').attributes('style') ?? '').not.toContain('display: none')
+    expect(w.find('.pane-edge--right').attributes('style') ?? '').not.toContain('display: none')
   })
 
   it('yolo resume opens a terminal tab with resume + cwdOverride', async () => {

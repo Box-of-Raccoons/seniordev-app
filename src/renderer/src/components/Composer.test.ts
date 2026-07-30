@@ -16,7 +16,11 @@ beforeEach(() => {
     listShells: vi.fn(async () => ({ shells: ['pwsh', 'cmd'], default: 'pwsh' })),
     listTools: vi.fn(async () => ['claude', 'codex']),
     resolveRepo,
-    yoloCaps: vi.fn(async () => ({ available: true }))
+    yoloCaps: vi.fn(async () => ({ available: true })),
+    // S5: default to "not a git repo" so the worktree control is inert unless a
+    // test opts in; createWorktree succeeds by default.
+    worktreeInfo: vi.fn(async () => ({ isRepo: false, branchPrefix: '', worktreeDefault: false })),
+    createWorktree: vi.fn(async () => ({ ok: true, worktreePath: '/wt/x', branch: 'feat' }))
   }
 })
 
@@ -166,6 +170,95 @@ describe('Composer', () => {
     expect(chip.text()).toBe('seniordev-app')
     await chip.trigger('click')
     expect((w.find('#composer-folder').element as HTMLInputElement).value).toBe('C:/code/seniordev-app')
+  })
+
+  // --- S5 worktree toggle (Task mode only) ---
+
+  function setWtInfo(info: { isRepo: boolean; branchPrefix?: string; worktreeDefault?: boolean }): void {
+    ;(window.api as unknown as { worktreeInfo: unknown }).worktreeInfo = vi.fn(async () => ({
+      isRepo: info.isRepo,
+      branchPrefix: info.branchPrefix ?? '',
+      worktreeDefault: info.worktreeDefault ?? false
+    }))
+  }
+  async function mountWithFolder(): Promise<ReturnType<typeof mount>> {
+    const w = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialFolder: 'C:/repo' } })
+    await flushPromises()
+    return w
+  }
+
+  it('worktree checkbox is disabled with a reason on a non-git folder', async () => {
+    setWtInfo({ isRepo: false })
+    const w = await mountWithFolder()
+    const box = w.find('.wt-check input')
+    expect(box.exists()).toBe(true)
+    expect((box.element as HTMLInputElement).disabled).toBe(true)
+    expect(w.text()).toContain('not a git repository')
+  })
+
+  it('worktree checkbox enables on a git folder; branch prefills prefix + slug and stops after a manual edit', async () => {
+    setWtInfo({ isRepo: true, branchPrefix: 'hardy/', worktreeDefault: true })
+    const w = await mountWithFolder()
+    await w.find('#composer-input').setValue('Add the widget')
+    await flushPromises()
+    const box = w.find('.wt-check input')
+    expect((box.element as HTMLInputElement).disabled).toBe(false)
+    // Auto-checked from worktreeDefault, so the branch field is visible.
+    const branch = w.find('#composer-branch').element as HTMLInputElement
+    expect(branch.value).toBe('hardy/add-the-widget')
+    // A manual edit sticks; a later prompt change must not overwrite it.
+    await w.find('#composer-branch').setValue('hardy/my-own')
+    await w.find('#composer-input').setValue('something else entirely')
+    await flushPromises()
+    expect((w.find('#composer-branch').element as HTMLInputElement).value).toBe('hardy/my-own')
+  })
+
+  it('empty prefix + empty prompt falls the branch back to "task"', async () => {
+    setWtInfo({ isRepo: true, branchPrefix: '', worktreeDefault: true })
+    const w = await mountWithFolder()
+    expect((w.find('#composer-branch').element as HTMLInputElement).value).toBe('task')
+  })
+
+  it('pre-flight create failure shows the reason and does NOT emit a launch', async () => {
+    setWtInfo({ isRepo: true, branchPrefix: '', worktreeDefault: true })
+    ;(window.api as unknown as { createWorktree: unknown }).createWorktree = vi.fn(async () => ({
+      ok: false,
+      error: "a branch named 'task' already exists"
+    }))
+    const w = await mountWithFolder()
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(w.emitted('launch')).toBeUndefined()
+    expect(w.text()).toContain("a branch named 'task' already exists")
+  })
+
+  it('pre-flight create success emits worktreePath, branch, and worktreeChoice', async () => {
+    setWtInfo({ isRepo: true, branchPrefix: 'hardy/', worktreeDefault: true })
+    ;(window.api as unknown as { createWorktree: unknown }).createWorktree = vi.fn(async () => ({
+      ok: true,
+      worktreePath: '/cfg/worktrees/repo/hardy-thing',
+      branch: 'hardy/thing'
+    }))
+    const w = await mountWithFolder()
+    await w.find('#composer-input').setValue('thing')
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(w.emitted('launch')?.[0]?.[0]).toMatchObject({
+      mode: 'interactive',
+      worktreePath: '/cfg/worktrees/repo/hardy-thing',
+      branch: 'hardy/thing',
+      worktreeChoice: true
+    })
+  })
+
+  it('worktree control is Task-mode only (absent in Open mode and terminal)', async () => {
+    setWtInfo({ isRepo: true, worktreeDefault: true })
+    const open = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialMode: 'open', initialFolder: 'C:/repo' } })
+    await flushPromises()
+    expect(open.find('.wt-check').exists()).toBe(false)
+    const term = mount(Composer, { props: { variant: 'terminal', initialFolder: 'C:/repo' } })
+    await flushPromises()
+    expect(term.find('.wt-check').exists()).toBe(false)
   })
 
   it('launches on Ctrl+Enter in Open mode (no textarea to carry the shortcut)', async () => {

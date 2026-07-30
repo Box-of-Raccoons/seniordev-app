@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, PROJECTS, CONVERSATIONS, SIDEBAR, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, PROJECTS, CONVERSATIONS, SIDEBAR, WORKTREE, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent, WorkspaceLayout } from '../shared/ipc'
 import type { ProjectInfo, ConversationInfo, SidebarState } from '../shared/ipc'
+import type { WorktreeInfo, WorktreeCreateRequest, WorktreeCreateResult, WorktreeTeardownRequest, WorktreeTeardownResult } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
 import type { StatusUpdateEvent } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
@@ -33,6 +34,12 @@ const api = {
     ipcRenderer.on(SIDEBAR.changed, listener)
     return () => ipcRenderer.off(SIDEBAR.changed, listener)
   },
+  // S5 worktree toggle: the composer asks whether a folder is a git repo (+ its
+  // branchPrefix + the remembered choice), pre-flight-creates a worktree before
+  // launching, and the sidebar tears one down on archive.
+  worktreeInfo: (folder: string): Promise<WorktreeInfo> => ipcRenderer.invoke(WORKTREE.info, folder),
+  createWorktree: (req: WorktreeCreateRequest): Promise<WorktreeCreateResult> => ipcRenderer.invoke(WORKTREE.create, req),
+  teardownConversation: (req: WorktreeTeardownRequest): Promise<WorktreeTeardownResult> => ipcRenderer.invoke(WORKTREE.teardown, req),
   writeTerminal: (id: string, data: string): void => ipcRenderer.send(TERM.write, id, data),
   resizeTerminal: (id: string, cols: number, rows: number): void => ipcRenderer.send(TERM.resize, id, cols, rows),
   killTerminal: (id: string): void => ipcRenderer.send(TERM.kill, id),

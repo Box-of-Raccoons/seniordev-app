@@ -8,6 +8,7 @@ import {
   conversationDragPayload,
   resumeTabSpec,
   conversationDropAction,
+  teardownOffersWorktree,
   type CapLevel
 } from './sidebar-logic'
 import type { ProjectInfo, ConversationInfo } from '../../../shared/ipc'
@@ -161,5 +162,12 @@ describe('conversation drag helpers', () => {
     expect(conversationDropAction({ agentSessionId: null }, null)).toEqual({ action: 'none' })
     // A live but not-yet-resumable tab still moves (focus/relocate its pty).
     expect(conversationDropAction({ agentSessionId: null }, { ptyId: 'p' })).toEqual({ action: 'move', ptyId: 'p' })
+  })
+})
+
+describe('teardownOffersWorktree', () => {
+  it('is true only when the conversation ran in a worktree', () => {
+    expect(teardownOffersWorktree(conv({ worktreePath: '/wt/x' }))).toBe(true)
+    expect(teardownOffersWorktree(conv({ worktreePath: null }))).toBe(false)
   })
 })

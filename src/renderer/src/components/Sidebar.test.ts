@@ -18,15 +18,21 @@ function conv(over: Partial<ConversationInfo>): ConversationInfo {
 }
 
 let changedCb: (() => void) | null = null
-function setApi(projects: ProjectInfo[], conversations: ConversationInfo[]): { setProjectArchived: ReturnType<typeof vi.fn> } {
+function setApi(
+  projects: ProjectInfo[],
+  conversations: ConversationInfo[],
+  teardownResult: { archived: boolean; worktree?: { ok: boolean; error?: string } } = { archived: true }
+): { setProjectArchived: ReturnType<typeof vi.fn>; teardownConversation: ReturnType<typeof vi.fn> } {
   const setProjectArchived = vi.fn(async () => {})
+  const teardownConversation = vi.fn(async () => teardownResult)
   ;(window as unknown as { api: unknown }).api = {
     listProjects: vi.fn(async () => projects),
     listConversations: vi.fn(async () => conversations),
     onSidebarChanged: vi.fn((cb: () => void) => { changedCb = cb; return () => {} }),
-    setProjectArchived
+    setProjectArchived,
+    teardownConversation
   }
-  return { setProjectArchived }
+  return { setProjectArchived, teardownConversation }
 }
 
 const stubs = { StatusGlyph: { props: ['status'], template: '<span class="glyph" :data-status="status" />' } }
@@ -161,5 +167,65 @@ describe('Sidebar', () => {
     ws.sidebarWidth.value = 480
     await w.find('.sb-grip').trigger('keydown', { key: 'ArrowRight' })
     expect(ws.sidebarWidth.value).toBe(480)
+  })
+
+  // Regression: App.vue sizes the sidebar by passing :style (flex: 0 0 <w>px) as a
+  // fallthrough attr. That only lands on a SINGLE-root component — adding the
+  // teardown dialog as an extra template root made Sidebar a fragment, so the flex
+  // was dropped and the sidebar filled the row, hiding the work area.
+  it('inherits a fallthrough style onto its root (single-root, not a fragment)', async () => {
+    setApi([project({ id: 'p1' })], [])
+    const w = mount(Sidebar, {
+      props: { ws: useWorkspace() },
+      attrs: { style: 'flex: 0 0 264px' },
+      global: { stubs }
+    })
+    await flushPromises()
+    expect(w.attributes('style')).toContain('flex: 0 0 264px')
+  })
+
+  // --- S5 teardown ---
+
+  it('the teardown control opens the dialog and confirming archives via the IPC', async () => {
+    const { teardownConversation } = setApi([project({ id: 'p1' })], [conv({ id: 'c1', title: 'work' })])
+    const w = await mountSidebar(useWorkspace())
+    expect(w.findComponent({ name: 'WorktreeTeardownDialog' }).exists()).toBe(false)
+    await w.find('.conv-x').trigger('click')
+    expect(w.findComponent({ name: 'WorktreeTeardownDialog' }).exists()).toBe(true)
+    await w.find('.btn-yes').trigger('click') // "Archive"
+    await flushPromises()
+    expect(teardownConversation).toHaveBeenCalledWith({ conversationId: 'c1', removeWorktree: false })
+    // Dialog closes on success.
+    expect(w.findComponent({ name: 'WorktreeTeardownDialog' }).exists()).toBe(false)
+  })
+
+  it('offers worktree removal only when the conversation has a worktree, and passes the opt-in', async () => {
+    const { teardownConversation } = setApi(
+      [project({ id: 'p1' })],
+      [conv({ id: 'c1', title: 'wt', worktreePath: '/cfg/worktrees/app/feat' })]
+    )
+    const w = await mountSidebar(useWorkspace())
+    await w.find('.conv-x').trigger('click')
+    const box = w.find('.wt-remove input')
+    expect(box.exists()).toBe(true)
+    await box.setValue(true)
+    await w.find('.btn-yes').trigger('click')
+    await flushPromises()
+    expect(teardownConversation).toHaveBeenCalledWith({ conversationId: 'c1', removeWorktree: true })
+  })
+
+  it('reports a worktree-removal failure and keeps the dialog open', async () => {
+    setApi(
+      [project({ id: 'p1' })],
+      [conv({ id: 'c1', worktreePath: '/wt/x' })],
+      { archived: true, worktree: { ok: false, error: 'worktree has uncommitted changes; not removed' } }
+    )
+    const w = await mountSidebar(useWorkspace())
+    await w.find('.conv-x').trigger('click')
+    await w.find('.wt-remove input').setValue(true)
+    await w.find('.btn-yes').trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('worktree has uncommitted changes; not removed')
+    expect(w.findComponent({ name: 'WorktreeTeardownDialog' }).exists()).toBe(true)
   })
 })
