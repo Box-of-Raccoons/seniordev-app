@@ -22,6 +22,10 @@ function onMenu(action: MenuAction): void {
     requestNewSession()
     return
   }
+  if (action === 'move-tab-left' || action === 'move-tab-right') {
+    rightPanel.value?.moveActiveTab(action === 'move-tab-left' ? -1 : 1)
+    return
+  }
   // One modal at a time: an action while any modal is open keeps the open one.
   if (modal.value === null && !confirmReset.value) modal.value = action
 }
@@ -45,9 +49,22 @@ function handleDeepLink(link: DeepLink): void {
   rightPanel.value?.openComposer({ input: link.ticket, role: link.role, folder: link.folder })
 }
 
+// Keyboard pane moves. A menu accelerator loses to a focused xterm (it consumes
+// the keydown), so this runs in the capture phase at the window level — ahead of
+// the terminal's own textarea listener — and thus fires regardless of focus.
+// Cmd/Ctrl+Shift+Left/Right moves the focused pane's active tab sideways.
+function onPaneKeydown(e: KeyboardEvent): void {
+  if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+  e.preventDefault()
+  e.stopImmediatePropagation()
+  rightPanel.value?.moveActiveTab(e.key === 'ArrowLeft' ? -1 : 1)
+}
+
 onMounted(async () => {
   offMenu = window.api.onMenuAction(onMenu)
   offDeepLink = window.api.onDeepLink(handleDeepLink)
+  window.addEventListener('keydown', onPaneKeydown, true)
   // Only now can main push deep links — anything sent earlier would be lost.
   window.api.deepLinkReady()
   try {
@@ -68,6 +85,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   offMenu?.()
   offDeepLink?.()
+  window.removeEventListener('keydown', onPaneKeydown, true)
 })
 </script>
 

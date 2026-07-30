@@ -1,7 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import App from './App.vue'
 import type { DeepLink, MenuAction } from '../../shared/ipc'
+
+// Unmount every mounted App after each test. App adds a window-level keydown
+// listener (capture phase) for the pane-move shortcut; without auto-unmount those
+// listeners leak across tests and fire on later dispatches.
+enableAutoUnmount(afterEach)
 
 let menuCb: (a: MenuAction) => void
 let deepLinkCb: (l: DeepLink) => void
@@ -11,6 +16,7 @@ const rightCloseAll = vi.fn()
 const rightNewTab = vi.fn()
 const rightOpenComposer = vi.fn()
 const rightHasSessions = vi.fn(() => false as boolean)
+const rightMoveActiveTab = vi.fn()
 
 const stubs = {
   RightPanel: {
@@ -21,7 +27,8 @@ const stubs = {
       closeAll: rightCloseAll,
       newTab: rightNewTab,
       openComposer: rightOpenComposer,
-      hasSessions: rightHasSessions
+      hasSessions: rightHasSessions,
+      moveActiveTab: rightMoveActiveTab
     }
   },
   AboutModal: { name: 'AboutModal', template: '<div class="about-stub" />' },
@@ -62,6 +69,38 @@ describe('App menu wiring', () => {
     menuCb('app-config')
     await flushPromises()
     expect(w.findComponent({ name: 'AppConfigModal' }).exists()).toBe(false)
+  })
+
+  it('move-tab menu actions route to RightPanel.moveActiveTab with a direction', async () => {
+    const w = mountApp()
+    await flushPromises()
+    menuCb('move-tab-left')
+    menuCb('move-tab-right')
+    await flushPromises()
+    expect(rightMoveActiveTab).toHaveBeenNthCalledWith(1, -1)
+    expect(rightMoveActiveTab).toHaveBeenNthCalledWith(2, 1)
+    // A move action must not open a modal.
+    expect(w.findComponent({ name: 'AppConfigModal' }).exists()).toBe(false)
+  })
+
+  it('Cmd/Ctrl+Shift+Arrow moves the active tab regardless of focus (capture-phase)', async () => {
+    const w = mountApp()
+    await flushPromises()
+    // Dispatched at the window in the capture phase, this must fire even though no
+    // tab button is focused — the case that failed when it was a menu accelerator.
+    const right = new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, shiftKey: true, cancelable: true, bubbles: true })
+    const prevented = vi.spyOn(right, 'preventDefault')
+    window.dispatchEvent(right)
+    const left = new KeyboardEvent('keydown', { key: 'ArrowLeft', metaKey: true, shiftKey: true, cancelable: true, bubbles: true })
+    window.dispatchEvent(left)
+    expect(rightMoveActiveTab).toHaveBeenNthCalledWith(1, 1)
+    expect(rightMoveActiveTab).toHaveBeenNthCalledWith(2, -1)
+    expect(prevented).toHaveBeenCalled() // consumed, so a focused xterm never sees it
+    w.unmount()
+    // After unmount the listener is gone: a further chord must not call through.
+    rightMoveActiveTab.mockClear()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, shiftKey: true }))
+    expect(rightMoveActiveTab).not.toHaveBeenCalled()
   })
 
   it('new-session with no sessions resets to a fresh composer immediately', async () => {

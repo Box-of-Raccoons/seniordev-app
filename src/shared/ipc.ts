@@ -64,6 +64,11 @@ export const CLIPBOARD = { readText: 'clipboard:readText', writeText: 'clipboard
 // tool plus any others whose command resolves on PATH. Returns tool names.
 export const TOOLS = { list: 'tools:list' } as const
 
+// Resolved workspace-layout settings the renderer needs (S2). Read-only scalars
+// derived from config; the renderer re-fetches on CONFIG.changed.
+export const WORKSPACE = { getSettings: 'workspace:getSettings' } as const
+export interface WorkspaceSettings { minPaneWidth: number }
+
 export interface StartupSession {
   mode: 'interactive' | 'yolo'
   promptName?: string
@@ -125,7 +130,13 @@ export const STATUS = {
   update: 'status:update' // main → renderer (the resolved glyph state)
 } as const
 
-export type MenuAction = 'new-session' | 'app-config' | 'prompt-config' | 'about'
+export type MenuAction =
+  | 'new-session'
+  | 'app-config'
+  | 'prompt-config'
+  | 'about'
+  | 'move-tab-left'
+  | 'move-tab-right'
 export const MENU = { action: 'menu:action' } as const
 
 export interface AppInfo { name: string; version: string }

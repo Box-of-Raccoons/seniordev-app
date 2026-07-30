@@ -14,13 +14,23 @@ describe('menuTemplate', () => {
   const sent: MenuAction[] = []
   const tpl = menuTemplate((a) => sent.push(a)) as Item[]
 
-  it('has exactly File, Edit(role), Config, About', () => {
-    expect(tpl.map((m) => m.label ?? m.role)).toEqual(['File', 'editMenu', 'Config', 'About'])
+  it('has exactly File, Edit(role), Panes, Config, About', () => {
+    expect(tpl.map((m) => m.label ?? m.role)).toEqual(['File', 'editMenu', 'Panes', 'Config', 'About'])
   })
   it('dev mode appends a View menu with DevTools', () => {
     const devTpl = menuTemplate(() => {}, true) as Item[]
-    expect(devTpl.map((m) => m.label ?? m.role)).toEqual(['File', 'editMenu', 'Config', 'About', 'View'])
-    expect(devTpl[4].submenu!.map((i) => i.role)).toEqual(['toggleDevTools', 'reload'])
+    expect(devTpl.map((m) => m.label ?? m.role)).toEqual(['File', 'editMenu', 'Panes', 'Config', 'About', 'View'])
+    expect(devTpl[5].submenu!.map((i) => i.role)).toEqual(['toggleDevTools', 'reload'])
+  })
+  it('Panes: clicking the items fires move-tab-left / move-tab-right', () => {
+    const panes = tpl[2].submenu!
+    // No native accelerator: the keyboard binding is a capture-phase handler in
+    // the renderer (a menu accelerator loses to a focused xterm). Items stay as
+    // focus-independent mouse actions.
+    expect(panes.map((i) => i.accelerator)).toEqual([undefined, undefined])
+    panes[0].click!()
+    panes[1].click!()
+    expect(sent).toEqual(expect.arrayContaining(['move-tab-left', 'move-tab-right']))
   })
   it('File: New Session (CmdOrCtrl+N) fires new-session; Exit is the quit role labeled Exit', () => {
     const file = tpl[0].submenu!
@@ -33,13 +43,13 @@ describe('menuTemplate', () => {
     expect(file[2].label).toBe('Exit')
   })
   it('Config items fire app-config and prompt-config', () => {
-    const cfg = tpl[2].submenu!
+    const cfg = tpl[3].submenu!
     cfg[0].click!()
     cfg[1].click!()
     expect(sent).toEqual(expect.arrayContaining(['app-config', 'prompt-config']))
   })
   it('About fires about', () => {
-    tpl[3].submenu![0].click!()
+    tpl[4].submenu![0].click!()
     expect(sent).toContain('about')
   })
 })
