@@ -24,9 +24,16 @@ function setup(over?: {
     { id: 'c2', projectId: 'p1', tool: 'claude', agentSessionId: null }
   ]
   const setArchived = vi.fn(over?.setArchived)
+  const ensureForCwd = vi.fn((path: string, opts?: { defaultTool?: string }) => ({
+    id: 'p-new',
+    title: path.split('/').pop(),
+    path,
+    defaultTool: opts?.defaultTool ?? 'claude'
+  }))
+  const setConvArchived = vi.fn()
   const persistence = {
-    projects: { list: () => projectList, setArchived },
-    conversations: { list: () => convList }
+    projects: { list: () => projectList, setArchived, ensureForCwd },
+    conversations: { list: () => convList, setArchived: setConvArchived }
   } as unknown as SessionPersistence
   const workspace = {
     get: () => ({ sidebarWidth: over?.sidebar?.sidebarWidth ?? 240, sidebarCollapsed: over?.sidebar?.sidebarCollapsed ?? false })
@@ -36,8 +43,9 @@ function setup(over?: {
   // Default the resumable check to "id present" so the handler test is deterministic
   // and does not touch the real filesystem.
   const isResumable = over?.isResumable ?? ((c: { agentSessionId: string | null }): boolean => c.agentSessionId !== null)
-  registerSidebarIpc({ persistence, workspace, getSender: getSender as never, isResumable })
-  return { projectList, convList, setArchived, send }
+  const source = { config: { defaultTool: 'codex' } } as never
+  registerSidebarIpc({ persistence, workspace, getSender: getSender as never, isResumable, source })
+  return { projectList, convList, setArchived, ensureForCwd, setConvArchived, send }
 }
 
 describe('registerSidebarIpc', () => {
@@ -72,5 +80,20 @@ describe('registerSidebarIpc', () => {
   it('workspace:getSidebar reads the persisted geometry', async () => {
     setup({ sidebar: { sidebarWidth: 300, sidebarCollapsed: true } })
     expect(await handlers.get('workspace:getSidebar')!({})).toEqual({ width: 300, collapsed: true })
+  })
+
+  it('projects:ensure creates/refreshes from a folder using the config default tool, returns the row, and nudges', async () => {
+    const { ensureForCwd, send } = setup()
+    const row = await handlers.get('projects:ensure')!({}, '/Users/h/code/newapp')
+    expect(ensureForCwd).toHaveBeenCalledWith('/Users/h/code/newapp', { defaultTool: 'codex' })
+    expect(row).toMatchObject({ id: 'p-new', path: '/Users/h/code/newapp' })
+    expect(send).toHaveBeenCalledWith('sidebar:changed')
+  })
+
+  it('conversations:setArchived toggles the conversation and nudges the sidebar', async () => {
+    const { setConvArchived, send } = setup()
+    await handlers.get('conversations:setArchived')!({}, 'c9', false)
+    expect(setConvArchived).toHaveBeenCalledWith('c9', false)
+    expect(send).toHaveBeenCalledWith('sidebar:changed')
   })
 })

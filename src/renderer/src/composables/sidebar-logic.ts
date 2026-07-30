@@ -41,6 +41,58 @@ export function teardownOffersWorktree(conv: Pick<ConversationInfo, 'worktreePat
   return !!conv.worktreePath
 }
 
+// A project's ARCHIVED conversations for the "Archived (n)" reveal (S6 restore),
+// most-recently-archived first.
+export function archivedConversationsForProject(
+  conversations: ConversationInfo[],
+  projectId: string
+): ConversationInfo[] {
+  return conversations
+    .filter((c) => c.projectId === projectId && c.archivedAt !== null)
+    .slice()
+    .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+}
+
+// S6 launch specs: a project's + menu launches directly into the project, so the
+// folder is always the project path. Pure NewTab builders (DOM-free, unit-tested);
+// the sidebar hands these to ws.panes.addTab(spec, leftmostPaneId).
+
+// AI (Task): a folder-locked composer, so tool/role/prompt/YOLO/worktree are still
+// chosen, but the folder is fixed to the project (lockedProject drives the lock).
+export function composerTabSpec(project: Pick<ProjectInfo, 'title' | 'path' | 'defaultTool'>): NewTab {
+  return {
+    title: `session · ${project.title}`,
+    kind: 'composer',
+    variant: 'agent',
+    initialMode: 'task',
+    tool: project.defaultTool,
+    lockedProject: project.title,
+    prefill: { folder: project.path }
+  }
+}
+
+// Open: a bare agent (no role/prompt), spawned immediately in the project with its
+// default tool. kind 'terminal' = an interactive agent; no prompt => bare.
+export function openSessionTabSpec(project: Pick<ProjectInfo, 'title' | 'path' | 'defaultTool'>): NewTab {
+  return {
+    title: `${project.title} · ${project.defaultTool}`,
+    kind: 'terminal',
+    variant: 'agent',
+    tool: project.defaultTool,
+    cwdOverride: project.path
+  }
+}
+
+// Terminal: a raw shell, spawned immediately in the project.
+export function terminalTabSpec(project: Pick<ProjectInfo, 'title' | 'path'>, shell: string): NewTab {
+  return {
+    title: `${shell} · ${project.title}`,
+    kind: 'shell',
+    shell,
+    cwdOverride: project.path
+  }
+}
+
 // The disclosure cap (spec: 5, then "show more" → 10, then "show all" →
 // everything). `level` is the current expansion; the returned `next` is the level
 // the "show more"/"show all" control advances to, or null when everything shows.

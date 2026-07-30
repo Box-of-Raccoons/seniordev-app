@@ -22,20 +22,55 @@ function setApi(
   projects: ProjectInfo[],
   conversations: ConversationInfo[],
   teardownResult: { archived: boolean; worktree?: { ok: boolean; error?: string } } = { archived: true }
-): { setProjectArchived: ReturnType<typeof vi.fn>; teardownConversation: ReturnType<typeof vi.fn> } {
+): {
+  setProjectArchived: ReturnType<typeof vi.fn>
+  teardownConversation: ReturnType<typeof vi.fn>
+  ensureProject: ReturnType<typeof vi.fn>
+  setConversationArchived: ReturnType<typeof vi.fn>
+  pickFolder: ReturnType<typeof vi.fn>
+} {
   const setProjectArchived = vi.fn(async () => {})
   const teardownConversation = vi.fn(async () => teardownResult)
+  const ensureProject = vi.fn(async (folder: string) => ({
+    id: 'p-new', title: folder.split('/').pop(), path: folder, defaultTool: 'claude',
+    worktreeDefault: false, lastActiveAt: 0, archivedAt: null, createdAt: 0, updatedAt: 0
+  }))
+  const setConversationArchived = vi.fn(async () => {})
+  const pickFolder = vi.fn(async () => '/code/newproj')
   ;(window as unknown as { api: unknown }).api = {
     listProjects: vi.fn(async () => projects),
     listConversations: vi.fn(async () => conversations),
     onSidebarChanged: vi.fn((cb: () => void) => { changedCb = cb; return () => {} }),
+    listShells: vi.fn(async () => ({ shells: ['pwsh', 'bash'], default: 'pwsh' })),
     setProjectArchived,
-    teardownConversation
+    teardownConversation,
+    ensureProject,
+    setConversationArchived,
+    pickFolder
   }
-  return { setProjectArchived, teardownConversation }
+  return { setProjectArchived, teardownConversation, ensureProject, setConversationArchived, pickFolder }
 }
 
-const stubs = { StatusGlyph: { props: ['status'], template: '<span class="glyph" :data-status="status" />' } }
+// Stub NewTabMenu with buttons that emit each pick variant, plus an openMenu expose
+// so New Project's ref call is a no-op-safe hook.
+const NewTabMenuStub = {
+  name: 'NewTabMenu',
+  props: ['ghost', 'label'],
+  emits: ['pick'],
+  setup(_p: unknown, { expose }: { expose: (o: object) => void }) {
+    expose({ openMenu: (): void => {} })
+    return {}
+  },
+  template: `<div class="ntm">
+    <button class="pick-ai" @click="$emit('pick', { variant: 'agent' })">ai</button>
+    <button class="pick-open" @click="$emit('pick', { variant: 'agent', mode: 'open' })">open</button>
+    <button class="pick-term" @click="$emit('pick', { variant: 'terminal' })">term</button>
+  </div>`
+}
+const stubs = {
+  StatusGlyph: { props: ['status'], template: '<span class="glyph" :data-status="status" />' },
+  NewTabMenu: NewTabMenuStub
+}
 
 async function mountSidebar(ws: UseWorkspace) {
   const w = mount(Sidebar, { props: { ws }, global: { stubs } })
@@ -227,5 +262,59 @@ describe('Sidebar', () => {
     await flushPromises()
     expect(w.text()).toContain('worktree has uncommitted changes; not removed')
     expect(w.findComponent({ name: 'WorktreeTeardownDialog' }).exists()).toBe(true)
+  })
+
+  // --- S6 project-centric launch ---
+
+  it('project + AI opens a folder-locked composer for that project in the leftmost pane', async () => {
+    setApi([project({ id: 'p1', title: 'app', path: '/app', defaultTool: 'claude' })], [])
+    const ws = useWorkspace()
+    const w = await mountSidebar(ws)
+    await w.find('.pick-ai').trigger('click')
+    const tab = ws.panes.panes[0].tabs[0]
+    expect(tab).toMatchObject({ kind: 'composer', variant: 'agent', lockedProject: 'app', tool: 'claude', prefill: { folder: '/app' } })
+  })
+
+  it('project + Open spawns a bare agent in the project (leftmost pane, no prompt)', async () => {
+    setApi([project({ id: 'p1', title: 'app', path: '/app', defaultTool: 'codex' })], [])
+    const ws = useWorkspace()
+    const w = await mountSidebar(ws)
+    await w.find('.pick-open').trigger('click')
+    const tab = ws.panes.panes[0].tabs[0]
+    expect(tab).toMatchObject({ kind: 'terminal', variant: 'agent', tool: 'codex', cwdOverride: '/app' })
+    expect(tab.prompt).toBeUndefined()
+  })
+
+  it('project + Terminal spawns a shell in the project with the default shell', async () => {
+    setApi([project({ id: 'p1', title: 'app', path: '/app' })], [])
+    const ws = useWorkspace()
+    const w = await mountSidebar(ws)
+    await w.find('.pick-term').trigger('click')
+    const tab = ws.panes.panes[0].tabs[0]
+    expect(tab).toMatchObject({ kind: 'shell', shell: 'pwsh', cwdOverride: '/app' })
+  })
+
+  it('New Project picks a folder and ensures the project', async () => {
+    const { pickFolder, ensureProject } = setApi([], [])
+    const w = await mountSidebar(useWorkspace())
+    await w.find('.new-project').trigger('click')
+    await flushPromises()
+    expect(pickFolder).toHaveBeenCalled()
+    expect(ensureProject).toHaveBeenCalledWith('/code/newproj')
+  })
+
+  it('an archived conversation can be revealed and restored', async () => {
+    const { setConversationArchived } = setApi(
+      [project({ id: 'p1', title: 'app' })],
+      [conv({ id: 'c-arch', projectId: 'p1', title: 'old work', archivedAt: 5 })]
+    )
+    const w = await mountSidebar(useWorkspace())
+    // The archived conversation is hidden from the main list...
+    expect(w.text()).not.toContain('old work')
+    // ...until its Archived (n) reveal is expanded.
+    await w.find('.arch-convs-head').trigger('click')
+    expect(w.text()).toContain('old work')
+    await w.find('.arch-conv-row .restore').trigger('click')
+    expect(setConversationArchived).toHaveBeenCalledWith('c-arch', false)
   })
 })

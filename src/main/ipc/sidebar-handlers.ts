@@ -3,6 +3,7 @@ import { PROJECTS, CONVERSATIONS, WORKSPACE, SIDEBAR, type SidebarState, type Co
 import type { SessionPersistence } from '../session-persistence'
 import type { WorkspaceStore } from '../store/workspace-store'
 import type { Project } from '../store/projects-store'
+import type { ConfigSource } from '../config/store'
 import { isConversationResumable } from '../session-resumable'
 
 // S4: read-only surface over the S3 stores that backs the Projects sidebar, plus
@@ -14,6 +15,8 @@ export function registerSidebarIpc(deps: {
   persistence: SessionPersistence
   workspace: WorkspaceStore
   getSender: () => Electron.WebContents | undefined
+  // Config source, for the default tool a New Project (S6) is created with.
+  source?: ConfigSource
   // Whether a conversation can actually be resumed (its agent persisted a real
   // transcript). Injectable for tests; defaults to the on-disk check.
   isResumable?: (conv: { tool: string; agentSessionId: string | null }) => boolean
@@ -32,6 +35,24 @@ export function registerSidebarIpc(deps: {
   // happens elsewhere (the daily job) and nudges through persistence.onChange.
   ipcMain.handle(PROJECTS.setArchived, (_e, id: string, archived: boolean): void => {
     deps.persistence.projects.setArchived(id, archived)
+    deps.getSender()?.send(SIDEBAR.changed)
+  })
+
+  // S6: explicitly create (or refresh) a project from a picked folder — the "New
+  // Project" flow — without launching anything. ensureForCwd is idempotent, so a
+  // folder that already has a project just bumps its recency. Returns the row so
+  // the sidebar can open its launch menu immediately.
+  ipcMain.handle(PROJECTS.ensure, (_e, folder: string): Project => {
+    const defaultTool = deps.source?.config?.defaultTool ?? 'claude'
+    const project = deps.persistence.projects.ensureForCwd(folder, { defaultTool })
+    deps.getSender()?.send(SIDEBAR.changed)
+    return project
+  })
+
+  // S6: restore an archived conversation (archived=false) — the teardown-restore
+  // gap. Archiving happens via worktree:teardown; this is the reverse.
+  ipcMain.handle(CONVERSATIONS.setArchived, (_e, id: string, archived: boolean): void => {
+    deps.persistence.conversations.setArchived(id, archived)
     deps.getSender()?.send(SIDEBAR.changed)
   })
 

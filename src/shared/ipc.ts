@@ -143,8 +143,8 @@ export interface ConversationInfo {
   createdAt: number
   archivedAt: number | null
 }
-export const PROJECTS = { list: 'projects:list', setArchived: 'projects:setArchived' } as const
-export const CONVERSATIONS = { list: 'conversations:list' } as const
+export const PROJECTS = { list: 'projects:list', setArchived: 'projects:setArchived', ensure: 'projects:ensure' } as const
+export const CONVERSATIONS = { list: 'conversations:list', setArchived: 'conversations:setArchived' } as const
 export const SIDEBAR = { changed: 'sidebar:changed' } as const
 
 // S5 Worktree toggle (spec section 9). `info` answers the composer's live checkbox

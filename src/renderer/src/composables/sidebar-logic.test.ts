@@ -9,6 +9,10 @@ import {
   resumeTabSpec,
   conversationDropAction,
   teardownOffersWorktree,
+  archivedConversationsForProject,
+  composerTabSpec,
+  openSessionTabSpec,
+  terminalTabSpec,
   type CapLevel
 } from './sidebar-logic'
 import type { ProjectInfo, ConversationInfo } from '../../../shared/ipc'
@@ -169,5 +173,43 @@ describe('teardownOffersWorktree', () => {
   it('is true only when the conversation ran in a worktree', () => {
     expect(teardownOffersWorktree(conv({ worktreePath: '/wt/x' }))).toBe(true)
     expect(teardownOffersWorktree(conv({ worktreePath: null }))).toBe(false)
+  })
+})
+
+describe('archivedConversationsForProject', () => {
+  it('returns only archived conversations for the project, newest-archived first', () => {
+    const list = [
+      conv({ id: 'a', projectId: 'p', archivedAt: 10 }),
+      conv({ id: 'b', projectId: 'p', archivedAt: null }),
+      conv({ id: 'c', projectId: 'p', archivedAt: 30 }),
+      conv({ id: 'd', projectId: 'other', archivedAt: 99 })
+    ]
+    expect(archivedConversationsForProject(list, 'p').map((c) => c.id)).toEqual(['c', 'a'])
+  })
+})
+
+describe('S6 launch tab specs', () => {
+  const project = { title: 'my-app', path: '/code/my-app', defaultTool: 'codex' }
+
+  it('composerTabSpec builds a folder-locked agent composer scoped to the project', () => {
+    expect(composerTabSpec(project)).toMatchObject({
+      kind: 'composer',
+      variant: 'agent',
+      initialMode: 'task',
+      tool: 'codex',
+      lockedProject: 'my-app',
+      prefill: { folder: '/code/my-app' }
+    })
+  })
+
+  it('openSessionTabSpec builds a bare interactive agent in the project (no prompt)', () => {
+    const spec = openSessionTabSpec(project)
+    expect(spec).toMatchObject({ kind: 'terminal', variant: 'agent', tool: 'codex', cwdOverride: '/code/my-app' })
+    expect(spec.prompt).toBeUndefined()
+    expect(spec.input).toBeUndefined()
+  })
+
+  it('terminalTabSpec builds a raw shell in the project', () => {
+    expect(terminalTabSpec(project, 'pwsh')).toMatchObject({ kind: 'shell', shell: 'pwsh', cwdOverride: '/code/my-app' })
   })
 })
