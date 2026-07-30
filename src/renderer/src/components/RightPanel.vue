@@ -387,6 +387,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
           <TerminalView
             v-else
             :id="entry.tab.ptyId"
+            :conversation-id="entry.tab.conversationId"
             :ticket-key="entry.tab.ticketKey ?? null"
             :input="entry.tab.input"
             :prompt="entry.tab.prompt"

@@ -6,6 +6,10 @@ export const IPC = { resolveRepo: 'repos:resolve' } as const
 
 export interface SpawnTerminalRequest {
   id: string
+  // S3: the tab's stable conversationId (a crypto.randomUUID). For claude it is
+  // pre-assigned as the CLI's --session-id at spawn; for every tool it keys the
+  // persisted conversation record. Absent for a pre-S3 / test caller.
+  conversationId?: string
   tool?: string
   ticketKey?: string
   // The raw composer input (ticket key or free-text description) — fills the

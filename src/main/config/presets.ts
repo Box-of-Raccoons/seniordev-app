@@ -12,6 +12,12 @@ export const CLI_PRESETS = {
       outputParser: 'claude-stream-json'
     },
     resumeArgs: ['--resume', '{{sessionId}}'],
+    // S3 pre-assign: claude 2.1.212 accepts `--session-id <uuid>` to fix the
+    // conversation id at spawn (verified this machine 2026-07-30). SeniorDev passes
+    // the tab's conversationId here, so the session id is known before any output —
+    // no post-hoc scrape, and interactive + headless share one path. codex has no
+    // equivalent flag, so it carries no sessionIdArgs and is discovered instead.
+    sessionIdArgs: ['--session-id', '{{sessionId}}'],
     // An approval prompt's selection menu: the cursor glyph, a NUMBERED option, a
     // word. Validated 2026-07-29 against captured claude 2.1.212 prompts (❯ U+276F)
     // and codex 0.146.0 (› U+203A). The numbered-option requirement is what keeps

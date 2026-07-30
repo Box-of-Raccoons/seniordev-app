@@ -118,7 +118,14 @@ export function registerTerminalIpc(
     try {
       const config = requireConfig(deps.source)
       const expanded = await resolveExpandedPrompt(config, deps.source, req)
-      const launch = buildInteractiveLaunch(config, { ...req, model: expanded?.model }, expanded?.prompt, deps.resolveCommand)
+      // conversationId doubles as the claude --session-id to pre-assign (S3). A
+      // tool without sessionIdArgs (codex) ignores it inside buildInteractiveLaunch.
+      const launch = buildInteractiveLaunch(
+        config,
+        { ...req, sessionId: req.conversationId, model: expanded?.model },
+        expanded?.prompt,
+        deps.resolveCommand
+      )
       manager.spawn(req.id, {
         file: launch.file,
         args: launch.args,

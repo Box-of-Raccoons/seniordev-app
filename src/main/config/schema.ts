@@ -24,6 +24,10 @@ export const CliToolSchema = z.object({
   bracketedPaste: z.boolean().optional(),
   headless: HeadlessSchema.optional(),
   resumeArgs: z.array(z.string()).optional(),
+  // How this tool pre-assigns a session id on argv at spawn, e.g.
+  // ["--session-id", "{{sessionId}}"] (claude). Absent ⇒ the tool has no
+  // launch-time id flag (codex) and its id is discovered post-hoc instead.
+  sessionIdArgs: z.array(z.string()).optional(),
   // Regex sources the S1 buffer scan matches against a quiet TUI to tell "waiting
   // on you at an approval prompt" from ordinary idle output. Default [] so a tool
   // with none configured degrades to no prompt detection rather than throwing;

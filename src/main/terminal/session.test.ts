@@ -135,4 +135,57 @@ describe('buildInteractiveLaunch', () => {
     const l = buildInteractiveLaunch(cfg, { tool: 'claude', model: 'ignored-no-modelArgs' })
     expect(l.args).toEqual([])
   })
+
+  // S3: claude pre-assigns its session id at spawn via sessionIdArgs.
+  const preassignCfg = {
+    defaultTool: 'claude',
+    cliTools: {
+      claude: {
+        command: 'claude',
+        interactiveArgs: ['--ide'],
+        promptDelivery: 'stdin',
+        sessionIdArgs: ['--session-id', '{{sessionId}}'],
+        resumeArgs: ['--resume', '{{sessionId}}'],
+        modelArgs: ['--model', '{{model}}'],
+        defaultModel: 'claude-sonnet'
+      },
+      // codex has NO sessionIdArgs — it must ignore a passed sessionId.
+      codex: { command: 'codex', interactiveArgs: ['--foo'], promptDelivery: 'arg', promptArg: '{{prompt}}' }
+    },
+    repos: []
+  } as unknown as Config
+
+  it('pre-assigns --session-id on a fresh launch (interactiveArgs, then session id, then model)', () => {
+    const l = buildInteractiveLaunch(preassignCfg, { sessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+    expect(l.args).toEqual([
+      '--ide',
+      '--session-id',
+      'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      '--model',
+      'claude-sonnet'
+    ])
+  })
+
+  it('does NOT pre-assign a session id when resuming (resume reconnects to the existing id)', () => {
+    const l = buildInteractiveLaunch(preassignCfg, {
+      sessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      resume: { sessionId: 'old-session' }
+    })
+    expect(l.args).toContain('--resume')
+    expect(l.args).not.toContain('--session-id')
+  })
+
+  it('ignores a sessionId for a tool without sessionIdArgs (codex, discovered instead)', () => {
+    const l = buildInteractiveLaunch(preassignCfg, { tool: 'codex', sessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+    expect(l.args).toEqual(['--foo'])
+  })
+
+  it('appends no --session-id when none is provided (unchanged argv)', () => {
+    const l = buildInteractiveLaunch(preassignCfg, {})
+    expect(l.args).toEqual(['--ide', '--model', 'claude-sonnet'])
+  })
+
+  it('rejects a pre-assign session id outside the UUID charset', () => {
+    expect(() => buildInteractiveLaunch(preassignCfg, { sessionId: 'a$&b' })).toThrow(/Invalid session id for pre-assign/)
+  })
 })
