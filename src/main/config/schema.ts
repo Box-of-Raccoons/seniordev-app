@@ -60,7 +60,11 @@ export const ConfigSchema = z.object({
   // Minimum width, in px, a workspace pane can be resized to (S2 split panes).
   // Configurable because VS Code's fixed ~329px minimum is their single
   // most-requested change in this area; 320 is a sensible default.
-  minPaneWidth: z.number().int().positive().default(320)
+  minPaneWidth: z.number().int().positive().default(320),
+  // Days of inactivity after which a project is auto-archived (S3, spec 4.5).
+  // Runs at startup + daily, never archives a project with a live tab, and is
+  // fully reversible. 0 disables archiving. Non-negative integer.
+  archiveAfterDays: z.number().int().nonnegative().default(14)
 })
 
 export type Config = z.infer<typeof ConfigSchema>

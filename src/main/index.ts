@@ -253,6 +253,18 @@ if (!gotLock) {
     // renderer-pushed pane/tab layout. Debounced to disk inside the store.
     workspace = createWorkspaceStore()
     ipcMain.on(WORKSPACE.save, (_e, layout: WorkspaceLayout) => workspace?.setLayout(layout))
+    // S3 archive (spec 4.5): archive projects idle past archiveAfterDays, exempting
+    // any with a live tab. Runs now and once daily; reversible; 0 days disables.
+    const runArchive = (): void => {
+      try {
+        const archived = persistence?.runArchive(store.config?.archiveAfterDays ?? 14) ?? []
+        if (archived.length) console.log(`[archive] archived ${archived.length} idle project(s)`)
+      } catch (err) {
+        console.error('[archive]', err)
+      }
+    }
+    runArchive()
+    setInterval(runArchive, 24 * 60 * 60 * 1000).unref?.()
     terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand, activity, statusHub, persistence })
     yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand, statusHub })
     registerAppIpc()

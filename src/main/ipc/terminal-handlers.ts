@@ -79,6 +79,7 @@ export function registerTerminalIpc(
       cancelPendingPrompt(id)
       activity.clear(id)
       deps.statusHub?.exit(id, exitCode)
+      deps.persistence?.onTabExit(id) // unpin its project from the live set (S3 archive)
     }
   })
 
@@ -151,6 +152,7 @@ export function registerTerminalIpc(
           tool: toolName,
           cwd: launch.cwd,
           title: req.title ?? '',
+          ptyId: req.id,
           preAssignedSessionId: preAssigned ? req.conversationId : undefined
         })
       }
@@ -189,6 +191,7 @@ export function registerTerminalIpc(
     cancelPendingPrompt(id)
     activity.clear(id)
     deps.statusHub?.dispose(id)
+    deps.persistence?.onTabExit(id) // unpin its project from the live set (S3 archive)
     manager.kill(id)
   })
 

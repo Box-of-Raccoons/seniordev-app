@@ -101,3 +101,47 @@ describe('session persistence: agent spawn', () => {
     expect(conversations.byProject(projects.list()[0].id)).toHaveLength(2)
   })
 })
+
+describe('session persistence: archive with live-tab exemption', () => {
+  let dir: string
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('archives an idle project but exempts one with a live tab', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    const DAY = 86_400_000
+    let clock = 1_000_000_000_000
+    let m = 0
+    const projects = createProjectsStore({ file: join(dir, 'projects.json'), now: () => clock, newId: () => `p-${++m}` })
+    const conversations = createConversationsStore({ file: join(dir, 'conversations.json'), now: () => clock })
+    const p = createSessionPersistence({ projects, conversations, now: () => clock, discover: async () => null })
+
+    // Two projects launched now; one keeps a live tab, the other's tab exits.
+    p.onAgentSpawn({ conversationId: 'ca', tool: 'claude', cwd: '/live', title: 't', ptyId: 'pty-a', preAssignedSessionId: 'ca' })
+    p.onAgentSpawn({ conversationId: 'cb', tool: 'claude', cwd: '/idle', title: 't', ptyId: 'pty-b', preAssignedSessionId: 'cb' })
+    p.onTabExit('pty-b') // /idle is no longer live
+
+    const liveId = projects.list().find((x) => x.path === '/live')!.id
+    const idleId = projects.list().find((x) => x.path === '/idle')!.id
+
+    // 20 days later, both are idle by lastActiveAt, but /live still has a tab.
+    clock += 20 * DAY
+    const archived = p.runArchive(14)
+
+    expect(archived).toEqual([idleId])
+    expect(projects.get(liveId)?.archivedAt).toBeNull()
+    expect(projects.get(idleId)?.archivedAt).not.toBeNull()
+  })
+
+  it('runArchive with 0 days is a no-op', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    let m = 0
+    const projects = createProjectsStore({ file: join(dir, 'projects.json'), now: () => 1000, newId: () => `p-${++m}` })
+    const conversations = createConversationsStore({ file: join(dir, 'conversations.json'), now: () => 1000 })
+    const p = createSessionPersistence({ projects, conversations, now: () => 5_000_000_000_000, discover: async () => null })
+    p.onAgentSpawn({ conversationId: 'c', tool: 'claude', cwd: '/x', title: 't', ptyId: 'pty', preAssignedSessionId: 'c' })
+    p.onTabExit('pty')
+    expect(p.runArchive(0)).toEqual([])
+  })
+})
