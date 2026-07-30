@@ -7,6 +7,7 @@ import NewTabMenu from './NewTabMenu.vue'
 import EmptyState from './EmptyState.vue'
 import StatusGlyph from './StatusGlyph.vue'
 import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
+import { shouldNotify, notificationText } from '../status-notify'
 import type { ComposerLaunch } from './composer-types'
 import type { TabStatus } from '../../../shared/ipc'
 
@@ -42,9 +43,26 @@ let counter = 0
 const statuses = reactive<Record<string, TabStatus>>({})
 let offStatus: (() => void) | null = null
 onMounted(() => {
-  offStatus = window.api.onStatusUpdate((e) => { statuses[e.id] = e.status })
+  offStatus = window.api.onStatusUpdate((e) => {
+    const prev = statuses[e.id]
+    statuses[e.id] = e.status
+    maybeNotify(prev, e.id, e.status)
+  })
 })
 onBeforeUnmount(() => offStatus?.())
+
+// Fire an OS notification on a transition into needsYou / needsReview, unless the
+// user is already looking at that tab (spec 5.5). Predicate is pure (status-notify).
+function maybeNotify(prev: TabStatus | undefined, id: string, next: TabStatus): void {
+  if (!shouldNotify(prev, next, id === activeId.value, document.hasFocus())) return
+  const term = terms.value.find((t) => t.id === id)
+  const { heading, body } = notificationText(next as 'needsYou' | 'needsReview', term?.title ?? 'Session')
+  try {
+    new Notification(heading, { body })
+  } catch {
+    // Notifications unavailable (denied / unsupported) — never fatal.
+  }
+}
 
 function addTerm(t: Omit<Term, 'id'>): void {
   counter += 1

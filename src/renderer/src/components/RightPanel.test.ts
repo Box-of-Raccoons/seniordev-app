@@ -1,14 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RightPanel from './RightPanel.vue'
+import type { StatusUpdateEvent } from '../../../shared/ipc'
+
+// Captured so tests can drive status updates as if from main.
+let statusCb: ((e: StatusUpdateEvent) => void) | null = null
 
 beforeEach(() => {
+  statusCb = null
   ;(window as unknown as { api: unknown }).api = {
     spawnTerminal: vi.fn(async () => ({ ok: true })),
     spawnShell: vi.fn(async () => ({ ok: true })),
     writeTerminal: vi.fn(), resizeTerminal: vi.fn(), killTerminal: vi.fn(),
     onTerminalData: vi.fn(() => () => {}), onTerminalExit: vi.fn(() => () => {}),
-    onStatusUpdate: vi.fn(() => () => {}),
+    onStatusUpdate: vi.fn((cb: (e: StatusUpdateEvent) => void) => { statusCb = cb; return () => {} }),
     openExternal: vi.fn(async () => ({ ok: true })),
     listPrompts: vi.fn(async () => []), listRepos: vi.fn(async () => []),
     listShells: vi.fn(async () => ({ shells: ['pwsh'], default: 'pwsh' })),
@@ -167,6 +172,37 @@ describe('RightPanel', () => {
     await w.find('.trigger-exit').trigger('click')
     await w.vm.$nextTick()
     expect(w.find('.term-tab').classes()).toContain('term-tab--dead')
+  })
+
+  it('notifies on a background tab entering needsYou, and suppresses the focused active tab', async () => {
+    const NotificationMock = vi.fn()
+    ;(globalThis as unknown as { Notification: unknown }).Notification = NotificationMock
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true) // window focused
+
+    const w = mountRP()
+    await w.find('.pick-ai').trigger('click')
+    await w.find('.go-int').trigger('click') // tab 1 → terminal
+    await w.vm.$nextTick()
+    await w.find('.pick-ai').trigger('click')
+    await w.find('.go-int').trigger('click') // tab 2 → terminal, now the active tab
+    await w.vm.$nextTick()
+
+    const ids = w.findAll('.tv').map((tv) => tv.attributes('data-id') as string)
+    const [bgId, activeId] = ids
+    expect(statusCb).toBeTypeOf('function')
+
+    // Background tab enters needsYou → notify.
+    statusCb!({ id: bgId, status: 'needsYou' })
+    expect(NotificationMock).toHaveBeenCalledTimes(1)
+    expect(NotificationMock.mock.calls[0][0]).toBe('Needs your input')
+
+    // The active, focused tab enters needsYou → suppressed.
+    statusCb!({ id: activeId, status: 'needsYou' })
+    expect(NotificationMock).toHaveBeenCalledTimes(1) // unchanged
+
+    // A non-attention state never notifies.
+    statusCb!({ id: bgId, status: 'idle' })
+    expect(NotificationMock).toHaveBeenCalledTimes(1)
   })
 
   it('yolo resume opens a terminal tab with resume + cwdOverride', async () => {
