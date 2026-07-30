@@ -325,6 +325,23 @@ without mounting a component, leaving `RightPanel.vue` as layout. This keeps the
 
 ### 7.1 Acquiring a session id
 
+> **Implementation update (2026-07-30, S3 build).** The Codex mechanism below was
+> changed during implementation. Reading `~/.codex/state_5.sqlite` is **not used**:
+> the app runtime (Electron 31 → Node 20.18.0) has no `node:sqlite`
+> (`ERR_UNKNOWN_BUILTIN_MODULE`, verified via `ELECTRON_RUN_AS_NODE`), a native
+> `better-sqlite3` is banned by §4.4, and a WASM reader cannot see the WAL-resident
+> row we poll for. Instead SeniorDev discovers the id from the **rollout transcript
+> file** Codex writes at `~/.codex/sessions/YYYY/MM/DD/rollout-<ISO>-<UUID>.jsonl`:
+> the session UUID is in the filename, and the first line is a `session_meta`
+> record carrying `session_id` + `cwd`. This is a pure `fs` scan (no sqlite, no CLI,
+> cross-platform) and depends on a more stable contract than the `state_5` schema.
+> The UUIDv7-timestamp decode is unchanged and was re-verified bit-identical on real
+> ids. The poll now anchors at **spawn** (the rollout file's id-timestamp is its
+> creation time, earlier than prompt submission), widening the window versus the
+> threads-row timing measured in §10.2. All degradations still resolve to
+> "no resume available". Implemented in `src/main/codex/session-discovery.ts`; the
+> live end-to-end check remains a human-at-a-terminal task (§10.2).
+
 The two agents differ, and both were verified on this machine on 2026-07-28.
 
 **Claude Code: pre-assign.** `claude 2.1.212` exposes:
@@ -475,6 +492,13 @@ Reading `~/.codex/state_5.sqlite` is an internal contract with no stability guar
 version suffixes on the filenames indicate the schema does change. Mitigated by decoding the
 UUIDv7 timestamp rather than trusting column names, and by degrading to no-resume on any
 mismatch.
+
+> **Implementation update (2026-07-30).** Superseded by the rollout-file approach
+> (see the §7.1 note). The dependency is now on the `~/.codex/sessions/**/rollout-*.jsonl`
+> layout and the `session_meta` first line rather than the sqlite schema — still an
+> undocumented internal contract, but a more stable one, and equally guarded by the
+> UUIDv7 decode and the degrade-to-no-resume rule. The sqlite path was never shipped:
+> the runtime cannot read it (no `node:sqlite`; native module banned).
 
 ### 10.4 Multiple simultaneous pulses
 
