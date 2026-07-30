@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import TerminalView from './TerminalView.vue'
 import YoloView from './YoloView.vue'
 import Composer from './Composer.vue'
@@ -10,7 +10,7 @@ import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
 import { shouldNotify, notificationText } from '../status-notify'
 import { usePanes, type LiveTab } from '../composables/usePanes'
 import type { ComposerLaunch } from './composer-types'
-import type { TabStatus } from '../../../shared/ipc'
+import type { TabStatus, WorkspaceLayout } from '../../../shared/ipc'
 
 interface Prefill {
   input?: string
@@ -173,6 +173,36 @@ function maybeNotify(prev: TabStatus | undefined, id: string, next: TabStatus): 
     // Notifications unavailable (denied / unsupported) — never fatal.
   }
 }
+
+// S3: persist the pane/tab layout to workspace.json. Tabs are serialised as
+// conversationIds (stable across restarts), not ptyIds (ephemeral). Debounced so
+// a resize drag or a burst of tab moves collapses into one push; main debounces
+// the disk write again. Per decision D2, this layout is persisted but not
+// re-materialised into tabs on boot — that is the S4 sidebar's job.
+function serializeLayout(): WorkspaceLayout {
+  return {
+    panes: panes.panes.map((p) => ({
+      id: p.id,
+      widthFraction: p.widthFraction,
+      tabs: p.tabs.map((t) => t.conversationId),
+      activeTabId: p.tabs.find((t) => t.ptyId === p.activeTabId)?.conversationId ?? null
+    })),
+    sidebarWidth: null, // no sidebar until S4
+    sidebarCollapsed: false
+  }
+}
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  () => panes.panes,
+  () => {
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => window.api.saveWorkspace(serializeLayout()), 400)
+  },
+  { deep: true }
+)
+onBeforeUnmount(() => {
+  if (saveTimer) clearTimeout(saveTimer)
+})
 
 // Programmatic new tab (boot / reset / deep-link): a default agent composer on
 // the default CLI tool. The New-tab menu drives the explicit tool/terminal choice.

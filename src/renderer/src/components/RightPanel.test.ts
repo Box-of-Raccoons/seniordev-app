@@ -19,6 +19,7 @@ beforeEach(() => {
     listShells: vi.fn(async () => ({ shells: ['pwsh'], default: 'pwsh' })),
     listTools: vi.fn(async () => ['claude']),
     getWorkspaceSettings: vi.fn(async () => ({ minPaneWidth: 320 })),
+    saveWorkspace: vi.fn(),
     resolveRepo: vi.fn(async () => null),
     recordRecentFolder: vi.fn(),
     listRecentFolders: vi.fn(async () => []),
