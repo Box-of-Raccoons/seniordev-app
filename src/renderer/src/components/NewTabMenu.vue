@@ -142,7 +142,6 @@ function pickTerminal(): void {
       :style="{ top: pos.top + 'px', left: pos.left + 'px' }"
       @keydown="onMenuKeydown"
     >
-      <button class="menu-item" role="menuitem" @click="pickAgent">AI Task</button>
       <button
         class="menu-item"
         :class="{ 'menu-item--parent': multiTool() }"
@@ -160,6 +159,7 @@ function pickTerminal(): void {
           @click="pickOpenWith(t)"
         >{{ cap(t) }}</button>
       </div>
+      <button class="menu-item" role="menuitem" @click="pickAgent">AI Task</button>
       <div class="sep" role="separator"></div>
       <button class="menu-item" role="menuitem" @click="pickTerminal">Terminal</button>
     </div>
