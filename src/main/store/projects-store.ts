@@ -65,6 +65,9 @@ export interface ProjectsStore {
   // none exists; either way bump lastActiveAt so the sidebar can sort by recency.
   ensureForCwd(path: string, opts?: { defaultTool?: string }): Project
   setArchived(id: string, archived: boolean): void
+  // Remember the last per-project worktree choice (S5). Set from a Task-mode agent
+  // launch's checkbox state; the composer prefills the checkbox from it next time.
+  setWorktreeDefault(id: string, worktreeDefault: boolean): void
   // First-run seed from recent-folders.json so the sidebar is not empty on day
   // one (section 4.4). Idempotent: only paths without an existing project are
   // added. Preserves MRU order via a descending lastActiveAt.
@@ -133,6 +136,15 @@ export function createProjectsStore(deps?: {
       store.mutate(() => {
         proj.archivedAt = archived ? t : null
         proj.updatedAt = t
+      })
+    },
+
+    setWorktreeDefault(id, worktreeDefault) {
+      const proj = store.get().projects.find((p) => p.id === id)
+      if (!proj || proj.worktreeDefault === worktreeDefault) return
+      store.mutate(() => {
+        proj.worktreeDefault = worktreeDefault
+        proj.updatedAt = now()
       })
     },
 

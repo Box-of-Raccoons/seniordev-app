@@ -21,6 +21,12 @@ export interface LiveTab {
   shell?: string
   resume?: { sessionId: string }
   cwdOverride?: string
+  // S5: when the launch ran in a git worktree, its path (also the cwdOverride) and
+  // branch, recorded on the conversation via the spawn. worktreeChoice is the
+  // Task-mode checkbox state, threaded to the spawn so the project remembers it.
+  worktreePath?: string
+  branch?: string
+  worktreeChoice?: boolean
   exited?: boolean
 }
 
@@ -51,6 +57,11 @@ export interface UsePanes {
   setFocusedPane: (paneId: string) => void
   moveTab: (ptyId: string, toPaneId: string, toIndex?: number) => void
   moveToNewPane: (ptyId: string, side: 'left' | 'right') => void
+  // Create an empty column at the left or right edge and return its id, WITHOUT
+  // moving an existing tab into it (unlike moveToNewPane). Used when a sidebar
+  // conversation is dropped on a shoulder: make the split, then focus/resume the
+  // conversation into the new pane. Panes are re-equalized.
+  addEdgePane: (side: 'left' | 'right') => string
   moveActiveToAdjacentPane: (dir: -1 | 1) => void
   resizePane: (leftPaneId: string, deltaFraction: number, minFraction: number) => void
   markExited: (ptyId: string) => void
@@ -209,6 +220,14 @@ export function usePanes(): UsePanes {
     moveTab(ptyId, pane.id)
   }
 
+  function addEdgePane(side: 'left' | 'right'): string {
+    const pane: Pane = { id: newPaneId(), widthFraction: 0, tabs: [], activeTabId: null }
+    if (side === 'left') panes.unshift(pane)
+    else panes.push(pane)
+    equalize(panes)
+    return pane.id
+  }
+
   function moveActiveToAdjacentPane(dir: -1 | 1): void {
     const pane = panes.find((p) => p.id === focusedPaneId.value)
     const active = pane?.activeTabId
@@ -274,6 +293,7 @@ export function usePanes(): UsePanes {
     setFocusedPane,
     moveTab,
     moveToNewPane,
+    addEdgePane,
     moveActiveToAdjacentPane,
     resizePane,
     markExited,

@@ -18,3 +18,19 @@ export function findRepoForTicket(config: Config, ticketKey: string): Repo | nul
   if (!project) return null
   return config.repos.find((r) => r.key.toUpperCase() === project) ?? null
 }
+
+// Normalize a folder path for a dedupe/equality comparison: trimmed, trailing
+// separators dropped, lower-cased. Matches the projects-store dedupe so a folder
+// resolves to the same repo/project regardless of a trailing slash or case.
+export function normRepoPath(p: string): string {
+  return p.trim().replace(/[\\/]+$/, '').toLowerCase()
+}
+
+// Match a launch folder to a configured repo by path (S5: to read its branchPrefix
+// and use its key as the worktree directory name). Returns null when the folder is
+// a git repo but not one the user has configured — then branchPrefix is empty and
+// the folder basename names the worktree dir instead.
+export function findRepoForPath(config: Config, folder: string): Repo | null {
+  const norm = normRepoPath(folder)
+  return config.repos.find((r) => normRepoPath(r.path) === norm) ?? null
+}

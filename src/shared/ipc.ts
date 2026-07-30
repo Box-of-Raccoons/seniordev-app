@@ -23,6 +23,15 @@ export interface SpawnTerminalRequest {
   rows: number
   prompt?: { name?: string; text?: string }
   resume?: { sessionId: string }
+  // S5 worktree isolation. When the composer's "run in a new worktree" toggle is
+  // on, the worktree is created pre-flight (worktree:create) and its path arrives
+  // here as cwdOverride too; worktreePath/branch are recorded on the conversation.
+  // worktreeDefault carries the Task-mode checkbox state (present only for a
+  // Task-mode agent launch) so the project can remember the last choice; absent
+  // for every other launch, so those never clobber the remembered default.
+  worktreePath?: string
+  branch?: string
+  worktreeDefault?: boolean
 }
 export interface TerminalDataEvent { id: string; data: string }
 export interface TerminalExitEvent { id: string; exitCode: number }
@@ -137,6 +146,38 @@ export interface ConversationInfo {
 export const PROJECTS = { list: 'projects:list', setArchived: 'projects:setArchived' } as const
 export const CONVERSATIONS = { list: 'conversations:list' } as const
 export const SIDEBAR = { changed: 'sidebar:changed' } as const
+
+// S5 Worktree toggle (spec section 9). `info` answers the composer's live checkbox
+// state for a folder (is it a git repo, the repo's branchPrefix, the project's
+// remembered worktreeDefault); it is resolved live via `git -C` and cached ~60s
+// (spec 4.3 — nothing about git identity is stored). `create` is the pre-flight
+// worktree add the composer awaits before it morphs, so a collision refuses in the
+// composer rather than spawning the agent in the wrong cwd. `teardown` archives a
+// conversation and, only when opted in, removes its worktree (never a dirty one).
+export interface WorktreeInfo {
+  isRepo: boolean
+  branchPrefix: string
+  worktreeDefault: boolean
+}
+export interface WorktreeCreateRequest {
+  folder: string
+  branch: string
+}
+export type WorktreeCreateResult =
+  | { ok: true; worktreePath: string; branch: string }
+  | { ok: false; error: string }
+export interface WorktreeTeardownRequest {
+  conversationId: string
+  removeWorktree: boolean
+}
+// The conversation is always archived (reversible, data kept per spec 4.6). The
+// worktree result is present only when removal was requested and a worktree exists;
+// a removal failure (a dirty tree) is reported here, never silently swallowed.
+export interface WorktreeTeardownResult {
+  archived: boolean
+  worktree?: { ok: boolean; error?: string }
+}
+export const WORKTREE = { info: 'worktree:info', create: 'worktree:create', teardown: 'worktree:teardown' } as const
 
 export interface StartupSession {
   mode: 'interactive' | 'yolo'

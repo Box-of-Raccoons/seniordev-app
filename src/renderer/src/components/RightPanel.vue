@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import TerminalView from './TerminalView.vue'
 import YoloView from './YoloView.vue'
 import Composer from './Composer.vue'
@@ -181,11 +181,44 @@ function onDropOnStrip(e: DragEvent, paneId: string): void {
   draggingPtyId.value = null
   if (id) panes.moveTab(id, paneId)
 }
-// Drop onto a window edge: spin off a new column there.
-function onDropEdge(e: DragEvent, side: 'left' | 'right'): void {
-  const id = dragId(e)
+// A drag is in flight if it's a tab reorder (our local flag) OR a sidebar
+// conversation drag (shared flag the Sidebar sets). Gates the edge shoulders and
+// the per-pane drop overlay so they only appear mid-drag.
+const dragActive = computed(() => !!draggingPtyId.value || props.ws.draggingConversation.value)
+function clearDrag(): void {
   draggingPtyId.value = null
+  props.ws.draggingConversation.value = false
+}
+
+// Drop onto a window edge: spin off a new column there. A conversation drop makes
+// the new column, then focuses/relocates a live tab or resumes a dead one into it;
+// a tab drop moves the existing tab into a fresh edge pane.
+function onDropEdge(e: DragEvent, side: 'left' | 'right'): void {
+  const conv = convDrag(e)
+  if (conv) {
+    const paneId = panes.addEdgePane(side)
+    dropConversation(conv, paneId)
+    clearDrag()
+    return
+  }
+  const id = dragId(e)
+  clearDrag()
   if (id) panes.moveToNewPane(id, side)
+}
+
+// Drop onto a pane's body overlay (not just its tab strip): route a conversation
+// into that pane, or move a dragged tab into it. The overlay sits above xterm only
+// during a drag, so the terminal's own drop handling is never fought at rest.
+function onDropInPane(e: DragEvent, paneId: string): void {
+  const conv = convDrag(e)
+  if (conv) {
+    clearDrag()
+    dropConversation(conv, paneId)
+    return
+  }
+  const id = dragId(e)
+  clearDrag()
+  if (id) panes.moveTab(id, paneId)
 }
 
 // Live per-tab status (S1), keyed by ptyId — which is the id the main process
@@ -282,7 +315,13 @@ function short(s: string, n = 22): string {
 // flips the slot's v-if, so Composer unmounts and the run view mounts + spawns.
 // The tab keeps its ptyId, so its teleport entry is stable across the morph.
 function launch(t: LiveTab, p: ComposerLaunch): void {
-  t.cwdOverride = p.folder
+  // S5: when a worktree was created pre-flight, the agent must spawn in the WORKTREE
+  // dir, not the project folder — so the worktree path becomes the cwdOverride that
+  // flows through the spawn to node-pty. Record the branch/choice for the spawn too.
+  t.cwdOverride = p.worktreePath ?? p.folder
+  t.worktreePath = p.worktreePath
+  t.branch = p.branch
+  t.worktreeChoice = p.worktreeChoice
   // Remember the folder we actually launched into (best-effort; see recent-folders).
   window.api.recordRecentFolder(p.folder)
   if (p.mode === 'terminal') {
@@ -375,13 +414,13 @@ function isVisible(paneId: string, ptyId: string): boolean {
       <!-- Edge drop zones: only live during a tab drag, so a drop at the window
            edge spins the tab off into a new column (spec 6.2). -->
       <div
-        v-show="draggingPtyId"
+        v-show="dragActive"
         class="pane-edge pane-edge--left"
         @dragover.prevent
         @drop="onDropEdge($event, 'left')"
       ></div>
       <div
-        v-show="draggingPtyId"
+        v-show="dragActive"
         class="pane-edge pane-edge--right"
         @dragover.prevent
         @drop="onDropEdge($event, 'right')"
@@ -419,6 +458,15 @@ function isVisible(paneId: string, ptyId: string): boolean {
           <div class="term-body">
             <EmptyState v-if="!pane.tabs.length" :image="raccoonAsleepUrl" caption='No sessions yet. Start one with "+".' />
             <div class="pane-slot" :ref="(el) => setSlot(pane.id, el as Element | null)"></div>
+            <!-- Drop overlay: only present mid-drag, so it sits above xterm just long
+                 enough to catch a session (or tab) dropped onto the live view, then
+                 gets out of the terminal's way. -->
+            <div
+              v-show="dragActive"
+              class="pane-drop"
+              @dragover.prevent
+              @drop="onDropInPane($event, pane.id)"
+            ></div>
           </div>
         </div>
         <div
@@ -481,6 +529,9 @@ function isVisible(paneId: string, ptyId: string): boolean {
             :tool="entry.tab.tool"
             :resume="entry.tab.resume"
             :cwd-override="entry.tab.cwdOverride"
+            :worktree-path="entry.tab.worktreePath"
+            :branch="entry.tab.branch"
+            :worktree-choice="entry.tab.worktreeChoice"
             @exited="onTabExited(entry.tab, $event)"
           />
         </div>
@@ -540,5 +591,9 @@ function isVisible(paneId: string, ptyId: string): boolean {
 }
 .term-body { flex: 1; position: relative; overflow: hidden; }
 .pane-slot { position: absolute; inset: 0; }
+/* Drop overlay over the live view, shown only mid-drag. z-index above the xterm
+   slot so it catches the drop, but below the edge shoulders (z-index 5) so the far
+   edges still spin off a new column. Faint hairline wash mirrors the edge zones. */
+.pane-drop { position: absolute; inset: 0; z-index: 4; background: var(--hairline); }
 .term-slot { position: absolute; inset: 0; padding: 6px; }
 </style>

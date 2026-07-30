@@ -59,6 +59,11 @@ export interface ConversationUpsert {
   tool: string
   cwd: string
   agentSessionId?: string | null
+  // S5: set only when the launch ran in a git worktree. Recorded so the sidebar's
+  // teardown can offer to remove it. Absent (undefined) on a normal launch leaves
+  // the stored value untouched.
+  worktreePath?: string | null
+  branch?: string | null
 }
 
 export interface ConversationsStore {
@@ -105,6 +110,8 @@ export function createConversationsStore(deps?: {
           existing.cwd = c.cwd
           existing.projectId = c.projectId
           if (c.agentSessionId !== undefined) existing.agentSessionId = c.agentSessionId
+          if (c.worktreePath !== undefined) existing.worktreePath = c.worktreePath
+          if (c.branch !== undefined) existing.branch = c.branch
           existing.lastActiveAt = t
           existing.archivedAt = null
         })
@@ -117,8 +124,8 @@ export function createConversationsStore(deps?: {
         tool: c.tool,
         agentSessionId: c.agentSessionId ?? null,
         cwd: c.cwd,
-        worktreePath: null,
-        branch: null,
+        worktreePath: c.worktreePath ?? null,
+        branch: c.branch ?? null,
         lastActiveAt: t,
         createdAt: t,
         archivedAt: null

@@ -22,6 +22,12 @@ export interface UseWorkspace {
   // its default until the user resizes. Restored on boot by App.
   sidebarWidth: Ref<number | null>
   sidebarCollapsed: Ref<boolean>
+  // True while a Projects-sidebar row is being dragged. Cross-component (the
+  // Sidebar sets it; RightPanel reads it) so the pane drop targets — the edge
+  // shoulders and the per-pane overlay — light up for a conversation drag, not
+  // only a tab drag (which RightPanel already tracks with its own local flag).
+  // Not persisted; transient drag state.
+  draggingConversation: Ref<boolean>
 }
 
 export function useWorkspace(): UseWorkspace {
@@ -29,6 +35,7 @@ export function useWorkspace(): UseWorkspace {
     panes: usePanes(),
     statuses: reactive<Record<string, TabStatus>>({}),
     sidebarWidth: ref<number | null>(null),
-    sidebarCollapsed: ref(false)
+    sidebarCollapsed: ref(false),
+    draggingConversation: ref(false)
   }
 }

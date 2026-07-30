@@ -27,6 +27,8 @@ import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery } from './deeplink/delivery'
 import { DEEPLINK, STATUS, WORKSPACE, SIDEBAR, type WorkspaceLayout } from '../shared/ipc'
 import { registerSidebarIpc } from './ipc/sidebar-handlers'
+import { registerWorktreeIpc } from './ipc/worktree-handlers'
+import { nodeGitRunner } from './git/node-git-runner'
 import { createSessionActivity } from './terminal/activity'
 import { createStatusHub } from './terminal/status-hub'
 import { createSessionPersistence, type SessionPersistence } from './session-persistence'
@@ -261,6 +263,9 @@ if (!gotLock) {
     // S4: read-only projects/conversations + restore + sidebar-geometry read for
     // the Projects sidebar. Registered once both stores exist.
     registerSidebarIpc({ persistence, workspace, getSender })
+    // S5: worktree info/create/teardown. All git shelling goes through nodeGitRunner
+    // (the only child_process-for-git module); configDir is where worktrees live.
+    registerWorktreeIpc({ gitRunner: nodeGitRunner, source: store, persistence, configDir: defaultConfigDir(), getSender })
     // S3 archive (spec 4.5): archive projects idle past archiveAfterDays, exempting
     // any with a live tab. Runs now and once daily; reversible; 0 days disables.
     const runArchive = (): void => {
