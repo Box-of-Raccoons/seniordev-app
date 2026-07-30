@@ -490,6 +490,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
             :initial-input="entry.tab.prefill?.input"
             :initial-folder="entry.tab.prefill?.folder"
             :initial-role="entry.tab.prefill?.role"
+            :project-name="entry.tab.lockedProject"
             @launch="launch(entry.tab, $event)"
           />
           <YoloView

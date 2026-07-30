@@ -71,14 +71,17 @@ export function composerTabSpec(project: Pick<ProjectInfo, 'title' | 'path' | 'd
   }
 }
 
-// Open: a bare agent (no role/prompt), spawned immediately in the project with its
-// default tool. kind 'terminal' = an interactive agent; no prompt => bare.
-export function openSessionTabSpec(project: Pick<ProjectInfo, 'title' | 'path' | 'defaultTool'>): NewTab {
+// Open: a bare agent (no role/prompt), spawned immediately in the project. kind
+// 'terminal' = an interactive agent; no prompt => bare. `tool` overrides the
+// project default (the Open submenu passes the chosen agent when more than one is
+// detected); absent falls back to the project's default tool.
+export function openSessionTabSpec(project: Pick<ProjectInfo, 'title' | 'path' | 'defaultTool'>, tool?: string): NewTab {
+  const t = tool || project.defaultTool
   return {
-    title: `${project.title} · ${project.defaultTool}`,
+    title: `${project.title} · ${t}`,
     kind: 'terminal',
     variant: 'agent',
-    tool: project.defaultTool,
+    tool: t,
     cwdOverride: project.path
   }
 }

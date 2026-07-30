@@ -33,9 +33,9 @@ beforeEach(() => {
 
 const Composer = {
   name: 'Composer',
-  props: ['variant', 'tool'],
+  props: ['variant', 'tool', 'projectName'],
   emits: ['launch'],
-  template: `<div class="composer-stub" :data-variant="variant" :data-tool="tool">
+  template: `<div class="composer-stub" :data-variant="variant" :data-tool="tool" :data-project="projectName">
     <button class="go-int" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'orchestrator', input: 'ISC-835', ticketKey: 'ISC-835', yolo: false, tool: 'claude' })">i</button>
     <button class="go-yolo" @click="$emit('launch', { mode: 'interactive', folder: 'C:/x', role: 'fix-bug', input: 'do it', yolo: true, tool: 'claude' })">y</button>
     <button class="go-term" @click="$emit('launch', { mode: 'terminal', folder: 'C:/proj/api', shell: 'pwsh' })">t</button>
@@ -140,6 +140,14 @@ describe('RightPanel', () => {
     await seedTerm(w)
     expect(w.find('.composer-stub').attributes('data-variant')).toBe('terminal')
     expect(w.text()).toContain('New shell')
+  })
+
+  it('passes lockedProject to the composer as project-name (folder-locked launch)', async () => {
+    const w = mountRP()
+    const spec: NewTab = { title: 'session · my-app', kind: 'composer', variant: 'agent', lockedProject: 'my-app', prefill: { folder: '/code/my-app' } }
+    ;(w.props('ws') as UseWorkspace).panes.addTab(spec)
+    await w.vm.$nextTick()
+    expect(w.find('.composer-stub').attributes('data-project')).toBe('my-app')
   })
 
   it('launching interactive morphs into a terminal carrying the chosen tool', async () => {

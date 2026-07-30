@@ -53,8 +53,10 @@ async function refresh(): Promise<void> {
     // A read failure must never blank the sidebar mid-session; keep the last data.
   }
 }
-// The default shell for an instant Terminal launch (S6). Resolved once on mount.
+// The default shell for an instant Terminal launch, and the detected agent tools
+// (for the New Session submenu). Resolved once on mount (S6).
 const defaultShell = ref('')
+const tools = ref<string[]>([])
 onMounted(() => {
   void refresh()
   // Main nudges on any stored change (a spawn, codex id discovery, archive/restore).
@@ -63,6 +65,10 @@ onMounted(() => {
     .listShells()
     .then((s) => (defaultShell.value = s.default))
     .catch(() => (defaultShell.value = ''))
+  window.api
+    .listTools()
+    .then((t) => (tools.value = t))
+    .catch(() => (tools.value = []))
 })
 onBeforeUnmount(() => offChange?.())
 
@@ -189,12 +195,16 @@ async function restoreProject(id: string): Promise<void> {
 // S6: launch directly into a project. AI opens a folder-locked composer; Open and
 // Terminal spawn immediately. Everything opens into the LEFTMOST pane (never
 // surprise-open where the user is not looking); a drag targets a specific pane.
-function launchInProject(project: ProjectInfo, pick: { variant: 'agent' | 'terminal'; mode?: 'task' | 'open' }): void {
+function launchInProject(
+  project: ProjectInfo,
+  pick: { variant: 'agent' | 'terminal'; mode?: 'task' | 'open'; tool?: string }
+): void {
   const left = props.ws.panes.leftmostPaneId.value
   if (pick.variant === 'terminal') {
     props.ws.panes.addTab(terminalTabSpec(project, defaultShell.value || 'bash'), left)
   } else if (pick.mode === 'open') {
-    props.ws.panes.addTab(openSessionTabSpec(project), left)
+    // pick.tool is set when the Open submenu chose an agent; else the project default.
+    props.ws.panes.addTab(openSessionTabSpec(project, pick.tool), left)
   } else {
     props.ws.panes.addTab(composerTabSpec(project), left)
   }
@@ -325,6 +335,7 @@ function onGripKey(e: KeyboardEvent): void {
           <NewTabMenu
             :ref="(el) => setMenuRef(project.id, el)"
             ghost
+            :tools="tools"
             @pick="launchInProject(project, $event)"
           />
         </div>

@@ -42,6 +42,7 @@ function setApi(
     listConversations: vi.fn(async () => conversations),
     onSidebarChanged: vi.fn((cb: () => void) => { changedCb = cb; return () => {} }),
     listShells: vi.fn(async () => ({ shells: ['pwsh', 'bash'], default: 'pwsh' })),
+    listTools: vi.fn(async () => ['claude', 'codex']),
     setProjectArchived,
     teardownConversation,
     ensureProject,
@@ -64,6 +65,7 @@ const NewTabMenuStub = {
   template: `<div class="ntm">
     <button class="pick-ai" @click="$emit('pick', { variant: 'agent' })">ai</button>
     <button class="pick-open" @click="$emit('pick', { variant: 'agent', mode: 'open' })">open</button>
+    <button class="pick-open-codex" @click="$emit('pick', { variant: 'agent', mode: 'open', tool: 'codex' })">open-codex</button>
     <button class="pick-term" @click="$emit('pick', { variant: 'terminal' })">term</button>
   </div>`
 }
@@ -283,6 +285,15 @@ describe('Sidebar', () => {
     const tab = ws.panes.panes[0].tabs[0]
     expect(tab).toMatchObject({ kind: 'terminal', variant: 'agent', tool: 'codex', cwdOverride: '/app' })
     expect(tab.prompt).toBeUndefined()
+  })
+
+  it('project + New Session with a chosen agent spawns that agent (not the project default)', async () => {
+    setApi([project({ id: 'p1', title: 'app', path: '/app', defaultTool: 'claude' })], [])
+    const ws = useWorkspace()
+    const w = await mountSidebar(ws)
+    await w.find('.pick-open-codex').trigger('click')
+    const tab = ws.panes.panes[0].tabs[0]
+    expect(tab).toMatchObject({ kind: 'terminal', variant: 'agent', tool: 'codex', cwdOverride: '/app' })
   })
 
   it('project + Terminal spawns a shell in the project with the default shell', async () => {
