@@ -99,9 +99,10 @@ onMounted(async () => {
     // Startup is best-effort: fall back to a fresh composer the user drives.
     console.error('Startup load failed:', err)
   } finally {
-    // Always land on a launch surface: if nothing above opened a session, open a
-    // composer tab so the app never boots into an empty room.
-    if (!rightPanel.value?.hasSessions()) rightPanel.value?.newTab()
+    // Boot lands on the empty state (the "no sessions yet" raccoon) when nothing
+    // above opened a session — the user launches from a project in the sidebar.
+    // A restored or deep-linked session still opens normally; we no longer force
+    // a composer tab open on a cold start.
     splashReady()
   }
 })

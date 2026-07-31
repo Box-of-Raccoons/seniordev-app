@@ -136,29 +136,36 @@ describe('Sidebar', () => {
     expect(ws.panes.panes[0].tabs).toHaveLength(before) // focused, not spawned
   })
 
-  it('a non-resumable dead conversation is inert (disabled, no spawn on click)', async () => {
+  it('a non-resumable dead conversation is hidden (nothing to focus or resume)', async () => {
     const ws = useWorkspace()
     setApi([project({})], [conv({ id: 'c-null', agentSessionId: null, resumable: false })])
     const w = await mountSidebar(ws)
-    const row = w.find('.conv')
-    expect(row.attributes('disabled')).toBeDefined()
-    expect(w.find('.conv .tag').text()).toBe('no resume')
-    await row.trigger('click')
-    expect(ws.panes.panes[0].tabs).toHaveLength(0) // nothing spawned
+    // A closed, non-resumable conversation is filtered out of the list entirely —
+    // there is nothing the user can do with it, so it is no longer shown as an
+    // inert row.
+    expect(w.find('.conv').exists()).toBe(false)
   })
 
-  it('an id-present-but-not-resumable conversation is inert (the empty-session bug)', async () => {
-    // The regression: agentSessionId is set (claude pre-assigns at spawn) but the
-    // main-side check found no transcript, so resumable is false. The row must be
-    // inert and must not spawn a doomed resume.
+  it('an id-present-but-not-resumable conversation is hidden (the empty-session bug)', async () => {
+    // agentSessionId is set (claude pre-assigns at spawn) but the main-side check
+    // found no transcript, so resumable is false. Previously shown as an inert
+    // "no resume" row; now hidden entirely — a doomed resume was never offered,
+    // and now neither is a dead row.
     const ws = useWorkspace()
     setApi([project({})], [conv({ id: 'c-empty', agentSessionId: 'has-id', resumable: false })])
     const w = await mountSidebar(ws)
-    const row = w.find('.conv')
-    expect(row.attributes('disabled')).toBeDefined()
-    expect(w.find('.conv .tag').text()).toBe('no resume')
-    await row.trigger('click')
-    expect(ws.panes.panes[0].tabs).toHaveLength(0) // no broken resume spawned
+    expect(w.find('.conv').exists()).toBe(false)
+  })
+
+  it('an OPEN non-resumable conversation is still shown (never hide a live session)', async () => {
+    // Safety property of the hide-dead filter: a freshly launched session is open
+    // (a live tab) but has not yet written a resumable transcript. It must not
+    // vanish from under the user just because resumable is still false.
+    const ws = useWorkspace()
+    ws.panes.addTab({ title: 'live', kind: 'terminal', variant: 'agent', conversationId: 'c-live' })
+    setApi([project({})], [conv({ id: 'c-live', agentSessionId: 'has-id', resumable: false })])
+    const w = await mountSidebar(ws)
+    expect(w.find('.conv').exists()).toBe(true)
   })
 
   it('restores an archived project and re-fetches', async () => {

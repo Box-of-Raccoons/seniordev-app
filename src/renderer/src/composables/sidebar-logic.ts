@@ -136,6 +136,19 @@ export function rowState(
   }
 }
 
+// A "dead" conversation is neither open in a pane nor resumable (no real
+// transcript to resume from) — there is nothing the user can do with it, so the
+// sidebar hides it rather than showing a permanently inert, disabled row. Mirrors
+// rowState's signals; `live` is the pane lookup (null ⇒ not open). This is the
+// single source of truth for both the visible-list filter and a row's inert flag.
+export function isConversationDead(
+  conversation: Pick<ConversationInfo, 'resumable'>,
+  live: { ptyId: string; paneId: string } | null
+): boolean {
+  const s = rowState(conversation, live)
+  return !s.open && !s.resumable
+}
+
 // A sidebar row can be dragged into a specific pane (spec section 8, reusing S2's
 // native DnD). It carries a distinct dataTransfer type so a pane can tell a
 // conversation drop from a tab-reorder drop, plus the minimal data a resume needs

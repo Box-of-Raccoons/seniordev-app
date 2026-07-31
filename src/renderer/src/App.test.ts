@@ -133,10 +133,14 @@ describe('App menu wiring', () => {
 })
 
 describe('App boot', () => {
-  it('opens a composer tab on boot when nothing else opens a session', async () => {
+  it('boots to the empty state — no composer tab is forced open', async () => {
+    rightNewTab.mockClear()
     mountApp()
     await flushPromises()
-    expect(rightNewTab).toHaveBeenCalled()
+    // Cold start no longer forces a composer; with nothing to restore the app
+    // lands on the "no sessions yet" empty state, which a pane renders when it
+    // has zero tabs. The user launches from a project in the sidebar.
+    expect(rightNewTab).not.toHaveBeenCalled()
   })
 
   describe('splash', () => {
