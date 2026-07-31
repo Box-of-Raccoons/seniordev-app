@@ -5,6 +5,8 @@ import type { ProjectInfo, ConversationInfo, SidebarState } from '../shared/ipc'
 import type { WorktreeInfo, WorktreeCreateRequest, WorktreeCreateResult, WorktreeTeardownRequest, WorktreeTeardownResult } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
 import type { StatusUpdateEvent } from '../shared/ipc'
+import { SUBAGENTS } from '../shared/ipc'
+import type { SubagentSpawnEvent, SubagentActivityEvent, SubagentDoneEvent } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
 
 const api = {
@@ -87,6 +89,23 @@ const api = {
     const listener = (_e: IpcRendererEvent, payload: StatusUpdateEvent): void => cb(payload)
     ipcRenderer.on(STATUS.update, listener)
     return () => ipcRenderer.off(STATUS.update, listener)
+  },
+  // S8 subagent panel: one-way pushes from the main-process watchers. Each
+  // returns an unsubscribe so the panel can detach on unmount.
+  onSubagentSpawn: (cb: (e: SubagentSpawnEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: SubagentSpawnEvent): void => cb(payload)
+    ipcRenderer.on(SUBAGENTS.spawn, listener)
+    return () => ipcRenderer.off(SUBAGENTS.spawn, listener)
+  },
+  onSubagentActivity: (cb: (e: SubagentActivityEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: SubagentActivityEvent): void => cb(payload)
+    ipcRenderer.on(SUBAGENTS.activity, listener)
+    return () => ipcRenderer.off(SUBAGENTS.activity, listener)
+  },
+  onSubagentDone: (cb: (e: SubagentDoneEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: SubagentDoneEvent): void => cb(payload)
+    ipcRenderer.on(SUBAGENTS.done, listener)
+    return () => ipcRenderer.off(SUBAGENTS.done, listener)
   },
   onMenuAction: (cb: (action: MenuAction) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, action: MenuAction): void => cb(action)

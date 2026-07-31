@@ -5,10 +5,12 @@ import YoloView from './YoloView.vue'
 import Composer from './Composer.vue'
 import EmptyState from './EmptyState.vue'
 import StatusGlyph from './StatusGlyph.vue'
+import SubagentPanel from './SubagentPanel.vue'
 import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
 import { shouldNotify, notificationText } from '../status-notify'
 import { type LiveTab } from '../composables/usePanes'
 import type { UseWorkspace } from '../composables/useWorkspace'
+import type { UseSubagents } from '../composables/useSubagents'
 import { shouldAutoClose } from '../auto-close'
 import {
   CONVERSATION_DND_TYPE,
@@ -29,8 +31,16 @@ interface Prefill {
 // `ws` (useWorkspace) so the Projects sidebar — a sibling under App — reads the
 // same source of truth. RightPanel still OWNS the behaviour over that state: the
 // status/notification glue, the workspace-save watcher, and the layout view.
-const props = defineProps<{ ws: UseWorkspace }>()
+const props = defineProps<{ ws: UseWorkspace; subagents: UseSubagents }>()
 const panes = props.ws.panes
+
+// S8: when the subagent panel is docked at the bottom, it mounts here as a flex
+// child below the panes row. Height mirrors the persisted size (a slim bar when
+// collapsed). The right-rail placement mounts in App instead.
+const SUBAGENT_COLLAPSED_PX = 34
+const subagentBottomStyle = computed(() => ({
+  flex: `0 0 ${props.ws.subagentPanel.collapsed ? SUBAGENT_COLLAPSED_PX : props.ws.subagentPanel.size}px`
+}))
 const { allTabs, hasTabs } = panes
 
 // Teleport targets by pane id. Each pane registers its .pane-slot element here
@@ -268,12 +278,14 @@ function serializeLayout(): WorkspaceLayout {
     // S4: the sidebar geometry now travels in the same layout snapshot. Persisted
     // here (RightPanel drives the save); the sidebar mutates ws.sidebarWidth/Collapsed.
     sidebarWidth: props.ws.sidebarWidth.value,
-    sidebarCollapsed: props.ws.sidebarCollapsed.value
+    sidebarCollapsed: props.ws.sidebarCollapsed.value,
+    // S8: the subagent panel geometry travels in the same snapshot.
+    subagentPanel: { ...props.ws.subagentPanel }
   }
 }
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 watch(
-  [() => panes.panes, props.ws.sidebarWidth, props.ws.sidebarCollapsed],
+  [() => panes.panes, props.ws.sidebarWidth, props.ws.sidebarCollapsed, () => props.ws.subagentPanel],
   () => {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(() => window.api.saveWorkspace(serializeLayout()), 400)
@@ -474,6 +486,13 @@ function isVisible(paneId: string, ptyId: string): boolean {
         ></div>
       </template>
     </div>
+
+    <SubagentPanel
+      v-if="ws.subagentPanel.placement === 'bottom'"
+      :subagents="subagents"
+      :ws="ws"
+      :style="subagentBottomStyle"
+    />
 
     <!-- Flat teleport list: every tab's content is mounted exactly once here and
          teleported into its pane's slot. Moving a tab changes the teleport target,

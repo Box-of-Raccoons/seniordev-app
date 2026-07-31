@@ -62,7 +62,15 @@ describe('workspace store', () => {
     const file = join(dir, 'workspace.json')
     writeFileSync(file, '{bad', 'utf8')
     const s = createWorkspaceStore({ file })
-    expect(s.get()).toEqual({ version: 1, windowBounds: null, sidebarWidth: null, sidebarCollapsed: false, panes: [], suppressTeardownConfirm: false })
+    expect(s.get()).toEqual({
+      version: 1,
+      windowBounds: null,
+      sidebarWidth: null,
+      sidebarCollapsed: false,
+      panes: [],
+      suppressTeardownConfirm: false,
+      subagentPanel: { placement: 'right', collapsed: false, size: 300, appOnly: false }
+    })
   })
 
   it('S7: persists suppressTeardownConfirm (default false)', () => {
@@ -75,6 +83,40 @@ describe('workspace store', () => {
     // Survives a reload.
     s.flush()
     expect(createWorkspaceStore({ file }).get().suppressTeardownConfirm).toBe(true)
+  })
+
+  it('S8: persists the subagent panel state via setLayout and survives reload', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ws-'))
+    const file = join(dir, 'workspace.json')
+    const s = createWorkspaceStore({ file })
+    // Default when nothing was ever set.
+    expect(s.get().subagentPanel).toEqual({ placement: 'right', collapsed: false, size: 300, appOnly: false })
+    s.setLayout({
+      panes: [],
+      sidebarWidth: null,
+      sidebarCollapsed: false,
+      subagentPanel: { placement: 'bottom', collapsed: true, size: 220, appOnly: true }
+    })
+    s.flush()
+    expect(createWorkspaceStore({ file }).get().subagentPanel).toEqual({
+      placement: 'bottom',
+      collapsed: true,
+      size: 220,
+      appOnly: true
+    })
+  })
+
+  it('S8: coerces a partial/corrupt subagent panel blob to defaults per field', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ws-'))
+    const file = join(dir, 'workspace.json')
+    // A pre-S8 doc with a bogus/partial subagentPanel: only collapsed set, junk size.
+    writeFileSync(file, JSON.stringify({ version: 1, subagentPanel: { collapsed: true, size: -5, placement: 'sideways' } }), 'utf8')
+    expect(createWorkspaceStore({ file }).get().subagentPanel).toEqual({
+      placement: 'right', // invalid → default
+      collapsed: true, // preserved
+      size: 300, // non-positive → default
+      appOnly: false // missing → default
+    })
   })
 
   it('debounces persistence across a burst of updates', () => {

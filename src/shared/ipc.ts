@@ -96,17 +96,45 @@ export const WORKSPACE = {
 } as const
 export interface WorkspaceSettings { minPaneWidth: number }
 // S7: `suppressTeardownConfirm` — skip the archive confirm for no-worktree teardowns.
-export interface SidebarState { width: number | null; collapsed: boolean; suppressTeardownConfirm: boolean }
+// Boot-time UI chrome state read once on mount: the sidebar geometry, the
+// teardown-confirm preference, and (S8) the subagent panel's persisted geometry.
+export interface SidebarState {
+  width: number | null
+  collapsed: boolean
+  suppressTeardownConfirm: boolean
+  // Optional so an older workspace.json (pre-S8) and test mocks still satisfy the
+  // shape; the renderer falls back to SUBAGENT_PANEL_DEFAULTS when absent.
+  subagentPanel?: SubagentPanelState
+}
 export interface WorkspacePaneSnapshot {
   id: string
   widthFraction: number
   tabs: string[] // conversationIds
   activeTabId: string | null // conversationId of the active tab
 }
+// The subagent panel's persisted geometry (S8). `placement` picks which slot it
+// mounts in (a right rail, sibling of the sidebar; or a bottom strip under the
+// panes). `size` is the width in px when placement is 'right', the height in px
+// when 'bottom'.
+export type SubagentPanelPlacement = 'right' | 'bottom'
+export interface SubagentPanelState {
+  placement: SubagentPanelPlacement
+  collapsed: boolean
+  size: number
+  appOnly: boolean
+}
+export const SUBAGENT_PANEL_DEFAULTS: SubagentPanelState = {
+  placement: 'right',
+  collapsed: false,
+  size: 300,
+  appOnly: false
+}
+
 export interface WorkspaceLayout {
   panes: WorkspacePaneSnapshot[]
   sidebarWidth: number | null
   sidebarCollapsed: boolean
+  subagentPanel?: SubagentPanelState
 }
 
 // S4 Projects sidebar. Read-only wire shapes for the persisted stores (the
@@ -244,6 +272,39 @@ export const STATUS = {
   active: 'status:active', // renderer → main (buffer text changed → working)
   settled: 'status:settled', // renderer → main (buffer text stable → scan for a prompt)
   update: 'status:update' // main → renderer (the resolved glyph state)
+} as const
+
+// Live subagent-activity panel (watchers ported from racconsole). Main tails the
+// CLI transcript trees and PUSHES these one-way to the renderer; there is no
+// renderer→main call. The shapes are shared so the watchers (main) and the panel
+// (renderer) agree. `session` is the parent Claude session id; `agent` the
+// per-worker subagent id. For codex there are no subagents, so session === agent.
+export type SubagentActivityKind = 'tool' | 'text' | 'thinking'
+export interface SubagentSpawnEvent {
+  session: string
+  agent: string
+  agentType?: string
+  description?: string
+  ts: number
+}
+export interface SubagentActivityEvent {
+  session: string
+  agent: string
+  kind: SubagentActivityKind
+  tool?: string
+  target?: string
+  text?: string
+  ts: number
+}
+export interface SubagentDoneEvent {
+  session: string
+  agent: string
+  ts: number
+}
+export const SUBAGENTS = {
+  spawn: 'subagents:spawn', // main → renderer
+  activity: 'subagents:activity', // main → renderer
+  done: 'subagents:done' // main → renderer
 } as const
 
 export type MenuAction =

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RightPanel from './RightPanel.vue'
 import { useWorkspace, type UseWorkspace } from '../composables/useWorkspace'
+import { useSubagents } from '../composables/useSubagents'
 import type { NewTab } from '../composables/usePanes'
 import type { StatusUpdateEvent } from '../../../shared/ipc'
 
@@ -61,7 +62,7 @@ const stubs = {
 // factory is plain (no lifecycle hooks), so a fresh one per mount is fine and
 // gives each test an isolated pane/status model, exactly as before the lift.
 function mountRP() {
-  return mount(RightPanel, { props: { ws: useWorkspace() }, global: { stubs } })
+  return mount(RightPanel, { props: { ws: useWorkspace(), subagents: useSubagents() }, global: { stubs } })
 }
 
 // S6 removed the per-pane + menu; the sidebar now seeds sessions via ws.panes.
@@ -244,7 +245,7 @@ describe('RightPanel', () => {
   }
 
   it('auto-closes a cleanly-exited agent tab (exit 0, spec 7.2)', async () => {
-    const w = mount(RightPanel, { props: { ws: useWorkspace() }, global: { stubs: exitStubs(0) } })
+    const w = mount(RightPanel, { props: { ws: useWorkspace(), subagents: useSubagents() }, global: { stubs: exitStubs(0) } })
     await seedAgent(w)
     await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()
@@ -256,7 +257,7 @@ describe('RightPanel', () => {
   })
 
   it('marks a tab dead (not closed) on a non-zero exit', async () => {
-    const w = mount(RightPanel, { props: { ws: useWorkspace() }, global: { stubs: exitStubs(1) } })
+    const w = mount(RightPanel, { props: { ws: useWorkspace(), subagents: useSubagents() }, global: { stubs: exitStubs(1) } })
     await seedAgent(w)
     await w.find('.go-int').trigger('click')
     await w.vm.$nextTick()
@@ -351,7 +352,7 @@ describe('RightPanel', () => {
     // ancestor walk is unreliable on a detached test mount, but the display toggle
     // is exactly what v-show="dragActive" drives.
     const ws = useWorkspace()
-    const w = mount(RightPanel, { props: { ws }, global: { stubs } })
+    const w = mount(RightPanel, { props: { ws, subagents: useSubagents() }, global: { stubs } })
     await seedAgent(w)
     expect(w.find('.pane-drop').attributes('style')).toContain('display: none')
     expect(w.find('.pane-edge--right').attributes('style')).toContain('display: none')

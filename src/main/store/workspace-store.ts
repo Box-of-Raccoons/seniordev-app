@@ -1,6 +1,7 @@
 import { createJsonStore, type JsonStore, type VersionedDoc } from './json-store'
 import { workspacePath } from './paths'
-import type { WorkspacePaneSnapshot, WorkspaceLayout } from '../../shared/ipc'
+import type { WorkspacePaneSnapshot, WorkspaceLayout, SubagentPanelState } from '../../shared/ipc'
+import { SUBAGENT_PANEL_DEFAULTS } from '../../shared/ipc'
 
 export type { WorkspacePaneSnapshot, WorkspaceLayout }
 
@@ -25,6 +26,20 @@ export interface WorkspaceDoc extends VersionedDoc {
   // S7: when true, archiving a conversation with no worktree skips the confirm
   // dialog ("Don't ask again"). Worktree teardowns always still confirm.
   suppressTeardownConfirm: boolean
+  // S8: the subagent panel's persisted geometry (placement/collapsed/size/appOnly).
+  subagentPanel: SubagentPanelState
+}
+
+// Validate a persisted subagent-panel blob, falling back per-field to the
+// defaults so a partial or pre-S8 doc is always coerced to a complete state.
+function migrateSubagentPanel(raw: unknown): SubagentPanelState {
+  const o = (raw ?? {}) as Partial<SubagentPanelState>
+  return {
+    placement: o.placement === 'bottom' ? 'bottom' : 'right',
+    collapsed: o.collapsed === true,
+    size: typeof o.size === 'number' && o.size > 0 ? o.size : SUBAGENT_PANEL_DEFAULTS.size,
+    appOnly: o.appOnly === true
+  }
 }
 
 function isBounds(v: unknown): v is WindowBounds {
@@ -50,7 +65,8 @@ function migrateWorkspace(raw: unknown): WorkspaceDoc {
     sidebarWidth: typeof o.sidebarWidth === 'number' ? o.sidebarWidth : null,
     sidebarCollapsed: o.sidebarCollapsed === true,
     panes,
-    suppressTeardownConfirm: o.suppressTeardownConfirm === true
+    suppressTeardownConfirm: o.suppressTeardownConfirm === true,
+    subagentPanel: migrateSubagentPanel(o.subagentPanel)
   }
 }
 
@@ -81,6 +97,7 @@ export function createWorkspaceStore(deps?: { file?: string }): WorkspaceStore {
         d.panes = layout.panes
         d.sidebarWidth = layout.sidebarWidth
         d.sidebarCollapsed = layout.sidebarCollapsed
+        if (layout.subagentPanel) d.subagentPanel = layout.subagentPanel
       })
     },
     setSuppressTeardownConfirm(v) {

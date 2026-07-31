@@ -61,7 +61,12 @@ export function registerSidebarIpc(deps: {
   // but are applied by the renderer, so it reads them here.
   ipcMain.handle(WORKSPACE.getSidebar, (): SidebarState => {
     const d = deps.workspace.get()
-    return { width: d.sidebarWidth, collapsed: d.sidebarCollapsed, suppressTeardownConfirm: d.suppressTeardownConfirm }
+    return {
+      width: d.sidebarWidth,
+      collapsed: d.sidebarCollapsed,
+      suppressTeardownConfirm: d.suppressTeardownConfirm,
+      subagentPanel: d.subagentPanel
+    }
   })
 
   // S7: persist the "Don't ask again" teardown preference.

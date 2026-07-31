@@ -1,6 +1,7 @@
 import { reactive, ref, type Ref } from 'vue'
 import { usePanes, type UsePanes } from './usePanes'
-import type { TabStatus } from '../../../shared/ipc'
+import type { TabStatus, SubagentPanelState } from '../../../shared/ipc'
+import { SUBAGENT_PANEL_DEFAULTS } from '../../../shared/ipc'
 
 // The shared workspace-layout state (S4 / decision A3). Lifted out of RightPanel
 // so the Projects sidebar and the pane area — siblings under App — read one source
@@ -28,6 +29,11 @@ export interface UseWorkspace {
   // only a tab drag (which RightPanel already tracks with its own local flag).
   // Not persisted; transient drag state.
   draggingConversation: Ref<boolean>
+  // S8 subagent panel geometry (placement/collapsed/size/appOnly), persisted in
+  // workspace.json alongside the sidebar geometry and restored on boot by App.
+  // A reactive object so the panel can mutate fields in place and the RightPanel
+  // save watcher picks them up.
+  subagentPanel: SubagentPanelState
 }
 
 export function useWorkspace(): UseWorkspace {
@@ -36,6 +42,7 @@ export function useWorkspace(): UseWorkspace {
     statuses: reactive<Record<string, TabStatus>>({}),
     sidebarWidth: ref<number | null>(null),
     sidebarCollapsed: ref(false),
-    draggingConversation: ref(false)
+    draggingConversation: ref(false),
+    subagentPanel: reactive<SubagentPanelState>({ ...SUBAGENT_PANEL_DEFAULTS })
   }
 }

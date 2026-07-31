@@ -53,7 +53,14 @@ beforeEach(() => {
     onMenuAction: vi.fn((cb) => { menuCb = cb; return () => {} }),
     onDeepLink: vi.fn((cb) => { deepLinkCb = cb; return () => {} }),
     deepLinkReady: vi.fn(),
-    getAppInfo: vi.fn().mockResolvedValue({ name: 'SeniorDev', version: '1.0.0' })
+    getAppInfo: vi.fn().mockResolvedValue({ name: 'SeniorDev', version: '1.0.0' }),
+    // S8: the subagent panel starts its watchers + known-session refresh on mount.
+    onSubagentSpawn: vi.fn(() => () => {}),
+    onSubagentActivity: vi.fn(() => () => {}),
+    onSubagentDone: vi.fn(() => () => {}),
+    onSidebarChanged: vi.fn(() => () => {}),
+    listConversations: vi.fn().mockResolvedValue([]),
+    getSidebarState: vi.fn().mockResolvedValue({ width: null, collapsed: false, suppressTeardownConfirm: false })
   }
 })
 
@@ -146,7 +153,10 @@ describe('App boot', () => {
       const w = mountApp()
       expect(w.findComponent({ name: 'Splash' }).exists()).toBe(true)
       await flushPromises()
-      vi.runAllTimers()
+      // Advance past the splash's max-visible cap. (Not runAllTimers: the S8
+      // subagent panel installs a recurring 1s clock interval that would make
+      // runAllTimers loop forever.)
+      vi.advanceTimersByTime(9000)
       await flushPromises()
       expect(w.findComponent({ name: 'Splash' }).exists()).toBe(false)
     })

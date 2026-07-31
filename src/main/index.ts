@@ -34,6 +34,7 @@ import { createStatusHub } from './terminal/status-hub'
 import { createSessionPersistence, type SessionPersistence } from './session-persistence'
 import { pollForTitle } from './session-title'
 import { createWorkspaceStore, type WorkspaceStore } from './store/workspace-store'
+import { startSubagentForwarding } from './subagents/forwarder'
 import { loadRecent } from './recent-folders'
 import type { TerminalManager } from './terminal/manager'
 import type { YoloRunner } from './headless/runner'
@@ -66,6 +67,7 @@ let terminals: TerminalManager | null = null
 let yolo: YoloRunner | null = null
 let persistence: SessionPersistence | null = null
 let workspace: WorkspaceStore | null = null
+let subagents: { dispose: () => void } | null = null
 let mainWindow: BrowserWindow | null = null
 
 // Warm links are queued until the renderer says it's listening (DEEPLINK.ready);
@@ -294,6 +296,10 @@ if (!gotLock) {
     registerConfigIpc(store, getSender)
     registerPromptConfigIpc(store, getSender)
     installMenu(getSender)
+    // S8: start the read-only subagent-activity watchers and push their events to
+    // the renderer's panel. Global (every subagent on the machine); the renderer
+    // filters to this app's sessions when "this app only" is on.
+    subagents = startSubagentForwarding({ getSender })
 
     createWindow()
     app.on('activate', () => {
@@ -304,12 +310,14 @@ if (!gotLock) {
   app.on('before-quit', () => {
     terminals?.killAll()
     yolo?.killAll()
+    subagents?.dispose()
     persistence?.flush()
     workspace?.flush()
   })
   app.on('window-all-closed', () => {
     terminals?.killAll()
     yolo?.killAll()
+    subagents?.dispose()
     persistence?.flush()
     workspace?.flush()
     if (process.platform !== 'darwin') app.quit()
