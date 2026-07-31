@@ -11,6 +11,7 @@ import {
   archivedConversationsForProject,
   capConversations,
   rowState,
+  isConversationDead,
   resumeTabSpec,
   composerTabSpec,
   openSessionTabSpec,
@@ -80,7 +81,13 @@ const activeProjects = computed(() => activeProjectsByRecency(projects.value))
 const archived = computed(() => archivedProjects(projects.value))
 
 function projectConversations(projectId: string): ConversationInfo[] {
-  return conversationsForProject(conversations.value, projectId)
+  // Hide dead, non-resumable conversations: a closed row with no resumable
+  // transcript is inert noise (nothing to focus or resume). An open row (live
+  // tab) is always kept, even before it has written a resumable transcript, so a
+  // freshly launched session never vanishes while you are using it.
+  return conversationsForProject(conversations.value, projectId).filter(
+    (c) => !isConversationDead(c, liveFor(c))
+  )
 }
 function isExpanded(id: string): boolean {
   return !collapsedProjects.has(id)
@@ -115,8 +122,7 @@ function glyphFor(conv: ConversationInfo): TabStatus | null {
   return s.open && s.ptyId ? (props.ws.statuses[s.ptyId] ?? null) : null
 }
 function isInert(conv: ConversationInfo): boolean {
-  const s = stateFor(conv)
-  return !s.open && !s.resumable
+  return isConversationDead(conv, liveFor(conv))
 }
 function convClasses(conv: ConversationInfo): Record<string, boolean> {
   const s = stateFor(conv)

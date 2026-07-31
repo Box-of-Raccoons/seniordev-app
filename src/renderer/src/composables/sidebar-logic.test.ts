@@ -5,6 +5,7 @@ import {
   conversationsForProject,
   capConversations,
   rowState,
+  isConversationDead,
   conversationDragPayload,
   resumeTabSpec,
   conversationDropAction,
@@ -210,5 +211,24 @@ describe('S6 launch tab specs', () => {
 
   it('terminalTabSpec builds a raw shell in the project', () => {
     expect(terminalTabSpec(project, 'pwsh')).toMatchObject({ kind: 'shell', shell: 'pwsh', cwdOverride: '/code/my-app' })
+  })
+})
+
+describe('isConversationDead', () => {
+  const live = { ptyId: 'pty1', paneId: 'pane1' }
+
+  it('is dead when closed and not resumable (nothing to focus or resume)', () => {
+    expect(isConversationDead(conv({ resumable: false }), null)).toBe(true)
+  })
+
+  it('is not dead when closed but resumable (has a real transcript)', () => {
+    expect(isConversationDead(conv({ resumable: true }), null)).toBe(false)
+  })
+
+  it('is never dead while open, even before a resumable transcript exists', () => {
+    // A freshly launched session is open but not yet resumable; it must not be
+    // hidden out from under the user.
+    expect(isConversationDead(conv({ resumable: false }), live)).toBe(false)
+    expect(isConversationDead(conv({ resumable: true }), live)).toBe(false)
   })
 })
