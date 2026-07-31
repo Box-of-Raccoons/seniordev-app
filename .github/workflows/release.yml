@@ -1,26 +1,54 @@
 name: release
 
 # Cut a release by pushing a version tag, e.g.:
-#   git tag v0.1.0 && git push origin v0.1.0
-# Builds the Windows NSIS installer (UNSIGNED — no code-signing certs configured,
-# so users will see a SmartScreen warning) and attaches it to a GitHub Release for
-# that tag. macOS/Linux are intentionally omitted until signing is set up.
+#   git tag v0.4.0 && git push origin v0.4.0
+# Builds both installers and publishes them to the matching GitHub Release:
+#   - Windows: NSIS installer (UNSIGNED — no Windows code-signing cert, so users
+#     see a SmartScreen warning on first run).
+#   - macOS: dmg, Developer ID signed + notarized when the Apple secrets below are
+#     set (org-level on Box-of-Raccoons, reachable because this repo is public).
+#     Each credential step self-skips when its secret is absent, so the build
+#     still runs (unsigned) without them. electron-builder notarizes + staples the
+#     .app; the .dmg CONTAINER is notarized + stapled in a separate step, because
+#     electron-builder staples the app, not the dmg.
+# Build and publish are split into two jobs so the dmg is stapled BEFORE it is
+# uploaded (electron-builder's own --publish would race the stapling).
+#
+# Required secrets (org-level on Box-of-Raccoons, or repo-level):
+#   APPLE_CERT_P12_BASE64  base64 of the Developer ID Application .p12
+#   APPLE_CERT_PASSWORD    password for that .p12
+#   ASC_KEY_P8_BASE64      base64 of the App Store Connect API key (.p8)
+#   ASC_KEY_ID             the API key's Key ID
+#   ASC_ISSUER_ID          the API key's Issuer ID
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
-  contents: write # create the Release and upload the installer asset
+  contents: write # create the Release and upload the installer assets
 
 jobs:
-  windows:
-    # Pinned to VS 2022: windows-latest is now the VS 2026 image, whose Visual
-    # Studio layout @electron/rebuild's bundled node-gyp can't detect (it throws
-    # ERR_CHILD_PROCESS_STDIO_MAXBUFFER and reports "no VS 2017+"). VS 2022 builds
-    # node-pty for the Electron ABI cleanly. Revisit once @electron/rebuild ships
-    # a node-gyp that understands VS 2026.
-    runs-on: windows-2022
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Pinned to VS 2022: windows-latest is now the VS 2026 image, whose
+          # Visual Studio layout @electron/rebuild's bundled node-gyp can't detect
+          # (ERR_CHILD_PROCESS_STDIO_MAXBUFFER / "no VS 2017+"). VS 2022 builds
+          # node-pty for the Electron ABI cleanly.
+          - os: windows-2022
+            build_args: '--win nsis'
+          - os: macos-latest
+            build_args: '--mac'
+    runs-on: ${{ matrix.os }}
+    # Surface the two "presence" secrets as env so step `if:` can gate on them
+    # (secrets aren't referenceable in `if:` directly).
+    env:
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERT_P12_BASE64 != '' }}
+      HAS_ASC_KEY: ${{ secrets.ASC_KEY_P8_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -39,18 +67,92 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+      - name: Import Developer ID certificate (macOS)
+        if: matrix.os == 'macos-latest' && env.HAS_APPLE_CERT == 'true'
+        uses: apple-actions/import-codesign-certs@63fff01cd422d4b7b855d40ca1e9d34d2de9427d # v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_CERT_PASSWORD }}
+
+      - name: Set up notarization credentials (macOS)
+        # Writes the ASC API key and exports the env vars electron-builder reads to
+        # notarize the .app; the same vars are reused by the dmg step. Only runs
+        # when the secret exists, so absent creds => electron-builder skips
+        # notarization quietly and the dmg step self-skips too.
+        if: matrix.os == 'macos-latest' && env.HAS_ASC_KEY == 'true'
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          echo "$ASC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/asc_key.p8"
+          echo "APPLE_API_KEY=$RUNNER_TEMP/asc_key.p8" >> "$GITHUB_ENV"
+          echo "APPLE_API_KEY_ID=${{ secrets.ASC_KEY_ID }}" >> "$GITHUB_ENV"
+          echo "APPLE_API_ISSUER=${{ secrets.ASC_ISSUER_ID }}" >> "$GITHUB_ENV"
+
       # electron-vite build → @electron/rebuild (node-pty for the Electron ABI) →
-      # electron-builder NSIS. --publish never keeps electron-builder from pushing
-      # assets itself; the upload step below owns publishing (single path).
+      # electron-builder. --publish never: the release job publishes the stapled
+      # artifacts so nothing un-stapled is uploaded mid-build.
       - run: pnpm build
       - run: pnpm exec electron-rebuild -f
-      - run: pnpm exec electron-builder --win nsis --publish never
+      - name: Package installer (${{ matrix.os }})
+        run: pnpm exec electron-builder ${{ matrix.build_args }} --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Attach the installer to the GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Sign, notarize + staple the dmg (macOS)
+        # electron-builder notarizes/staples the .app but leaves the .dmg container
+        # unsigned + un-notarized. Sign the dmg with the Developer ID, notarize it,
+        # staple the ticket, then assert with spctl — so a downloaded dmg passes
+        # Gatekeeper offline (signature + ticket), not just the app inside it.
+        if: matrix.os == 'macos-latest' && env.HAS_ASC_KEY == 'true'
+        run: |
+          shopt -s nullglob
+          SIGN_ID=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | awk '{print $2}')
+          echo "Signing identity: $SIGN_ID"
+          for dmg in release/*.dmg; do
+            echo "==> Signing $dmg"
+            codesign --force --timestamp --sign "$SIGN_ID" "$dmg"
+            echo "==> Notarizing $dmg"
+            xcrun notarytool submit "$dmg" \
+              --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" \
+              --wait
+            xcrun stapler staple "$dmg"
+            xcrun stapler validate "$dmg"
+            # Fail the build if Gatekeeper would not accept the downloaded dmg.
+            spctl -a -vvv -t open --context context:primary-signature "$dmg"
+          done
+
+      - name: Clean up secrets (macOS)
+        if: always() && matrix.os == 'macos-latest'
+        run: rm -f "$RUNNER_TEMP/asc_key.p8"
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: seniordev-${{ matrix.os }}
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/latest*.yml
+          if-no-files-found: ignore
+
+  release:
+    # Publish the built + stapled installers to the tag's GitHub Release. Runs
+    # only on a version-tag push (never on manual verification runs).
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
-            release/*.exe
-            release/latest.yml
+            artifacts/**/*.exe
+            artifacts/**/*.dmg
+            artifacts/**/latest*.yml
           fail_on_unmatched_files: false
           generate_release_notes: true

@@ -21,6 +21,23 @@ const path = require('node:path')
 module.exports = async function adhocSign(context) {
   if (context.electronPlatformName !== 'darwin') return
 
+  // When a real Developer ID Application identity is available (CI release with
+  // the imported cert, or a dev machine with the cert in its keychain), skip the
+  // ad-hoc signature entirely: electron-builder will Dev ID sign + notarize the
+  // bundle, and an ad-hoc signature applied first would only get in the way. The
+  // ad-hoc path stays for local builds with no Dev ID identity present.
+  try {
+    const identities = execFileSync('security', ['find-identity', '-v', '-p', 'codesigning'], {
+      encoding: 'utf8',
+    })
+    if (identities.includes('Developer ID Application')) {
+      console.log('[afterPack] Developer ID identity present — skipping ad-hoc sign (electron-builder will Dev ID sign)')
+      return
+    }
+  } catch {
+    // `security` unavailable/failed — fall through to ad-hoc signing.
+  }
+
   const appName = context.packager.appInfo.productFilename
   const appPath = path.join(context.appOutDir, `${appName}.app`)
 
