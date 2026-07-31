@@ -1,51 +1,22 @@
 import type { EventEmitter } from 'node:events'
+import type { SubagentSpawnEvent, SubagentActivityEvent, SubagentDoneEvent } from '../../shared/ipc'
 
-// Shared event contract for the CLI-agent activity watchers (claude + codex).
-// These modules are pure main-process Node — no electron, no IPC, no renderer,
-// no app-scoping. The watchers emit an event for EVERY subagent/session they
-// see under the CLI's transcript tree; the IPC layer and renderer decide what to
-// keep. Ported from racconsole's watcher.mjs / codex.mjs (read-only tailers).
-
-export type SubagentActivityKind = 'tool' | 'text' | 'thinking'
-
-// A new subagent/session appeared. For claude, `session` is the parent Claude
-// Code session id and `agent` the per-worker agent id; for codex there are no
-// subagents, so `session === agent` (the rollout's UUID).
-export interface SubagentSpawnEvent {
-  session: string
-  agent: string
-  agentType?: string
-  description?: string
-  ts: number
-}
-
-// One unit of visible work by a subagent/session: a tool call, an assistant text
-// chunk, or a thinking chunk. `tool`/`target` are set for kind:'tool'; `text` is
-// set for kind:'text' and kind:'thinking'.
-export interface SubagentActivityEvent {
-  session: string
-  agent: string
-  kind: SubagentActivityKind
-  tool?: string
-  target?: string
-  text?: string
-  ts: number
-}
-
-// A session finished (codex only — emitted on a `task_complete` rollout line).
-export interface SubagentDoneEvent {
-  session: string
-  agent: string
-  ts: number
-}
+// The CLI-agent activity watchers (claude + codex) are pure main-process Node —
+// no electron, no IPC, no renderer, no app-scoping. Each watcher emits an event
+// for EVERY subagent/session it sees under the CLI's transcript tree; the IPC
+// layer forwards them and the renderer decides what to keep. Ported from
+// racconsole's watcher.mjs / codex.mjs (read-only tailers).
+//
+// The wire event shapes live in shared/ipc.ts (the renderer's panel needs them
+// too); they are re-exported here so the watcher modules keep importing from
+// './types' unchanged.
+export type { SubagentSpawnEvent, SubagentActivityEvent, SubagentDoneEvent } from '../../shared/ipc'
+export type { SubagentActivityKind } from '../../shared/ipc'
 
 // The activity payload as produced by the pure line parsers, before the watcher
 // stamps on session/agent/ts. Kept separate so the parsers stay unit-testable
 // without a real file watch.
-export type SubagentActivityPayload = Pick<
-  SubagentActivityEvent,
-  'kind' | 'tool' | 'target' | 'text'
->
+export type SubagentActivityPayload = Pick<SubagentActivityEvent, 'kind' | 'tool' | 'target' | 'text'>
 
 // An EventEmitter narrowed to the events these watchers emit, plus close().
 // `close()` stops the poll timer and the underlying chokidar watcher.
