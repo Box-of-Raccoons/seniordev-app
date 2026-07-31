@@ -20,10 +20,23 @@ describe('Splash', () => {
     expect(img.attributes('alt')).toBe('')
   })
 
-  it('exposes an accessible loading status', () => {
-    const root = mount(Splash).get('.splash')
-    expect(root.attributes('role')).toBe('status')
-    expect(root.attributes('aria-label')).toContain('starting')
+  it('is an accessible click-to-continue target with a visible hint', () => {
+    const w = mount(Splash)
+    const root = w.get('.splash')
+    expect(root.attributes('role')).toBe('button')
+    expect(root.attributes('tabindex')).toBe('0')
+    expect(root.attributes('aria-label')).toContain('continue')
+    expect(w.get('.splash__continue').text()).toBe('click to continue')
+    // The old indeterminate loader is gone.
+    expect(w.find('.splash__loader').exists()).toBe(false)
+  })
+
+  it('emits dismiss on click and on Enter/Escape', async () => {
+    const w = mount(Splash)
+    await w.get('.splash').trigger('click')
+    await w.get('.splash').trigger('keydown', { key: 'Enter' })
+    await w.get('.splash').trigger('keydown', { key: 'Escape' })
+    expect(w.emitted('dismiss')).toHaveLength(3)
   })
 
   it('overlays the wordmark, version, and build-year credit on the art', async () => {

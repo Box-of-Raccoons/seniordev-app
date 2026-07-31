@@ -2,6 +2,8 @@ import { createProjectsStore, type ProjectsStore } from './store/projects-store'
 import { createConversationsStore, type ConversationsStore } from './store/conversations-store'
 import { pollForCodexSession, findRolloutSession, codexSessionsDir } from './codex/session-discovery'
 import { computeArchivals } from './archive'
+import { conversationTitleFromTranscript } from './session-title'
+import type { Conversation } from './store/conversations-store'
 
 // Backfill window (spec §7.1): the live discovery poll anchors at spawn and can
 // lose the race — its ~20s window closes before codex's rollout file is catchable,
@@ -36,6 +38,9 @@ export interface AgentSpawnInfo {
   worktreePath?: string
   branch?: string
   worktreeDefault?: boolean
+  // S7: whether the launch carried a user prompt. false ⇒ a bare/instant launch
+  // whose title is auto-generated and eligible for a first-message backfill.
+  hadPrompt?: boolean
 }
 
 export interface SessionPersistence {
@@ -48,6 +53,9 @@ export interface SessionPersistence {
   // conversation still missing one (the live poll can lose the race). Returns how
   // many ids were backfilled. Idempotent; safe to call repeatedly.
   backfillCodexSessions(): number
+  // S7: retitle auto-titled conversations from the first message in their
+  // transcript. Idempotent; returns how many titles were set.
+  backfillTitles(): number
   // Archive projects idle past archiveAfterDays, exempting any with a live tab
   // (spec 4.5). Reversible; 0 days disables. Returns the archived project ids.
   runArchive(archiveAfterDays: number): string[]
@@ -67,12 +75,20 @@ export function createSessionPersistence(deps?: {
   // agentSessionId, or the archive job archived a project. index.ts wires this to
   // a SIDEBAR.changed push so the sidebar re-fetches. Best-effort; never throws.
   onChange?: () => void
+  // S7: read a conversation's title from its transcript (sync, for backfill).
+  // Injectable for tests; defaults to the on-disk transcript reader.
+  readTitle?: (conv: { tool: string; agentSessionId: string | null }) => string | null
+  // S7: live post-spawn title poll for a bare conversation. Injectable; when
+  // absent (tests) the live poll is skipped and titles fill in via backfill only.
+  pollTitle?: (getConv: () => Conversation | undefined) => Promise<string | null>
 }): SessionPersistence {
   const projects = deps?.projects ?? createProjectsStore()
   const conversations = deps?.conversations ?? createConversationsStore()
   const now = deps?.now ?? Date.now
   const sessionsDir = deps?.sessionsDir ?? codexSessionsDir()
   const discover = deps?.discover ?? ((o): Promise<string | null> => pollForCodexSession(o))
+  const readTitle =
+    deps?.readTitle ?? ((c): string | null => conversationTitleFromTranscript(c, { codexSessionsDir: sessionsDir }))
   const emitChange = (): void => {
     try {
       deps?.onChange?.()
@@ -105,6 +121,26 @@ export function createSessionPersistence(deps?: {
     }
     return changed
   }
+  // S7: retitle auto-titled conversations from their transcript's first message.
+  // Sync (settled transcripts); the live poll handles the just-spawned case.
+  function backfillTitles(): number {
+    let changed = 0
+    for (const c of conversations.list()) {
+      if (!c.autoTitle || c.archivedAt !== null || !c.agentSessionId) continue
+      let title: string | null = null
+      try {
+        title = readTitle(c)
+      } catch {
+        title = null // a scan failure just leaves the generic title
+      }
+      if (title && title !== c.title) {
+        conversations.setTitle(c.id, title)
+        changed += 1
+      }
+    }
+    return changed
+  }
+
   // Live tabs pin their project against archiving. ptyId -> projectId; a project
   // is "live" while any of its ptys is running.
   const livePtys = new Map<string, string>()
@@ -118,6 +154,10 @@ export function createSessionPersistence(deps?: {
       // Remember the last per-project worktree choice, but only when the launch
       // actually carried one (a Task-mode agent launch). Other launches leave it.
       if (info.worktreeDefault !== undefined) projects.setWorktreeDefault(project.id, info.worktreeDefault)
+      // S7: a launch with a user prompt has a meaningful title already; a bare
+      // launch is auto-titled and eligible for a first-message backfill. Undefined
+      // on a resume (info.hadPrompt absent) leaves the stored flag untouched.
+      const autoTitle = info.hadPrompt === undefined ? undefined : !info.hadPrompt
       conversations.upsert({
         id: info.conversationId,
         projectId: project.id,
@@ -129,11 +169,30 @@ export function createSessionPersistence(deps?: {
         // conversation — which re-enters here with no worktree fields — leaves the
         // stored worktreePath/branch intact rather than wiping them.
         worktreePath: info.worktreePath,
-        branch: info.branch
+        branch: info.branch,
+        autoTitle
       })
       // The project + conversation now exist / are refreshed → the sidebar has a
       // new (or re-activated) row to draw.
       emitChange()
+      // S7: live-backfill the title for a bare launch from its first transcript
+      // message. getConv re-reads each tick, so a codex id discovered after spawn is
+      // picked up. Guarded by autoTitle at set time so a meanwhile-meaningful title
+      // is never clobbered. Skipped when no poller is wired (tests).
+      if (conversations.get(info.conversationId)?.autoTitle && deps?.pollTitle) {
+        void deps
+          .pollTitle(() => conversations.get(info.conversationId))
+          .then((title) => {
+            const c = conversations.get(info.conversationId)
+            if (title && c?.autoTitle) {
+              conversations.setTitle(info.conversationId, title)
+              emitChange()
+            }
+          })
+          .catch(() => {
+            /* best-effort: a title that never resolves just stays generic */
+          })
+      }
       // claude: id is already known (pre-assigned == conversationId). Done.
       if (info.preAssignedSessionId) return
       // codex (or any non-pre-assign tool): poll the rollout dir from spawn. A
@@ -158,10 +217,18 @@ export function createSessionPersistence(deps?: {
       // changed (claude wrote its transcript once it had content). Either way,
       // re-fetch so the sidebar reflects the new state.
       backfillCodex()
+      // S7: a title the live poll missed (poll timed out, or the app restarted mid
+      // session) can now be read from the settled transcript.
+      backfillTitles()
       emitChange()
     },
     backfillCodexSessions() {
       const changed = backfillCodex()
+      if (changed) emitChange()
+      return changed
+    },
+    backfillTitles() {
+      const changed = backfillTitles()
       if (changed) emitChange()
       return changed
     },

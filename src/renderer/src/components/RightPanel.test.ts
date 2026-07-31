@@ -68,7 +68,7 @@ function mountRP() {
 // These helpers do the same through the component's own ws prop, so the existing
 // cases keep exercising the real add-tab path without a menu to click.
 async function seedAgent(w: ReturnType<typeof mountRP>): Promise<void> {
-  const spec: NewTab = { title: 'New session', kind: 'composer', variant: 'agent', initialMode: 'task' }
+  const spec: NewTab = { title: 'New session', kind: 'composer', variant: 'agent' }
   ;(w.props('ws') as UseWorkspace).panes.addTab(spec)
   await w.vm.$nextTick()
 }

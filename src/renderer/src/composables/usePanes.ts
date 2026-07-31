@@ -13,7 +13,6 @@ export interface LiveTab {
   kind: TabKind
   tool?: string
   variant?: 'agent' | 'terminal'
-  initialMode?: 'task' | 'open'
   prefill?: { input?: string; folder?: string; role?: string }
   // S6: when a composer is launched from a project, the folder is fixed to the
   // project. Its presence locks/hides the folder field and shows the name as a

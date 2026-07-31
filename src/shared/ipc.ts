@@ -88,9 +88,15 @@ export const TOOLS = { list: 'tools:list' } as const
 // `getSidebar` (S4): the renderer reads the persisted sidebar width/collapsed on
 // mount to restore it (window bounds are restored main-side; the sidebar geometry
 // travels through the layout, so the renderer needs a read for it).
-export const WORKSPACE = { getSettings: 'workspace:getSettings', save: 'workspace:save', getSidebar: 'workspace:getSidebar' } as const
+export const WORKSPACE = {
+  getSettings: 'workspace:getSettings',
+  save: 'workspace:save',
+  getSidebar: 'workspace:getSidebar',
+  setSuppressTeardownConfirm: 'workspace:setSuppressTeardownConfirm'
+} as const
 export interface WorkspaceSettings { minPaneWidth: number }
-export interface SidebarState { width: number | null; collapsed: boolean }
+// S7: `suppressTeardownConfirm` — skip the archive confirm for no-worktree teardowns.
+export interface SidebarState { width: number | null; collapsed: boolean; suppressTeardownConfirm: boolean }
 export interface WorkspacePaneSnapshot {
   id: string
   widthFraction: number

@@ -69,6 +69,10 @@ onMounted(() => {
     .listTools()
     .then((t) => (tools.value = t))
     .catch(() => (tools.value = []))
+  window.api
+    .getSidebarState()
+    .then((s) => (suppressTeardownConfirm.value = s.suppressTeardownConfirm))
+    .catch(() => {})
 })
 onBeforeUnmount(() => offChange?.())
 
@@ -156,7 +160,18 @@ function onRowDragEnd(): void {
 // dirty tree) is reported without blocking the archive.
 const teardownConv = ref<ConversationInfo | null>(null)
 const teardownFailure = ref<string | null>(null)
+// S7: "Don't ask again" for no-worktree archives, read on mount + persisted on use.
+const suppressTeardownConfirm = ref(false)
 function openTeardown(conv: ConversationInfo): void {
+  // S7: with the preference set, a no-worktree archive skips the dialog entirely.
+  // A worktree conversation always confirms (removal is a real, destructive choice).
+  if (suppressTeardownConfirm.value && !conv.worktreePath) {
+    void window.api
+      .teardownConversation({ conversationId: conv.id, removeWorktree: false })
+      .then(() => refresh())
+      .catch(() => {})
+    return
+  }
   teardownConv.value = conv
   teardownFailure.value = null
 }
@@ -164,9 +179,13 @@ function cancelTeardown(): void {
   teardownConv.value = null
   teardownFailure.value = null
 }
-async function confirmTeardown(payload: { removeWorktree: boolean }): Promise<void> {
+async function confirmTeardown(payload: { removeWorktree: boolean; dontAskAgain: boolean }): Promise<void> {
   const conv = teardownConv.value
   if (!conv) return
+  if (payload.dontAskAgain) {
+    suppressTeardownConfirm.value = true
+    void window.api.setSuppressTeardownConfirm(true)
+  }
   try {
     const res = await window.api.teardownConversation({ conversationId: conv.id, removeWorktree: payload.removeWorktree })
     // A worktree-removal failure keeps the dialog open reporting the reason; the

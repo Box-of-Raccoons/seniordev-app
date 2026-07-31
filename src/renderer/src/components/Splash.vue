@@ -9,7 +9,20 @@ const version = ref('')
 // Copyright year, frozen at build time via Vite `define` (see electron.vite.config.ts).
 const buildYear = __BUILD_YEAR__
 
+// S7: the splash is dismissable — a click or a key closes it immediately (App
+// calls the splash hide, bypassing the minimum-visible timer).
+const emit = defineEmits<{ (e: 'dismiss'): void }>()
+const root = ref<HTMLElement | null>(null)
+function onKey(e: KeyboardEvent): void {
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
+    e.preventDefault()
+    emit('dismiss')
+  }
+}
+
 onMounted(async () => {
+  // Focus the dismiss target so a keypress closes it without a click first.
+  root.value?.focus()
   try {
     version.value = (await window.api.getAppInfo()).version
   } catch {
@@ -20,7 +33,15 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="splash" role="status" aria-live="polite" aria-label="SeniorDev is starting">
+  <div
+    ref="root"
+    class="splash"
+    role="button"
+    tabindex="0"
+    aria-label="Click to continue to SeniorDev"
+    @click="emit('dismiss')"
+    @keydown="onKey"
+  >
     <!-- The art is a cream illustration with the raccoon in the right half; the
          wordmark/version/credit sit over the open left column. Natural 1344×768
          declared so the box keeps the art's aspect ratio. alt="" — decorative,
@@ -33,10 +54,9 @@ onMounted(async () => {
         <p class="splash__version">version {{ version || '…' }}</p>
         <p class="splash__credit">Box of Raccoons LLC, {{ buildYear }}</p>
       </div>
-      <!-- Indeterminate loader: a segment scrolls across the track on a loop.
-           Sits in the bottom third of the card, aligned under the text and clear
-           of the raccoon. Decorative — role="status" above carries the meaning. -->
-      <div class="splash__loader" aria-hidden="true"></div>
+      <!-- S7: a click-to-continue hint in place of the old loading bar. The whole
+           splash is the dismiss target (role="button" above); this just labels it. -->
+      <p class="splash__continue">click to continue</p>
     </div>
   </div>
 </template>
@@ -60,7 +80,11 @@ onMounted(async () => {
   /* Same dark background as the window (--bg) so the splash → app handoff never
      flashes an unstyled/white frame. */
   background: var(--bg);
+  /* S7: the whole splash is a click-to-continue target. */
+  cursor: pointer;
 }
+.splash:focus-visible { outline: none; }
+.splash:focus-visible .splash__frame { outline: 2px solid var(--splash-accent); outline-offset: 4px; }
 .splash__frame {
   /* A definite width (honouring both the 70vw/720px width cap AND the 60vh
      height cap, the latter re-expressed as a width via the 1344/768 ratio, i.e.
@@ -127,32 +151,18 @@ onMounted(async () => {
   font-weight: 400;
   color: var(--splash-ink-muted);
 }
-.splash__loader {
+.splash__continue {
+  /* Where the loading bar used to sit: bottom third of the card, under the text,
+     clear of the raccoon. A quiet hint that the splash is dismissable. */
   position: absolute;
   left: 7cqw;
-  bottom: 9cqw;
-  width: 42cqw;
-  height: 3px;
-  border-radius: 999px;
-  overflow: hidden;
-  /* Faint track in the art's own charcoal, so the moving segment reads clearly. */
-  background: color-mix(in oklab, var(--splash-ink) 15%, transparent);
-}
-.splash__loader::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  width: 40%;
-  border-radius: inherit;
-  background: var(--splash-accent);
-  /* Scroll the segment across the track and off the far edge, on a loop. */
-  animation: splash-scroll 1.3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-@keyframes splash-scroll {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(250%); }
+  bottom: 8cqw;
+  margin: 0;
+  font-size: clamp(10px, 1.7cqw, 13px);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--splash-ink-muted);
 }
 
 /* The meta lines rise in on first paint — a short, staggered settle, not a
@@ -179,8 +189,6 @@ onMounted(async () => {
 .splash-fade-leave-to { opacity: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  /* No scroll — show a static, full-width segment so "loading" still reads. */
-  .splash__loader::before { animation: none; width: 100%; transform: none; opacity: 0.7; }
   .splash-fade-leave-active { transition: none; }
   .splash__wordmark,
   .splash__rule,
