@@ -64,7 +64,6 @@ export function composerTabSpec(project: Pick<ProjectInfo, 'title' | 'path' | 'd
     title: `session · ${project.title}`,
     kind: 'composer',
     variant: 'agent',
-    initialMode: 'task',
     tool: project.defaultTool,
     lockedProject: project.title,
     prefill: { folder: project.path }

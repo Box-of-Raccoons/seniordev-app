@@ -485,7 +485,6 @@ function isVisible(paneId: string, ptyId: string): boolean {
           <Composer
             v-if="entry.tab.kind === 'composer'"
             :variant="entry.tab.variant ?? 'agent'"
-            :initial-mode="entry.tab.initialMode"
             :tool="entry.tab.tool"
             :initial-input="entry.tab.prefill?.input"
             :initial-folder="entry.tab.prefill?.folder"

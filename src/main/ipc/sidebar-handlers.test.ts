@@ -15,7 +15,7 @@ beforeEach(() => handlers.clear())
 // touch need to exist. Casts keep the fakes to the surface actually exercised.
 function setup(over?: {
   setArchived?: (id: string, a: boolean) => void
-  sidebar?: { sidebarWidth: number | null; sidebarCollapsed: boolean }
+  sidebar?: { sidebarWidth: number | null; sidebarCollapsed: boolean; suppressTeardownConfirm?: boolean }
   isResumable?: (c: { tool: string; agentSessionId: string | null }) => boolean
 }) {
   const projectList = [{ id: 'p1', title: 'app', archivedAt: null }]
@@ -35,8 +35,14 @@ function setup(over?: {
     projects: { list: () => projectList, setArchived, ensureForCwd },
     conversations: { list: () => convList, setArchived: setConvArchived }
   } as unknown as SessionPersistence
+  const setSuppress = vi.fn()
   const workspace = {
-    get: () => ({ sidebarWidth: over?.sidebar?.sidebarWidth ?? 240, sidebarCollapsed: over?.sidebar?.sidebarCollapsed ?? false })
+    get: () => ({
+      sidebarWidth: over?.sidebar?.sidebarWidth ?? 240,
+      sidebarCollapsed: over?.sidebar?.sidebarCollapsed ?? false,
+      suppressTeardownConfirm: over?.sidebar?.suppressTeardownConfirm ?? false
+    }),
+    setSuppressTeardownConfirm: setSuppress
   } as unknown as WorkspaceStore
   const send = vi.fn()
   const getSender = (): { send: typeof send } => ({ send })
@@ -45,7 +51,7 @@ function setup(over?: {
   const isResumable = over?.isResumable ?? ((c: { agentSessionId: string | null }): boolean => c.agentSessionId !== null)
   const source = { config: { defaultTool: 'codex' } } as never
   registerSidebarIpc({ persistence, workspace, getSender: getSender as never, isResumable, source })
-  return { projectList, convList, setArchived, ensureForCwd, setConvArchived, send }
+  return { projectList, convList, setArchived, ensureForCwd, setConvArchived, setSuppress, send }
 }
 
 describe('registerSidebarIpc', () => {
@@ -77,9 +83,15 @@ describe('registerSidebarIpc', () => {
     expect(send).toHaveBeenCalledWith('sidebar:changed')
   })
 
-  it('workspace:getSidebar reads the persisted geometry', async () => {
-    setup({ sidebar: { sidebarWidth: 300, sidebarCollapsed: true } })
-    expect(await handlers.get('workspace:getSidebar')!({})).toEqual({ width: 300, collapsed: true })
+  it('workspace:getSidebar reads the persisted geometry + suppress flag', async () => {
+    setup({ sidebar: { sidebarWidth: 300, sidebarCollapsed: true, suppressTeardownConfirm: true } })
+    expect(await handlers.get('workspace:getSidebar')!({})).toEqual({ width: 300, collapsed: true, suppressTeardownConfirm: true })
+  })
+
+  it('workspace:setSuppressTeardownConfirm persists the preference', async () => {
+    const { setSuppress } = setup()
+    await handlers.get('workspace:setSuppressTeardownConfirm')!({}, true)
+    expect(setSuppress).toHaveBeenCalledWith(true)
   })
 
   it('projects:ensure creates/refreshes from a folder using the config default tool, returns the row, and nudges', async () => {

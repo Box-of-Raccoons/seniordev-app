@@ -14,14 +14,24 @@ describe('WorktreeTeardownDialog', () => {
   it('emits confirm with removeWorktree:false by default (never destroy a diff by default)', async () => {
     const w = mount(WorktreeTeardownDialog, { props: { title: 'Archive?', worktreePath: '/wt/x' } })
     await w.find('.btn-yes').trigger('click')
-    expect(w.emitted('confirm')?.[0]?.[0]).toEqual({ removeWorktree: false })
+    expect(w.emitted('confirm')?.[0]?.[0]).toEqual({ removeWorktree: false, dontAskAgain: false })
   })
 
   it('emits confirm with removeWorktree:true when the checkbox is ticked', async () => {
     const w = mount(WorktreeTeardownDialog, { props: { title: 'Archive?', worktreePath: '/wt/x' } })
     await w.find('.wt-remove input').setValue(true)
     await w.find('.btn-yes').trigger('click')
-    expect(w.emitted('confirm')?.[0]?.[0]).toEqual({ removeWorktree: true })
+    expect(w.emitted('confirm')?.[0]?.[0]).toEqual({ removeWorktree: true, dontAskAgain: false })
+  })
+
+  it('S7: "Don\'t ask again" is offered only for a no-worktree archive and rides the confirm', async () => {
+    const withWt = mount(WorktreeTeardownDialog, { props: { title: 'Archive?', worktreePath: '/wt/x' } })
+    expect(withWt.find('.dont-ask').exists()).toBe(false) // worktree teardowns always confirm
+    const noWt = mount(WorktreeTeardownDialog, { props: { title: 'Archive?' } })
+    expect(noWt.find('.dont-ask').exists()).toBe(true)
+    await noWt.find('.dont-ask input').setValue(true)
+    await noWt.find('.btn-yes').trigger('click')
+    expect(noWt.emitted('confirm')?.[0]?.[0]).toEqual({ removeWorktree: false, dontAskAgain: true })
   })
 
   it('renders a removal failure and switches the cancel label to Close', () => {

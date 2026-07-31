@@ -18,6 +18,11 @@ export interface Conversation {
   cwd: string
   worktreePath: string | null // S5
   branch: string | null // S5
+  // S7: true while the title is auto-generated (a bare/instant launch with no
+  // prompt) and eligible to be replaced by a summary of the first transcript
+  // message. Set false once the title comes from a user prompt or a backfill, so a
+  // meaningful title is never clobbered.
+  autoTitle: boolean
   lastActiveAt: number
   createdAt: number
   archivedAt: number | null
@@ -44,6 +49,7 @@ function migrateConversations(raw: unknown): ConversationsDoc {
       cwd: typeof c.cwd === 'string' ? c.cwd : '',
       worktreePath: typeof c.worktreePath === 'string' ? c.worktreePath : null,
       branch: typeof c.branch === 'string' ? c.branch : null,
+      autoTitle: typeof c.autoTitle === 'boolean' ? c.autoTitle : true,
       lastActiveAt: typeof c.lastActiveAt === 'number' ? c.lastActiveAt : 0,
       createdAt: typeof c.createdAt === 'number' ? c.createdAt : 0,
       archivedAt: typeof c.archivedAt === 'number' ? c.archivedAt : null
@@ -64,6 +70,9 @@ export interface ConversationUpsert {
   // the stored value untouched.
   worktreePath?: string | null
   branch?: string | null
+  // S7: whether the title is auto-generated (a bare launch). Absent leaves the
+  // stored flag untouched on update; defaults to true on insert.
+  autoTitle?: boolean
 }
 
 export interface ConversationsStore {
@@ -76,6 +85,9 @@ export interface ConversationsStore {
   // Record the agent's resume id once known (claude at spawn, codex on discovery).
   // No-op if the conversation is gone (tab closed before discovery resolved).
   setAgentSessionId(id: string, agentSessionId: string): void
+  // S7: set a real title from the first transcript message and clear autoTitle so
+  // it is never overwritten again. No-op if the conversation is gone.
+  setTitle(id: string, title: string): void
   setArchived(id: string, archived: boolean): void
   flush(): void
 }
@@ -105,13 +117,18 @@ export function createConversationsStore(deps?: {
       const t = now()
       if (existing) {
         store.mutate(() => {
-          existing.title = c.title
+          // Preserve a meaningful (non-auto) title against a generic re-spawn/resume
+          // title: only overwrite when the existing title is still auto-generated, or
+          // the incoming one is explicitly meaningful (autoTitle === false).
+          const keepTitle = existing.autoTitle === false && c.autoTitle !== false
+          if (!keepTitle) existing.title = c.title
           existing.tool = c.tool
           existing.cwd = c.cwd
           existing.projectId = c.projectId
           if (c.agentSessionId !== undefined) existing.agentSessionId = c.agentSessionId
           if (c.worktreePath !== undefined) existing.worktreePath = c.worktreePath
           if (c.branch !== undefined) existing.branch = c.branch
+          if (c.autoTitle !== undefined) existing.autoTitle = c.autoTitle
           existing.lastActiveAt = t
           existing.archivedAt = null
         })
@@ -126,6 +143,7 @@ export function createConversationsStore(deps?: {
         cwd: c.cwd,
         worktreePath: c.worktreePath ?? null,
         branch: c.branch ?? null,
+        autoTitle: c.autoTitle ?? true,
         lastActiveAt: t,
         createdAt: t,
         archivedAt: null
@@ -139,6 +157,15 @@ export function createConversationsStore(deps?: {
       if (!c) return
       store.mutate(() => {
         c.agentSessionId = agentSessionId
+      })
+    },
+
+    setTitle(id, title) {
+      const c = store.get().conversations.find((x) => x.id === id)
+      if (!c) return
+      store.mutate(() => {
+        c.title = title
+        c.autoTitle = false // a real title now; never auto-overwrite it again
       })
     },
 

@@ -32,6 +32,7 @@ import { nodeGitRunner } from './git/node-git-runner'
 import { createSessionActivity } from './terminal/activity'
 import { createStatusHub } from './terminal/status-hub'
 import { createSessionPersistence, type SessionPersistence } from './session-persistence'
+import { pollForTitle } from './session-title'
 import { createWorkspaceStore, type WorkspaceStore } from './store/workspace-store'
 import { loadRecent } from './recent-folders'
 import type { TerminalManager } from './terminal/manager'
@@ -244,7 +245,12 @@ if (!gotLock) {
     // service. On first run (empty project list) seed from recent-folders so the
     // sidebar is not empty on day one (spec 4.4). Best-effort; a store failure
     // must never block a launch, so wrap it.
-    persistence = createSessionPersistence({ onChange: () => getSender()?.send(SIDEBAR.changed) })
+    persistence = createSessionPersistence({
+      onChange: () => getSender()?.send(SIDEBAR.changed),
+      // S7: live-backfill a bare conversation's title from its first transcript
+      // message (re-reads the conversation each tick to pick up a discovered codex id).
+      pollTitle: (getConv) => pollForTitle(getConv)
+    })
     try {
       if (persistence.projects.list().length === 0) {
         persistence.projects.seedFromRecent(loadRecent(), store.config?.defaultTool ?? 'claude')
@@ -253,6 +259,10 @@ if (!gotLock) {
       // persist on disk), so a real codex session isn't stuck showing inert.
       const filled = persistence.backfillCodexSessions()
       if (filled) console.log(`[persistence] backfilled ${filled} codex session id(s)`)
+      // S7: retitle auto-titled conversations from prior runs whose transcripts are
+      // now on disk, so the sidebar shows real names on boot.
+      const titled = persistence.backfillTitles()
+      if (titled) console.log(`[persistence] backfilled ${titled} conversation title(s)`)
     } catch (err) {
       console.error('[persistence] seed/backfill skipped:', err)
     }

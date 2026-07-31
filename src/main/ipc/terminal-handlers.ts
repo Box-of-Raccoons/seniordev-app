@@ -158,7 +158,10 @@ export function registerTerminalIpc(
           // remember the project's last checkbox choice (worktreeDefault).
           worktreePath: req.worktreePath,
           branch: req.branch,
-          worktreeDefault: req.worktreeDefault
+          worktreeDefault: req.worktreeDefault,
+          // S7: a launch carrying a description has a meaningful title; a bare one
+          // (no input) is auto-titled and gets a first-message backfill.
+          hadPrompt: !!req.input
         })
       }
       // NOTE: no bracketed-paste framing here — the raw ESC of \x1b[200~ registers

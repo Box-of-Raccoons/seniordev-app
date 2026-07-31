@@ -24,7 +24,7 @@ const sidebarStyle = computed(() => ({
   flex: `0 0 ${ws.sidebarCollapsed.value ? 40 : (ws.sidebarWidth.value ?? DEFAULT_SIDEBAR_WIDTH)}px`
 }))
 // Boot splash: shown from first paint, dismissed once startup work settles below.
-const { visible: splashVisible, ready: splashReady } = useSplash()
+const { visible: splashVisible, ready: splashReady, hide: splashHide } = useSplash()
 const modal = ref<'about' | 'app-config' | 'prompt-config' | null>(null)
 const confirmReset = ref(false)
 let offMenu: (() => void) | null = null
@@ -130,6 +130,6 @@ onBeforeUnmount(() => {
     @cancel="confirmReset = false"
   />
   <Transition name="splash-fade">
-    <Splash v-if="splashVisible" />
+    <Splash v-if="splashVisible" @dismiss="splashHide" />
   </Transition>
 </template>

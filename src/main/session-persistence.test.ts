@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -348,5 +348,68 @@ describe('session persistence: S5 worktree threading', () => {
     // A later Open-mode / terminal launch carries no worktreeDefault → must not reset it.
     p.onAgentSpawn({ conversationId: 'c2', tool: 'claude', cwd: '/repo', title: 't2', preAssignedSessionId: 'c2' })
     expect(projects.list()[0].worktreeDefault).toBe(true)
+  })
+})
+
+describe('session persistence: S7 title backfill', () => {
+  let dir: string
+  const now = (): number => 1000
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('sets autoTitle from hadPrompt at spawn (bare = true, prompted = false)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    let m = 0
+    const { projects, conversations } = stores(dir, now, () => `proj-${++m}`)
+    const p = createSessionPersistence({ projects, conversations, discover: async () => null })
+    p.onAgentSpawn({ conversationId: 'bare', tool: 'claude', cwd: '/x', title: 'session · x', preAssignedSessionId: 'bare', hadPrompt: false })
+    p.onAgentSpawn({ conversationId: 'task', tool: 'claude', cwd: '/x', title: 'fix bug', preAssignedSessionId: 'task', hadPrompt: true })
+    expect(conversations.get('bare')?.autoTitle).toBe(true)
+    expect(conversations.get('task')?.autoTitle).toBe(false)
+  })
+
+  it('backfillTitles retitles only auto-titled conversations and clears the flag', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    const { projects, conversations } = stores(dir, now, () => 'proj')
+    // readTitle resolves a title only for the auto-titled one.
+    const p = createSessionPersistence({
+      projects,
+      conversations,
+      discover: async () => null,
+      readTitle: (c) => (c.agentSessionId === 'auto' ? 'fix the login bug' : null)
+    })
+    conversations.upsert({ id: 'auto', projectId: 'proj', title: 'session · x', tool: 'claude', cwd: '/x', agentSessionId: 'auto', autoTitle: true })
+    conversations.upsert({ id: 'kept', projectId: 'proj', title: 'my own title', tool: 'claude', cwd: '/x', agentSessionId: 'kept', autoTitle: false })
+    expect(p.backfillTitles()).toBe(1)
+    expect(conversations.get('auto')).toMatchObject({ title: 'fix the login bug', autoTitle: false })
+    expect(conversations.get('kept')?.title).toBe('my own title') // untouched
+    // Idempotent: a second run finds nothing new.
+    expect(p.backfillTitles()).toBe(0)
+  })
+
+  it('live poll backfills the title of a just-spawned bare conversation', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    const { projects, conversations } = stores(dir, now, () => 'proj')
+    const p = createSessionPersistence({
+      projects,
+      conversations,
+      discover: async () => null,
+      pollTitle: async () => 'typed the first message'
+    })
+    p.onAgentSpawn({ conversationId: 'c1', tool: 'claude', cwd: '/x', title: 'session · x', preAssignedSessionId: 'c1', hadPrompt: false })
+    await new Promise((r) => setTimeout(r, 0)) // let the poll .then settle
+    expect(conversations.get('c1')).toMatchObject({ title: 'typed the first message', autoTitle: false })
+  })
+
+  it('live poll does not clobber a prompted (non-auto) launch', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    const { projects, conversations } = stores(dir, now, () => 'proj')
+    const pollTitle = vi.fn(async () => 'should not be used')
+    const p = createSessionPersistence({ projects, conversations, discover: async () => null, pollTitle })
+    p.onAgentSpawn({ conversationId: 'c1', tool: 'claude', cwd: '/x', title: 'fix bug', preAssignedSessionId: 'c1', hadPrompt: true })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(pollTitle).not.toHaveBeenCalled()
+    expect(conversations.get('c1')?.title).toBe('fix bug')
   })
 })

@@ -41,6 +41,33 @@ describe('conversations store', () => {
     expect(c.lastActiveAt).toBe(2000)
   })
 
+  it('S7: defaults autoTitle to true on insert, and honors an explicit false', () => {
+    const s = createConversationsStore({ file, now })
+    expect(s.upsert({ id: 'a', projectId: 'p1', title: 't', tool: 'claude', cwd: '/x' }).autoTitle).toBe(true)
+    expect(s.upsert({ id: 'b', projectId: 'p1', title: 'fix bug', tool: 'claude', cwd: '/x', autoTitle: false }).autoTitle).toBe(false)
+  })
+
+  it('S7: setTitle sets a real title and clears autoTitle; no-op for an unknown id', () => {
+    const s = createConversationsStore({ file, now })
+    s.upsert({ id: 'c1', projectId: 'p1', title: 'session · code', tool: 'claude', cwd: '/x' })
+    s.setTitle('c1', 'fix the login bug')
+    expect(s.get('c1')).toMatchObject({ title: 'fix the login bug', autoTitle: false })
+    expect(() => s.setTitle('nope', 'x')).not.toThrow()
+  })
+
+  it('S7: a re-spawn does not clobber a meaningful (backfilled) title with a generic one', () => {
+    const s = createConversationsStore({ file, now })
+    s.upsert({ id: 'c1', projectId: 'p1', title: 'session · code', tool: 'claude', cwd: '/x' })
+    s.setTitle('c1', 'add the widget') // now meaningful (autoTitle false)
+    // A resume/re-spawn comes back through upsert with a generic title, no autoTitle.
+    s.upsert({ id: 'c1', projectId: 'p1', title: 'session · code', tool: 'claude', cwd: '/x' })
+    expect(s.get('c1')?.title).toBe('add the widget')
+    // But an auto title still refreshes on re-spawn.
+    s.upsert({ id: 'c2', projectId: 'p1', title: 'old', tool: 'claude', cwd: '/x' })
+    s.upsert({ id: 'c2', projectId: 'p1', title: 'newer', tool: 'claude', cwd: '/x' })
+    expect(s.get('c2')?.title).toBe('newer')
+  })
+
   it('setAgentSessionId records the id, and is a no-op for an unknown conversation', () => {
     const s = createConversationsStore({ file, now })
     s.upsert({ id: 'c1', projectId: 'p1', title: 't', tool: 'codex', cwd: '/x' })

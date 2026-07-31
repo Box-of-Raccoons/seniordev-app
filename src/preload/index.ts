@@ -33,6 +33,7 @@ const api = {
   ensureProject: (folder: string): Promise<ProjectInfo> => ipcRenderer.invoke(PROJECTS.ensure, folder),
   setConversationArchived: (id: string, archived: boolean): Promise<void> => ipcRenderer.invoke(CONVERSATIONS.setArchived, id, archived),
   getSidebarState: (): Promise<SidebarState> => ipcRenderer.invoke(WORKSPACE.getSidebar),
+  setSuppressTeardownConfirm: (v: boolean): Promise<void> => ipcRenderer.invoke(WORKSPACE.setSuppressTeardownConfirm, v),
   onSidebarChanged: (cb: () => void): (() => void) => {
     const listener = (): void => cb()
     ipcRenderer.on(SIDEBAR.changed, listener)

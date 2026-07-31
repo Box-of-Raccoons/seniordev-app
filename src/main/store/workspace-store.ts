@@ -22,6 +22,9 @@ export interface WorkspaceDoc extends VersionedDoc {
   sidebarWidth: number | null
   sidebarCollapsed: boolean
   panes: WorkspacePaneSnapshot[]
+  // S7: when true, archiving a conversation with no worktree skips the confirm
+  // dialog ("Don't ask again"). Worktree teardowns always still confirm.
+  suppressTeardownConfirm: boolean
 }
 
 function isBounds(v: unknown): v is WindowBounds {
@@ -46,7 +49,8 @@ function migrateWorkspace(raw: unknown): WorkspaceDoc {
     windowBounds: isBounds(o.windowBounds) ? o.windowBounds : null,
     sidebarWidth: typeof o.sidebarWidth === 'number' ? o.sidebarWidth : null,
     sidebarCollapsed: o.sidebarCollapsed === true,
-    panes
+    panes,
+    suppressTeardownConfirm: o.suppressTeardownConfirm === true
   }
 }
 
@@ -55,6 +59,7 @@ export interface WorkspaceStore {
   getWindowBounds(): WindowBounds | null
   setWindowBounds(bounds: WindowBounds): void
   setLayout(layout: WorkspaceLayout): void
+  setSuppressTeardownConfirm(v: boolean): void
   flush(): void
 }
 
@@ -76,6 +81,11 @@ export function createWorkspaceStore(deps?: { file?: string }): WorkspaceStore {
         d.panes = layout.panes
         d.sidebarWidth = layout.sidebarWidth
         d.sidebarCollapsed = layout.sidebarCollapsed
+      })
+    },
+    setSuppressTeardownConfirm(v) {
+      store.mutate((d) => {
+        d.suppressTeardownConfirm = v
       })
     },
     flush: () => store.flush()

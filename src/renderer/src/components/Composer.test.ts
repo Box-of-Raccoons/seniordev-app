@@ -115,8 +115,8 @@ describe('Composer', () => {
 
   it('agent shows a Claude|Codex tool picker and emits the chosen tool', async () => {
     const w = await mountComposer('agent')
-    // Two segmented groups in agent view: [0] session mode, [1] tool.
-    const toolSeg = w.findAll('.seg')[1]
+    // The tool picker is the only segmented group now (the Task/Open toggle is gone).
+    const toolSeg = w.find('.seg')
     expect(toolSeg.findAll('.seg-btn').map((b) => b.text())).toEqual(['Claude', 'Codex'])
     await w.find('#composer-folder').setValue('C:/work')
     await toolSeg.findAll('.seg-btn')[1].trigger('click')
@@ -124,38 +124,12 @@ describe('Composer', () => {
     expect(w.emitted('launch')?.[0]?.[0]).toMatchObject({ tool: 'codex' })
   })
 
-  it('Open mode hides role/description/YOLO and launches a bare agent', async () => {
+  it('is task-only: role, description and YOLO are always shown for an agent (no Task/Open toggle)', async () => {
     const w = await mountComposer('agent')
-    // Switch the session mode to Open (the first segmented group's second button).
-    await w.findAll('.seg')[0].findAll('.seg-btn')[1].trigger('click')
-    expect(w.find('#composer-role').exists()).toBe(false)
-    expect(w.find('#composer-input').exists()).toBe(false)
-    expect(w.find('.yolo').exists()).toBe(false)
-    await w.find('#composer-folder').setValue('C:/work')
-    expect(w.find('button[type="submit"]').text()).toBe('Launch')
-    await w.find('form').trigger('submit')
-    expect(w.emitted('launch')?.[0]?.[0]).toEqual({
-      mode: 'interactive',
-      folder: 'C:/work',
-      role: undefined,
-      input: undefined,
-      ticketKey: undefined,
-      yolo: false,
-      tool: 'claude'
-    })
-  })
-
-  it('initialMode=open starts in Open mode and prefills the folder from the most recent', async () => {
-    ;(window.api as unknown as { listRecentFolders: unknown }).listRecentFolders = vi.fn(async () => [
-      'C:/code/seniordev-app',
-      'C:/code/other'
-    ])
-    const w = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialMode: 'open' } })
-    await flushPromises()
-    // Open mode hides the task-only controls...
-    expect(w.find('#composer-role').exists()).toBe(false)
-    // ...and prefills the folder with the last-used one, collapsing the flow to one launch.
-    expect((w.find('#composer-folder').element as HTMLInputElement).value).toBe('C:/code/seniordev-app')
+    expect(w.text()).not.toContain('Session mode')
+    expect(w.find('#composer-role').exists()).toBe(true)
+    expect(w.find('#composer-input').exists()).toBe(true)
+    expect(w.find('.yolo').exists()).toBe(true)
   })
 
   it('renders recent-folder chips (basename) and fills the folder when one is clicked', async () => {
@@ -251,11 +225,11 @@ describe('Composer', () => {
     })
   })
 
-  it('worktree control is Task-mode only (absent in Open mode and terminal)', async () => {
+  it('worktree control shows for a git-repo agent launch, not for a terminal', async () => {
     setWtInfo({ isRepo: true, worktreeDefault: true })
-    const open = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialMode: 'open', initialFolder: 'C:/repo' } })
+    const agent = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialFolder: 'C:/repo' } })
     await flushPromises()
-    expect(open.find('.wt-check').exists()).toBe(false)
+    expect(agent.find('.wt-check').exists()).toBe(true)
     const term = mount(Composer, { props: { variant: 'terminal', initialFolder: 'C:/repo' } })
     await flushPromises()
     expect(term.find('.wt-check').exists()).toBe(false)
@@ -281,10 +255,9 @@ describe('Composer', () => {
     expect(w.find('.proj-header').exists()).toBe(false)
   })
 
-  it('launches on Ctrl+Enter in Open mode (no textarea to carry the shortcut)', async () => {
-    ;(window.api as unknown as { listRecentFolders: unknown }).listRecentFolders = vi.fn(async () => ['C:/code/app'])
-    const w = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialMode: 'open' } })
-    await flushPromises()
+  it('launches on Ctrl+Enter from the form', async () => {
+    const w = await mountComposer('agent')
+    await w.find('#composer-folder').setValue('C:/code/app')
     await w.find('form').trigger('keydown', { key: 'Enter', ctrlKey: true })
     expect(w.emitted('launch')?.[0]?.[0]).toMatchObject({ mode: 'interactive', folder: 'C:/code/app' })
   })

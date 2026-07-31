@@ -12,9 +12,6 @@ import type { ComposerLaunch } from './composer-types'
 const props = defineProps<{
   variant: 'agent' | 'terminal'
   tool?: string
-  // Seed the start mode; the Open item in the New-tab menu passes 'open' for the
-  // fast unprompted path. Defaults to 'task'.
-  initialMode?: 'task' | 'open'
   // Optional prefill (deep-link entry point): seed folder/input/role.
   initialInput?: string
   initialFolder?: string
@@ -48,9 +45,6 @@ const branchTouched = ref(false)
 // A worktree:create refusal (a branch/path collision) is shown here; on a refusal
 // the composer does NOT launch, so the user can fix the branch and retry.
 const createError = ref<string | null>(null)
-// 'task' = the agent starts with a role + task prompt (and optional YOLO).
-// 'open' = launch a bare, unprompted agent — just the CLI in the chosen folder.
-const mode = ref<'task' | 'open'>(props.initialMode ?? 'task')
 
 const prompts = ref<PromptSummary[]>([])
 const repos = ref<RepoInfo[]>([])
@@ -62,9 +56,9 @@ const yoloAvailable = ref(false)
 // S6: launched from a project → the folder is fixed; hide the picker, show a header.
 const locked = computed(() => !!props.projectName)
 const isTerminal = computed(() => props.variant === 'terminal')
-// Only the 'task' mode surfaces the role/description/YOLO controls; 'open' hides
-// them and launches the agent with nothing.
-const isTask = computed(() => !isTerminal.value && mode.value === 'task')
+// The composer is task-only now (bare "New Session" launches come from the sidebar
+// + menu, not here): an agent composer always drives a role + task prompt.
+const isTask = computed(() => !isTerminal.value)
 
 // A ticket key (e.g. ISC-835) vs free text. Detection drives the hint and the
 // folder prefill; the app hands the agent the key, which reads it via its MCP.
@@ -134,13 +128,6 @@ onMounted(async () => {
     recentFolders.value = await window.api.listRecentFolders()
   } catch {
     recentFolders.value = []
-  }
-  // Open mode is the fast path: prefill the folder with the last one used so the
-  // flow collapses to New-tab → Open → launch. A prefilled folder counts as
-  // chosen (folderTouched), so nothing overwrites it.
-  if (mode.value === 'open' && !folder.value.trim() && recentFolders.value[0]) {
-    folder.value = recentFolders.value[0]
-    folderTouched.value = true
   }
   // Resolve the worktree state for the initial folder (the watch only fires on a
   // later change). Only meaningful for the agent variant, but harmless otherwise.
@@ -235,15 +222,14 @@ async function launch(): Promise<void> {
     emit('launch', { mode: 'terminal', folder: folder.value.trim(), shell: shell.value })
     return
   }
-  const task = isTask.value
   const folderVal = folder.value.trim()
-  // S5: a Task-mode launch with the worktree checkbox on creates the worktree FIRST
+  // S5: a launch with the worktree checkbox on creates the worktree FIRST
   // (pre-flight). A collision refuses here — we surface the reason and do NOT launch,
   // so the agent never spawns in the wrong cwd. On success the worktree path rides
   // along and RightPanel makes it the cwd.
   let worktreePath: string | undefined
   let worktreeBranch: string | undefined
-  const useWorktree = task && worktree.value && wtInfo.value.isRepo
+  const useWorktree = worktree.value && wtInfo.value.isRepo
   if (useWorktree) {
     createError.value = null
     try {
@@ -259,19 +245,18 @@ async function launch(): Promise<void> {
       return
     }
   }
-  // 'open' mode launches a bare agent — no role, no task text, no YOLO.
   emit('launch', {
     mode: 'interactive',
     folder: folderVal,
-    role: task ? role.value || undefined : undefined,
-    input: task ? input.value.trim() || undefined : undefined,
-    ticketKey: task ? detectedTicket.value ?? undefined : undefined,
-    yolo: task ? yolo.value : false,
+    role: role.value || undefined,
+    input: input.value.trim() || undefined,
+    ticketKey: detectedTicket.value ?? undefined,
+    yolo: yolo.value,
     tool: tool.value || undefined,
     worktreePath,
     branch: worktreeBranch,
-    // Remember the checkbox state per project — only for Task mode, where it exists.
-    worktreeChoice: task ? worktree.value : undefined
+    // Remember the per-project checkbox state.
+    worktreeChoice: worktree.value
   })
 }
 </script>
@@ -279,24 +264,6 @@ async function launch(): Promise<void> {
 <template>
   <form class="composer" @submit.prevent="launch" @keydown="onFormKeydown">
     <div class="composer__inner">
-      <!-- Agent: choose whether the session starts with a task prompt or bare. -->
-      <div v-if="!isTerminal" class="seg" role="group" aria-label="Session mode">
-        <button
-          type="button"
-          class="seg-btn"
-          :class="{ 'seg-btn--on': mode === 'task' }"
-          :aria-pressed="mode === 'task'"
-          @click="mode = 'task'"
-        >Task</button>
-        <button
-          type="button"
-          class="seg-btn"
-          :class="{ 'seg-btn--on': mode === 'open' }"
-          :aria-pressed="mode === 'open'"
-          @click="mode = 'open'"
-        >Open</button>
-      </div>
-
       <!-- S6: launched from a project — the folder is the project, shown as a
            read-only header instead of the picker. -->
       <div v-if="locked" class="proj-header">

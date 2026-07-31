@@ -15,11 +15,13 @@ const props = defineProps<{
   failure?: string | null
 }>()
 const emit = defineEmits<{
-  (e: 'confirm', payload: { removeWorktree: boolean }): void
+  (e: 'confirm', payload: { removeWorktree: boolean; dontAskAgain: boolean }): void
   (e: 'cancel'): void
 }>()
 
 const removeWorktree = ref(false) // default OFF — never destroy a diff by default
+// S7: only offered for a no-worktree archive; worktree teardowns always confirm.
+const dontAskAgain = ref(false)
 </script>
 
 <template>
@@ -32,10 +34,16 @@ const removeWorktree = ref(false) // default OFF — never destroy a diff by def
         <span class="wt-remove__path">{{ props.worktreePath }}</span>
       </span>
     </label>
+    <!-- Only for a no-worktree archive: suppress this confirm in future. A worktree
+         teardown always confirms (removal is a real, destructive choice). -->
+    <label v-if="!props.worktreePath" class="dont-ask">
+      <input v-model="dontAskAgain" type="checkbox" />
+      <span>Don't ask again</span>
+    </label>
     <p v-if="props.failure" class="fail" role="alert">Worktree not removed: {{ props.failure }}</p>
     <template #footer>
       <button class="btn-no" @click="emit('cancel')">{{ props.failure ? 'Close' : 'Cancel' }}</button>
-      <button class="btn-yes" @click="emit('confirm', { removeWorktree })">Archive</button>
+      <button class="btn-yes" @click="emit('confirm', { removeWorktree, dontAskAgain })">Archive</button>
     </template>
   </ModalShell>
 </template>
@@ -49,6 +57,8 @@ const removeWorktree = ref(false) // default OFF — never destroy a diff by def
   display: block; font-family: var(--font-mono, Consolas, monospace); font-size: 11px;
   color: var(--ink-muted); margin-top: 2px; word-break: break-all;
 }
+.dont-ask { display: flex; align-items: center; gap: 8px; margin-top: 12px; cursor: pointer; user-select: none; font-size: 13px; color: var(--ink-soft); }
+.dont-ask input { accent-color: var(--tan); }
 /* State carried by text + rust colour together (DESIGN Color-Is-State). */
 .fail { margin: 10px 0 0; color: var(--rust); font-size: 12.5px; }
 .btn-no {

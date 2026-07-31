@@ -62,7 +62,19 @@ describe('workspace store', () => {
     const file = join(dir, 'workspace.json')
     writeFileSync(file, '{bad', 'utf8')
     const s = createWorkspaceStore({ file })
-    expect(s.get()).toEqual({ version: 1, windowBounds: null, sidebarWidth: null, sidebarCollapsed: false, panes: [] })
+    expect(s.get()).toEqual({ version: 1, windowBounds: null, sidebarWidth: null, sidebarCollapsed: false, panes: [], suppressTeardownConfirm: false })
+  })
+
+  it('S7: persists suppressTeardownConfirm (default false)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ws-'))
+    const file = join(dir, 'workspace.json')
+    const s = createWorkspaceStore({ file })
+    expect(s.get().suppressTeardownConfirm).toBe(false)
+    s.setSuppressTeardownConfirm(true)
+    expect(s.get().suppressTeardownConfirm).toBe(true)
+    // Survives a reload.
+    s.flush()
+    expect(createWorkspaceStore({ file }).get().suppressTeardownConfirm).toBe(true)
   })
 
   it('debounces persistence across a burst of updates', () => {

@@ -195,7 +195,6 @@ describe('S6 launch tab specs', () => {
     expect(composerTabSpec(project)).toMatchObject({
       kind: 'composer',
       variant: 'agent',
-      initialMode: 'task',
       tool: 'codex',
       lockedProject: 'my-app',
       prefill: { folder: '/code/my-app' }

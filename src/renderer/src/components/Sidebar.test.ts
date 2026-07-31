@@ -21,13 +21,15 @@ let changedCb: (() => void) | null = null
 function setApi(
   projects: ProjectInfo[],
   conversations: ConversationInfo[],
-  teardownResult: { archived: boolean; worktree?: { ok: boolean; error?: string } } = { archived: true }
+  teardownResult: { archived: boolean; worktree?: { ok: boolean; error?: string } } = { archived: true },
+  suppressTeardownConfirm = false
 ): {
   setProjectArchived: ReturnType<typeof vi.fn>
   teardownConversation: ReturnType<typeof vi.fn>
   ensureProject: ReturnType<typeof vi.fn>
   setConversationArchived: ReturnType<typeof vi.fn>
   pickFolder: ReturnType<typeof vi.fn>
+  setSuppressTeardownConfirm: ReturnType<typeof vi.fn>
 } {
   const setProjectArchived = vi.fn(async () => {})
   const teardownConversation = vi.fn(async () => teardownResult)
@@ -37,19 +39,22 @@ function setApi(
   }))
   const setConversationArchived = vi.fn(async () => {})
   const pickFolder = vi.fn(async () => '/code/newproj')
+  const setSuppressTeardownConfirm = vi.fn(async () => {})
   ;(window as unknown as { api: unknown }).api = {
     listProjects: vi.fn(async () => projects),
     listConversations: vi.fn(async () => conversations),
     onSidebarChanged: vi.fn((cb: () => void) => { changedCb = cb; return () => {} }),
     listShells: vi.fn(async () => ({ shells: ['pwsh', 'bash'], default: 'pwsh' })),
     listTools: vi.fn(async () => ['claude', 'codex']),
+    getSidebarState: vi.fn(async () => ({ width: null, collapsed: false, suppressTeardownConfirm })),
+    setSuppressTeardownConfirm,
     setProjectArchived,
     teardownConversation,
     ensureProject,
     setConversationArchived,
     pickFolder
   }
-  return { setProjectArchived, teardownConversation, ensureProject, setConversationArchived, pickFolder }
+  return { setProjectArchived, teardownConversation, ensureProject, setConversationArchived, pickFolder, setSuppressTeardownConfirm }
 }
 
 // Stub NewTabMenu with buttons that emit each pick variant, plus an openMenu expose
@@ -264,6 +269,42 @@ describe('Sidebar', () => {
     await flushPromises()
     expect(w.text()).toContain('worktree has uncommitted changes; not removed')
     expect(w.findComponent({ name: 'WorktreeTeardownDialog' }).exists()).toBe(true)
+  })
+
+  it('S7: with suppress set, a no-worktree archive skips the dialog and archives immediately', async () => {
+    const { teardownConversation } = setApi(
+      [project({ id: 'p1' })],
+      [conv({ id: 'c1', title: 'work', worktreePath: null })],
+      { archived: true },
+      true // suppressTeardownConfirm
+    )
+    const w = await mountSidebar(useWorkspace())
+    await w.find('.conv-x').trigger('click')
+    await flushPromises()
+    expect(w.findComponent({ name: 'WorktreeTeardownDialog' }).exists()).toBe(false) // no dialog
+    expect(teardownConversation).toHaveBeenCalledWith({ conversationId: 'c1', removeWorktree: false })
+  })
+
+  it('S7: with suppress set, a conversation WITH a worktree still shows the dialog', async () => {
+    setApi(
+      [project({ id: 'p1' })],
+      [conv({ id: 'c1', title: 'wt', worktreePath: '/wt/x' })],
+      { archived: true },
+      true
+    )
+    const w = await mountSidebar(useWorkspace())
+    await w.find('.conv-x').trigger('click')
+    expect(w.findComponent({ name: 'WorktreeTeardownDialog' }).exists()).toBe(true)
+  })
+
+  it('S7: checking "Don\'t ask again" in the dialog persists the preference', async () => {
+    const { setSuppressTeardownConfirm } = setApi([project({ id: 'p1' })], [conv({ id: 'c1', worktreePath: null })])
+    const w = await mountSidebar(useWorkspace())
+    await w.find('.conv-x').trigger('click') // no suppress yet → dialog shows
+    await w.find('.dont-ask input').setValue(true)
+    await w.find('.btn-yes').trigger('click')
+    await flushPromises()
+    expect(setSuppressTeardownConfirm).toHaveBeenCalledWith(true)
   })
 
   // --- S6 project-centric launch ---
