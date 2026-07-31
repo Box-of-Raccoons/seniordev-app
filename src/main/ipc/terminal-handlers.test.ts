@@ -10,6 +10,8 @@ vi.mock('electron', () => ({
 }))
 
 import { registerTerminalIpc } from './terminal-handlers'
+import { createSessionActivity } from '../terminal/activity'
+import { createStatusHub } from '../terminal/status-hub'
 import type { PtyProcess, PtySpawner } from '../terminal/manager'
 import type { Config } from '../config/schema'
 import type { Ticket } from '../../shared/types'
@@ -138,6 +140,27 @@ describe('registerTerminalIpc', () => {
     vi.useRealTimers()
   })
 
+  it('delivers the prompt normally with the status hub attached, and registers the tab', async () => {
+    // The status hub no longer touches the activity tracker (idle detection moved
+    // to the renderer), but it still registers pty tabs and receives exit. Prove
+    // delivery is unaffected and the tab is registered working on spawn.
+    vi.useFakeTimers()
+    const pty = fakePty()
+    const activity = createSessionActivity()
+    const updates: { id: string; status: string }[] = []
+    const statusHub = createStatusHub({ sendUpdate: (e) => updates.push(e) })
+    registerTerminalIpc(() => undefined, () => pty as unknown as PtyProcess, { source, activity, statusHub })
+    await handleMap.get('pty:spawn')!({}, { id: 'a', ticketKey: 'PROJ-1', prompt: { name: 'p' }, cols: 80, rows: 24 })
+    expect(updates).toContainEqual({ id: 'a', status: 'working' }) // hub registered the tab
+
+    pty.emitData('boot screen')
+    await vi.advanceTimersByTimeAsync(800)
+    expect(pty.write).toHaveBeenNthCalledWith(1, 'Do PROJ-1')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
+    vi.useRealTimers()
+  })
+
   it('falls back to sending the prompt after the max wait when the CLI prints nothing', async () => {
     vi.useFakeTimers()
     const pty = fakePty()
@@ -150,5 +173,41 @@ describe('registerTerminalIpc', () => {
     await vi.advanceTimersByTimeAsync(300)
     expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
     vi.useRealTimers()
+  })
+
+  it('S5: spawns the agent in the WORKTREE cwd and records worktreePath/branch/worktreeDefault', async () => {
+    const pty = fakePty()
+    let opts: { cwd: string } | undefined
+    const spawner: PtySpawner = (o) => {
+      opts = o
+      return pty as unknown as PtyProcess
+    }
+    const onAgentSpawn = vi.fn()
+    const persistence = { onAgentSpawn, onTabExit: vi.fn() } as unknown as import('../session-persistence').SessionPersistence
+    registerTerminalIpc(() => undefined, spawner, { source, persistence })
+    await handleMap.get('pty:spawn')!(
+      {},
+      {
+        id: 'a',
+        conversationId: 'conv-1',
+        tool: 'claude',
+        cols: 80,
+        rows: 24,
+        cwdOverride: '/cfg/worktrees/repo/feat', // RightPanel set this to the worktree path
+        worktreePath: '/cfg/worktrees/repo/feat',
+        branch: 'feat',
+        worktreeDefault: true
+      }
+    )
+    // Item 1: the worktree path reaches node-pty as the spawn cwd, not just the record.
+    expect(opts?.cwd).toBe('/cfg/worktrees/repo/feat')
+    expect(onAgentSpawn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-1',
+        worktreePath: '/cfg/worktrees/repo/feat',
+        branch: 'feat',
+        worktreeDefault: true
+      })
+    )
   })
 })

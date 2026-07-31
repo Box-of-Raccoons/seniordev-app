@@ -11,7 +11,19 @@ export const CLI_PRESETS = {
       args: ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'auto'],
       outputParser: 'claude-stream-json'
     },
-    resumeArgs: ['--resume', '{{sessionId}}']
+    resumeArgs: ['--resume', '{{sessionId}}'],
+    // S3 pre-assign: claude 2.1.212 accepts `--session-id <uuid>` to fix the
+    // conversation id at spawn (verified this machine 2026-07-30). SeniorDev passes
+    // the tab's conversationId here, so the session id is known before any output —
+    // no post-hoc scrape, and interactive + headless share one path. codex has no
+    // equivalent flag, so it carries no sessionIdArgs and is discovered instead.
+    sessionIdArgs: ['--session-id', '{{sessionId}}'],
+    // An approval prompt's selection menu: the cursor glyph, a NUMBERED option, a
+    // word. Validated 2026-07-29 against captured claude 2.1.212 prompts (❯ U+276F)
+    // and codex 0.146.0 (› U+203A). The numbered-option requirement is what keeps
+    // it off slash-command menus like /mcp, which use the same cursor but list
+    // names ("❯ claude.ai Gmail") with no "N." Structure by Hardy; chars from capture.
+    approvalPatterns: ['[❯›]\\s+\\d+\\.\\s+\\w']
   },
   codex: {
     command: 'codex',
@@ -29,7 +41,10 @@ export const CLI_PRESETS = {
       args: ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '-'],
       outputParser: 'codex-jsonl'
     },
-    resumeArgs: ['resume', '{{sessionId}}']
+    resumeArgs: ['resume', '{{sessionId}}'],
+    // Same tool-agnostic selection-menu pattern as claude (see there). Codex's
+    // cursor glyph is › (U+203A); the pattern's char class covers both.
+    approvalPatterns: ['[❯›]\\s+\\d+\\.\\s+\\w']
   }
 } as const
 

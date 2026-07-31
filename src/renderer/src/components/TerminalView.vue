@@ -5,14 +5,20 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { TERM_BG, TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
 import { clipboardAction } from '../terminal-clipboard'
+import { readBufferText, normalizeForStability, stepIdle, initialIdleState, type IdleState } from '../status-matcher'
 
-const props = defineProps<{ id: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string }>()
+const props = defineProps<{ id: string; conversationId?: string; conversationTitle?: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string; worktreePath?: string; branch?: string; worktreeChoice?: boolean }>()
 const emit = defineEmits<{ (e: 'exited', code: number): void }>()
 const host = ref<HTMLDivElement | null>(null)
 let term: Terminal | null = null
 let fit: FitAddon | null = null
 let offData: (() => void) | null = null
 let offExit: (() => void) | null = null
+// S1 status: poll the buffer for content stability and report active/settled.
+let statusPoll: ReturnType<typeof setInterval> | null = null
+let idle: IdleState | null = null
+const STATUS_POLL_MS = 350
+const STATUS_QUIET_MS = 700
 let ro: ResizeObserver | null = null
 let onContextMenu: ((e: MouseEvent) => void) | null = null
 
@@ -68,6 +74,8 @@ onMounted(async () => {
   offExit = window.api.onTerminalExit((e) => {
     if (e.id === props.id) {
       term?.write(`\r\n[process exited: ${e.exitCode}]\r\n`)
+      // Stop polling a dead tab; main owns the exit status now.
+      if (statusPoll) { clearInterval(statusPoll); statusPoll = null }
       emit('exited', e.exitCode)
     }
   })
@@ -87,6 +95,8 @@ onMounted(async () => {
         })
       : await window.api.spawnTerminal({
           id: props.id,
+          conversationId: props.conversationId,
+          title: props.conversationTitle,
           ticketKey: props.ticketKey ?? undefined,
           input: props.input,
           cwdOverride: props.cwdOverride,
@@ -94,7 +104,13 @@ onMounted(async () => {
           rows: term.rows,
           prompt: props.prompt ? { name: props.prompt.name, text: props.prompt.text } : undefined,
           resume: props.resume ? { sessionId: props.resume.sessionId } : undefined,
-          tool: props.tool
+          tool: props.tool,
+          // S5: recorded on the conversation (worktreePath/branch) and used to
+          // remember the project's checkbox choice (worktreeDefault). cwdOverride
+          // already carries the worktree path, so the agent spawns there.
+          worktreePath: props.worktreePath,
+          branch: props.branch,
+          worktreeDefault: props.worktreeChoice
         })
     // Closed mid-spawn → term is already disposed; don't write to it.
     if (unmounted) return
@@ -112,12 +128,29 @@ onMounted(async () => {
     if (term) window.api.resizeTerminal(props.id, term.cols, term.rows)
   })
   ro.observe(host.value)
+
+  // S1 status: poll the rendered buffer for content stability. A change reports
+  // `active` (working); staying stable for STATUS_QUIET_MS reports `settled` with
+  // the text for main to scan. Immune to cursor-blink repaints, which leave the
+  // buffer text unchanged. See stepIdle.
+  idle = initialIdleState(Date.now())
+  statusPoll = setInterval(() => {
+    if (!term?.buffer?.active || !idle) return
+    // Compare stability on text with blinking glyphs neutralized, so a lone
+    // blinking bullet doesn't stop the screen from ever settling.
+    const text = normalizeForStability(readBufferText(term.buffer.active, term.rows))
+    const { state, emit } = stepIdle(idle, text, Date.now(), STATUS_QUIET_MS)
+    idle = state
+    if (emit === 'active') window.api.sendStatusActive(props.id)
+    else if (emit === 'settled') window.api.sendStatusSettled(props.id, text)
+  }, STATUS_POLL_MS)
 })
 
 onBeforeUnmount(() => {
   unmounted = true
   offData?.()
   offExit?.()
+  if (statusPoll) { clearInterval(statusPoll); statusPoll = null }
   ro?.disconnect()
   if (onContextMenu) host.value?.removeEventListener('contextmenu', onContextMenu)
   window.api.killTerminal(props.id)

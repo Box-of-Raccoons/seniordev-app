@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
 import { join, resolve } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { defaultConfigDir } from './config/paths'
+import { applyFixedPath } from './env/fix-path'
 import { parseStartupArgs } from './cli/parse-args'
 import { registerStartupIpc } from './ipc/startup-handlers'
 import { ConfigStore } from './config/store'
@@ -20,11 +21,21 @@ import { registerPromptConfigIpc } from './ipc/prompt-config-handlers'
 import { installMenu } from './menu'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
 import { nodeHeadlessSpawner } from './headless/node-spawner'
-import { systemResolveCommand } from './terminal/resolve-command'
+import { systemResolveCommand, systemCommandAvailable } from './terminal/resolve-command'
 import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './deeplink/parse'
 import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery } from './deeplink/delivery'
-import { DEEPLINK } from '../shared/ipc'
+import { DEEPLINK, STATUS, WORKSPACE, SIDEBAR, type WorkspaceLayout } from '../shared/ipc'
+import { registerSidebarIpc } from './ipc/sidebar-handlers'
+import { registerWorktreeIpc } from './ipc/worktree-handlers'
+import { nodeGitRunner } from './git/node-git-runner'
+import { createSessionActivity } from './terminal/activity'
+import { createStatusHub } from './terminal/status-hub'
+import { createSessionPersistence, type SessionPersistence } from './session-persistence'
+import { pollForTitle } from './session-title'
+import { createWorkspaceStore, type WorkspaceStore } from './store/workspace-store'
+import { startSubagentForwarding } from './subagents/forwarder'
+import { loadRecent } from './recent-folders'
 import type { TerminalManager } from './terminal/manager'
 import type { YoloRunner } from './headless/runner'
 
@@ -54,6 +65,9 @@ const store = new ConfigStore(resolveConfigPath())
 
 let terminals: TerminalManager | null = null
 let yolo: YoloRunner | null = null
+let persistence: SessionPersistence | null = null
+let workspace: WorkspaceStore | null = null
+let subagents: { dispose: () => void } | null = null
 let mainWindow: BrowserWindow | null = null
 
 // Warm links are queued until the renderer says it's listening (DEEPLINK.ready);
@@ -66,9 +80,14 @@ const deepLinks = new DeepLinkDelivery({
 })
 
 function createWindow(): void {
+  // S3: restore the last window size/position from workspace.json; fall back to
+  // the default 1400x900 on first run or a corrupt/missing store.
+  const saved = workspace?.getWindowBounds()
   const win = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: saved?.width ?? 1400,
+    height: saved?.height ?? 900,
+    x: saved?.x,
+    y: saved?.y,
     show: false,
     // Show the SeniorDev logo (not Electron's default) on the window/taskbar at
     // runtime. Ignored on macOS (the .app bundle icon wins); matters on Windows
@@ -83,6 +102,11 @@ function createWindow(): void {
     webPreferences: { preload: join(__dirname, '../preload/index.mjs'), sandbox: false }
   })
   mainWindow = win
+  // S3: persist window size/position as the user resizes/moves it. The store
+  // debounces the disk write, so wiring these high-frequency events is cheap.
+  const saveBounds = (): void => workspace?.setWindowBounds(win.getBounds())
+  win.on('resize', saveBounds)
+  win.on('move', saveBounds)
   // Electron hardening (SD-9 S1): remote ticket content renders links as in-app
   // anchors. Never let the webContents open a new window or navigate itself —
   // route http(s) out through the OS browser (the vetted shell.openExternal path)
@@ -147,6 +171,14 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
+    // A GUI-launched macOS/Linux app inherits launchd's minimal PATH, not the
+    // user's shell PATH — so node-pty can't find CLI tools installed under
+    // ~/.local/bin, /opt/homebrew/bin, a version manager, etc., and every session
+    // dies with "[process exited: 1]". Recover the login shell's PATH before any
+    // terminal/headless spawner is wired up below. No-op on Windows.
+    const fixedPath = applyFixedPath()
+    if (fixedPath) console.log('[env] applied login shell PATH')
+
     if (!process.env.ELECTRON_RENDERER_URL) {
       session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
         cb({
@@ -181,7 +213,7 @@ if (!gotLock) {
       return repo ? { key: repo.key, path: repo.path, tool: cfg.defaultTool } : null
     })
     registerShellIpc()
-    registerComposerIpc({ getConfig: () => store.config, resolveCommand: systemResolveCommand })
+    registerComposerIpc({ getConfig: () => store.config, isAvailable: systemCommandAvailable })
     registerRecentIpc()
     registerClipboardIpc()
     const startup = parseStartupArgs(process.argv.slice(1), (p) => readFileSync(p, 'utf8'))
@@ -203,12 +235,71 @@ if (!gotLock) {
     registerPromptsIpc(store.prompts)
     const getSender = (): Electron.WebContents | undefined =>
       BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents
-    terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand })
-    yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand })
+    // S1 status. The activity tracker still backs prompt delivery (byte-quiet).
+    // The hub turns events into glyph updates; idle is detected renderer-side by
+    // buffer-content stability (these TUIs never go byte-quiet) and arrives as
+    // STATUS.active / STATUS.settled.
+    const activity = createSessionActivity()
+    const statusHub = createStatusHub({ sendUpdate: (ev) => getSender()?.send(STATUS.update, ev) })
+    ipcMain.on(STATUS.active, (_e, id: string) => statusHub.active(id))
+    ipcMain.on(STATUS.settled, (_e, id: string, text: string) => statusHub.settled(id, text))
+    // S3 persistence: the project + conversation stores and the session-id capture
+    // service. On first run (empty project list) seed from recent-folders so the
+    // sidebar is not empty on day one (spec 4.4). Best-effort; a store failure
+    // must never block a launch, so wrap it.
+    persistence = createSessionPersistence({
+      onChange: () => getSender()?.send(SIDEBAR.changed),
+      // S7: live-backfill a bare conversation's title from its first transcript
+      // message (re-reads the conversation each tick to pick up a discovered codex id).
+      pollTitle: (getConv) => pollForTitle(getConv)
+    })
+    try {
+      if (persistence.projects.list().length === 0) {
+        persistence.projects.seedFromRecent(loadRecent(), store.config?.defaultTool ?? 'claude')
+      }
+      // Backfill codex ids the live poll missed on prior runs (the rollout files
+      // persist on disk), so a real codex session isn't stuck showing inert.
+      const filled = persistence.backfillCodexSessions()
+      if (filled) console.log(`[persistence] backfilled ${filled} codex session id(s)`)
+      // S7: retitle auto-titled conversations from prior runs whose transcripts are
+      // now on disk, so the sidebar shows real names on boot.
+      const titled = persistence.backfillTitles()
+      if (titled) console.log(`[persistence] backfilled ${titled} conversation title(s)`)
+    } catch (err) {
+      console.error('[persistence] seed/backfill skipped:', err)
+    }
+    // S3 workspace store: window bounds (restored in createWindow, below) and the
+    // renderer-pushed pane/tab layout. Debounced to disk inside the store.
+    workspace = createWorkspaceStore()
+    ipcMain.on(WORKSPACE.save, (_e, layout: WorkspaceLayout) => workspace?.setLayout(layout))
+    // S4: read-only projects/conversations + restore + sidebar-geometry read for
+    // the Projects sidebar. Registered once both stores exist.
+    registerSidebarIpc({ persistence, workspace, getSender, source: store })
+    // S5: worktree info/create/teardown. All git shelling goes through nodeGitRunner
+    // (the only child_process-for-git module); configDir is where worktrees live.
+    registerWorktreeIpc({ gitRunner: nodeGitRunner, source: store, persistence, configDir: defaultConfigDir(), getSender })
+    // S3 archive (spec 4.5): archive projects idle past archiveAfterDays, exempting
+    // any with a live tab. Runs now and once daily; reversible; 0 days disables.
+    const runArchive = (): void => {
+      try {
+        const archived = persistence?.runArchive(store.config?.archiveAfterDays ?? 14) ?? []
+        if (archived.length) console.log(`[archive] archived ${archived.length} idle project(s)`)
+      } catch (err) {
+        console.error('[archive]', err)
+      }
+    }
+    runArchive()
+    setInterval(runArchive, 24 * 60 * 60 * 1000).unref?.()
+    terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand, activity, statusHub, persistence })
+    yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand, statusHub })
     registerAppIpc()
     registerConfigIpc(store, getSender)
     registerPromptConfigIpc(store, getSender)
     installMenu(getSender)
+    // S8: start the read-only subagent-activity watchers and push their events to
+    // the renderer's panel. Global (every subagent on the machine); the renderer
+    // filters to this app's sessions when "this app only" is on.
+    subagents = startSubagentForwarding({ getSender })
 
     createWindow()
     app.on('activate', () => {
@@ -219,10 +310,16 @@ if (!gotLock) {
   app.on('before-quit', () => {
     terminals?.killAll()
     yolo?.killAll()
+    subagents?.dispose()
+    persistence?.flush()
+    workspace?.flush()
   })
   app.on('window-all-closed', () => {
     terminals?.killAll()
     yolo?.killAll()
+    subagents?.dispose()
+    persistence?.flush()
+    workspace?.flush()
     if (process.platform !== 'darwin') app.quit()
   })
 }

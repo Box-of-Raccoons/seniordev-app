@@ -1,23 +1,24 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import type { Config } from '../config/schema'
-import type { ResolvedCommand } from '../terminal/resolve-command'
-import { REPOS, DIALOG, SHELLS, TOOLS, type RepoInfo, type ShellsInfo } from '../../shared/ipc'
+import { REPOS, DIALOG, SHELLS, TOOLS, WORKSPACE, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../../shared/ipc'
 import { listRepos } from '../config/repos'
 import { shellsForPlatform, defaultShell } from '../terminal/shell'
 
 export interface ComposerDeps {
   // Matches ConfigStore.config, which is null until the first successful load.
   getConfig: () => Config | null | undefined
-  resolveCommand?: (command: string) => ResolvedCommand | undefined
+  // Whether a tool's command is installed on PATH — cross-platform, so Codex is
+  // offered on macOS/Linux too (not just Windows). See systemCommandAvailable.
+  isAvailable?: (command: string) => boolean
 }
 
 // Agent CLI tools to offer in the New-tab menu. The default tool is always first
-// (so the menu is never empty and Claude stays present even if the resolver
-// hiccups); any other configured tool is included only when its command resolves
-// on PATH, so Codex shows up automatically once it is installed and not before.
+// (so the menu is never empty and Claude stays present even if the check
+// hiccups); any other configured tool is included only when its command is
+// installed, so Codex shows up automatically once it is present and not before.
 export function agentTools(
   config: Config,
-  resolveCommand?: (command: string) => ResolvedCommand | undefined
+  isAvailable?: (command: string) => boolean
 ): string[] {
   const def = config.defaultTool
   const out: string[] = []
@@ -25,8 +26,8 @@ export function agentTools(
   for (const name of Object.keys(config.cliTools ?? {})) {
     if (name === def) continue
     const cmd = config.cliTools[name]?.command
-    const resolvable = cmd ? (resolveCommand ? resolveCommand(cmd) !== undefined : true) : false
-    if (resolvable) out.push(name)
+    const available = cmd ? (isAvailable ? isAvailable(cmd) : true) : false
+    if (available) out.push(name)
   }
   return out
 }
@@ -52,6 +53,14 @@ export function registerComposerIpc(deps: ComposerDeps): void {
 
   ipcMain.handle(TOOLS.list, (): string[] => {
     const cfg = deps.getConfig()
-    return cfg ? agentTools(cfg, deps.resolveCommand) : []
+    return cfg ? agentTools(cfg, deps.isAvailable) : []
+  })
+
+  // Resolved layout scalars for the renderer's pane system. Falls back to the
+  // schema default (320) when config hasn't loaded yet, so the renderer always
+  // gets a usable minimum.
+  ipcMain.handle(WORKSPACE.getSettings, (): WorkspaceSettings => {
+    const cfg = deps.getConfig()
+    return { minPaneWidth: cfg?.minPaneWidth ?? 320 }
   })
 }

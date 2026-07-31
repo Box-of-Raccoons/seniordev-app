@@ -1,7 +1,12 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo } from '../shared/ipc'
-import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, PROJECTS, CONVERSATIONS, SIDEBAR, WORKTREE, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
+import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent, WorkspaceLayout } from '../shared/ipc'
+import type { ProjectInfo, ConversationInfo, SidebarState } from '../shared/ipc'
+import type { WorktreeInfo, WorktreeCreateRequest, WorktreeCreateResult, WorktreeTeardownRequest, WorktreeTeardownResult } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
+import type { StatusUpdateEvent } from '../shared/ipc'
+import { SUBAGENTS } from '../shared/ipc'
+import type { SubagentSpawnEvent, SubagentActivityEvent, SubagentDoneEvent } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
 
 const api = {
@@ -18,6 +23,30 @@ const api = {
   spawnShell: (req: SpawnShellRequest): Promise<SpawnResult> => ipcRenderer.invoke(TERM.spawnShell, req),
   listShells: (): Promise<ShellsInfo> => ipcRenderer.invoke(SHELLS.list),
   listTools: (): Promise<string[]> => ipcRenderer.invoke(TOOLS.list),
+  getWorkspaceSettings: (): Promise<WorkspaceSettings> => ipcRenderer.invoke(WORKSPACE.getSettings),
+  saveWorkspace: (layout: WorkspaceLayout): void => ipcRenderer.send(WORKSPACE.save, layout),
+  // S4 Projects sidebar: read the persisted projects/conversations + sidebar
+  // geometry, restore an archived project, and subscribe to the change nudge.
+  listProjects: (): Promise<ProjectInfo[]> => ipcRenderer.invoke(PROJECTS.list),
+  listConversations: (): Promise<ConversationInfo[]> => ipcRenderer.invoke(CONVERSATIONS.list),
+  setProjectArchived: (id: string, archived: boolean): Promise<void> => ipcRenderer.invoke(PROJECTS.setArchived, id, archived),
+  // S6: create/refresh a project from a picked folder (New Project); restore an
+  // archived conversation.
+  ensureProject: (folder: string): Promise<ProjectInfo> => ipcRenderer.invoke(PROJECTS.ensure, folder),
+  setConversationArchived: (id: string, archived: boolean): Promise<void> => ipcRenderer.invoke(CONVERSATIONS.setArchived, id, archived),
+  getSidebarState: (): Promise<SidebarState> => ipcRenderer.invoke(WORKSPACE.getSidebar),
+  setSuppressTeardownConfirm: (v: boolean): Promise<void> => ipcRenderer.invoke(WORKSPACE.setSuppressTeardownConfirm, v),
+  onSidebarChanged: (cb: () => void): (() => void) => {
+    const listener = (): void => cb()
+    ipcRenderer.on(SIDEBAR.changed, listener)
+    return () => ipcRenderer.off(SIDEBAR.changed, listener)
+  },
+  // S5 worktree toggle: the composer asks whether a folder is a git repo (+ its
+  // branchPrefix + the remembered choice), pre-flight-creates a worktree before
+  // launching, and the sidebar tears one down on archive.
+  worktreeInfo: (folder: string): Promise<WorktreeInfo> => ipcRenderer.invoke(WORKTREE.info, folder),
+  createWorktree: (req: WorktreeCreateRequest): Promise<WorktreeCreateResult> => ipcRenderer.invoke(WORKTREE.create, req),
+  teardownConversation: (req: WorktreeTeardownRequest): Promise<WorktreeTeardownResult> => ipcRenderer.invoke(WORKTREE.teardown, req),
   writeTerminal: (id: string, data: string): void => ipcRenderer.send(TERM.write, id, data),
   resizeTerminal: (id: string, cols: number, rows: number): void => ipcRenderer.send(TERM.resize, id, cols, rows),
   killTerminal: (id: string): void => ipcRenderer.send(TERM.kill, id),
@@ -50,6 +79,33 @@ const api = {
     const listener = (_e: IpcRendererEvent, payload: YoloExitEvent): void => cb(payload)
     ipcRenderer.on(YOLO.exit, listener)
     return () => ipcRenderer.off(YOLO.exit, listener)
+  },
+  // S1 status: the renderer reports its buffer as active (content changed) or
+  // settled (stable → main scans the text), and receives per-tab status updates
+  // to draw the glyph.
+  sendStatusActive: (id: string): void => ipcRenderer.send(STATUS.active, id),
+  sendStatusSettled: (id: string, text: string): void => ipcRenderer.send(STATUS.settled, id, text),
+  onStatusUpdate: (cb: (e: StatusUpdateEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: StatusUpdateEvent): void => cb(payload)
+    ipcRenderer.on(STATUS.update, listener)
+    return () => ipcRenderer.off(STATUS.update, listener)
+  },
+  // S8 subagent panel: one-way pushes from the main-process watchers. Each
+  // returns an unsubscribe so the panel can detach on unmount.
+  onSubagentSpawn: (cb: (e: SubagentSpawnEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: SubagentSpawnEvent): void => cb(payload)
+    ipcRenderer.on(SUBAGENTS.spawn, listener)
+    return () => ipcRenderer.off(SUBAGENTS.spawn, listener)
+  },
+  onSubagentActivity: (cb: (e: SubagentActivityEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: SubagentActivityEvent): void => cb(payload)
+    ipcRenderer.on(SUBAGENTS.activity, listener)
+    return () => ipcRenderer.off(SUBAGENTS.activity, listener)
+  },
+  onSubagentDone: (cb: (e: SubagentDoneEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: SubagentDoneEvent): void => cb(payload)
+    ipcRenderer.on(SUBAGENTS.done, listener)
+    return () => ipcRenderer.off(SUBAGENTS.done, listener)
   },
   onMenuAction: (cb: (action: MenuAction) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, action: MenuAction): void => cb(action)

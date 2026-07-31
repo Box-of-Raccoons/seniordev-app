@@ -16,7 +16,18 @@ export interface Launch {
 
 export function buildInteractiveLaunch(
   config: Config,
-  opts: { tool?: string; ticketKey?: string; cwdOverride?: string; resume?: { sessionId: string }; model?: PromptModel },
+  opts: {
+    tool?: string
+    ticketKey?: string
+    cwdOverride?: string
+    resume?: { sessionId: string }
+    // S3: the session id to PRE-ASSIGN at spawn (the tab's conversationId). Used
+    // only when the tool defines sessionIdArgs (claude) and this is a fresh launch
+    // — a resume already has an id and never re-asserts one. Tools without the
+    // flag (codex) ignore it and are discovered post-hoc instead.
+    sessionId?: string
+    model?: PromptModel
+  },
   expandedPrompt?: string,
   resolveCommand?: (command: string) => ResolvedCommand | undefined
 ): Launch {
@@ -24,10 +35,11 @@ export function buildInteractiveLaunch(
   const tool = config.cliTools[toolName]
   if (!tool) throw new Error(`Unknown CLI tool: ${toolName}`)
   const cwd = resolveCwd(config, opts.ticketKey, opts.cwdOverride)
-  // Session ids come from the CLI's own output (UUIDs), but resume args can ride
-  // through a cmd /c shim launch that RE-PARSES its line — so refuse anything
-  // outside the UUID charset rather than let it near a shell. Defense in depth.
-  if (opts.resume && !/^[0-9a-zA-Z-]+$/.test(opts.resume.sessionId)) {
+  // Session ids come from the CLI's own output (UUIDs), but resume/pre-assign args
+  // can ride through a cmd /c shim launch that RE-PARSES its line — so refuse
+  // anything outside the UUID charset rather than let it near a shell. Defense in depth.
+  const idCharset = /^[0-9a-zA-Z-]+$/
+  if (opts.resume && !idCharset.test(opts.resume.sessionId)) {
     throw new Error(`Invalid session id for resume: ${opts.resume.sessionId}`)
   }
   // Function replacer: a literal '$' in a session id must not trigger $&-style patterns.
@@ -35,12 +47,21 @@ export function buildInteractiveLaunch(
     opts.resume && tool.resumeArgs
       ? tool.resumeArgs.map((a) => a.replace('{{sessionId}}', () => opts.resume!.sessionId))
       : []
+  // Pre-assign the session id on a FRESH launch when the tool supports it. Skipped
+  // on resume (resumeArgs already reconnect to the existing id). Same charset guard.
+  if (!opts.resume && opts.sessionId && tool.sessionIdArgs && !idCharset.test(opts.sessionId)) {
+    throw new Error(`Invalid session id for pre-assign: ${opts.sessionId}`)
+  }
+  const sessionIdArgs =
+    !opts.resume && opts.sessionId && tool.sessionIdArgs
+      ? tool.sessionIdArgs.map((a) => a.replace('{{sessionId}}', () => opts.sessionId!))
+      : []
   // A fresh launch gets the resolved model (prompt frontmatter — this tool's
   // entry if a per-tool map — → tool defaultModel → nothing). A resume reconnects
   // to a session that already has its model, so we leave its argv as-is rather
   // than re-asserting a model flag.
   const modelArgs = opts.resume ? [] : resolveModelArgs(tool, pickPromptModel(opts.model, toolName))
-  const args = [...tool.interactiveArgs, ...resumeArgs, ...modelArgs]
+  const args = [...tool.interactiveArgs, ...resumeArgs, ...sessionIdArgs, ...modelArgs]
   const resolved = resolveCommand?.(tool.command)
 
   // Deliver the prompt as a launch arg ONLY when it can't be re-parsed by cmd.exe.

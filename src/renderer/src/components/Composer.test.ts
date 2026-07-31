@@ -16,7 +16,11 @@ beforeEach(() => {
     listShells: vi.fn(async () => ({ shells: ['pwsh', 'cmd'], default: 'pwsh' })),
     listTools: vi.fn(async () => ['claude', 'codex']),
     resolveRepo,
-    yoloCaps: vi.fn(async () => ({ available: true }))
+    yoloCaps: vi.fn(async () => ({ available: true })),
+    // S5: default to "not a git repo" so the worktree control is inert unless a
+    // test opts in; createWorktree succeeds by default.
+    worktreeInfo: vi.fn(async () => ({ isRepo: false, branchPrefix: '', worktreeDefault: false })),
+    createWorktree: vi.fn(async () => ({ ok: true, worktreePath: '/wt/x', branch: 'feat' }))
   }
 })
 
@@ -111,8 +115,8 @@ describe('Composer', () => {
 
   it('agent shows a Claude|Codex tool picker and emits the chosen tool', async () => {
     const w = await mountComposer('agent')
-    // Two segmented groups in agent view: [0] session mode, [1] tool.
-    const toolSeg = w.findAll('.seg')[1]
+    // The tool picker is the only segmented group now (the Task/Open toggle is gone).
+    const toolSeg = w.find('.seg')
     expect(toolSeg.findAll('.seg-btn').map((b) => b.text())).toEqual(['Claude', 'Codex'])
     await w.find('#composer-folder').setValue('C:/work')
     await toolSeg.findAll('.seg-btn')[1].trigger('click')
@@ -120,38 +124,12 @@ describe('Composer', () => {
     expect(w.emitted('launch')?.[0]?.[0]).toMatchObject({ tool: 'codex' })
   })
 
-  it('Open mode hides role/description/YOLO and launches a bare agent', async () => {
+  it('is task-only: role, description and YOLO are always shown for an agent (no Task/Open toggle)', async () => {
     const w = await mountComposer('agent')
-    // Switch the session mode to Open (the first segmented group's second button).
-    await w.findAll('.seg')[0].findAll('.seg-btn')[1].trigger('click')
-    expect(w.find('#composer-role').exists()).toBe(false)
-    expect(w.find('#composer-input').exists()).toBe(false)
-    expect(w.find('.yolo').exists()).toBe(false)
-    await w.find('#composer-folder').setValue('C:/work')
-    expect(w.find('button[type="submit"]').text()).toBe('Launch')
-    await w.find('form').trigger('submit')
-    expect(w.emitted('launch')?.[0]?.[0]).toEqual({
-      mode: 'interactive',
-      folder: 'C:/work',
-      role: undefined,
-      input: undefined,
-      ticketKey: undefined,
-      yolo: false,
-      tool: 'claude'
-    })
-  })
-
-  it('initialMode=open starts in Open mode and prefills the folder from the most recent', async () => {
-    ;(window.api as unknown as { listRecentFolders: unknown }).listRecentFolders = vi.fn(async () => [
-      'C:/code/seniordev-app',
-      'C:/code/other'
-    ])
-    const w = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialMode: 'open' } })
-    await flushPromises()
-    // Open mode hides the task-only controls...
-    expect(w.find('#composer-role').exists()).toBe(false)
-    // ...and prefills the folder with the last-used one, collapsing the flow to one launch.
-    expect((w.find('#composer-folder').element as HTMLInputElement).value).toBe('C:/code/seniordev-app')
+    expect(w.text()).not.toContain('Session mode')
+    expect(w.find('#composer-role').exists()).toBe(true)
+    expect(w.find('#composer-input').exists()).toBe(true)
+    expect(w.find('.yolo').exists()).toBe(true)
   })
 
   it('renders recent-folder chips (basename) and fills the folder when one is clicked', async () => {
@@ -168,10 +146,118 @@ describe('Composer', () => {
     expect((w.find('#composer-folder').element as HTMLInputElement).value).toBe('C:/code/seniordev-app')
   })
 
-  it('launches on Ctrl+Enter in Open mode (no textarea to carry the shortcut)', async () => {
-    ;(window.api as unknown as { listRecentFolders: unknown }).listRecentFolders = vi.fn(async () => ['C:/code/app'])
-    const w = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialMode: 'open' } })
+  // --- S5 worktree toggle (Task mode only) ---
+
+  function setWtInfo(info: { isRepo: boolean; branchPrefix?: string; worktreeDefault?: boolean }): void {
+    ;(window.api as unknown as { worktreeInfo: unknown }).worktreeInfo = vi.fn(async () => ({
+      isRepo: info.isRepo,
+      branchPrefix: info.branchPrefix ?? '',
+      worktreeDefault: info.worktreeDefault ?? false
+    }))
+  }
+  async function mountWithFolder(): Promise<ReturnType<typeof mount>> {
+    const w = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialFolder: 'C:/repo' } })
     await flushPromises()
+    return w
+  }
+
+  it('worktree checkbox is disabled with a reason on a non-git folder', async () => {
+    setWtInfo({ isRepo: false })
+    const w = await mountWithFolder()
+    const box = w.find('.wt-check input')
+    expect(box.exists()).toBe(true)
+    expect((box.element as HTMLInputElement).disabled).toBe(true)
+    expect(w.text()).toContain('not a git repository')
+  })
+
+  it('worktree checkbox enables on a git folder; branch prefills prefix + slug and stops after a manual edit', async () => {
+    setWtInfo({ isRepo: true, branchPrefix: 'hardy/', worktreeDefault: true })
+    const w = await mountWithFolder()
+    await w.find('#composer-input').setValue('Add the widget')
+    await flushPromises()
+    const box = w.find('.wt-check input')
+    expect((box.element as HTMLInputElement).disabled).toBe(false)
+    // Auto-checked from worktreeDefault, so the branch field is visible.
+    const branch = w.find('#composer-branch').element as HTMLInputElement
+    expect(branch.value).toBe('hardy/add-the-widget')
+    // A manual edit sticks; a later prompt change must not overwrite it.
+    await w.find('#composer-branch').setValue('hardy/my-own')
+    await w.find('#composer-input').setValue('something else entirely')
+    await flushPromises()
+    expect((w.find('#composer-branch').element as HTMLInputElement).value).toBe('hardy/my-own')
+  })
+
+  it('empty prefix + empty prompt falls the branch back to "task"', async () => {
+    setWtInfo({ isRepo: true, branchPrefix: '', worktreeDefault: true })
+    const w = await mountWithFolder()
+    expect((w.find('#composer-branch').element as HTMLInputElement).value).toBe('task')
+  })
+
+  it('pre-flight create failure shows the reason and does NOT emit a launch', async () => {
+    setWtInfo({ isRepo: true, branchPrefix: '', worktreeDefault: true })
+    ;(window.api as unknown as { createWorktree: unknown }).createWorktree = vi.fn(async () => ({
+      ok: false,
+      error: "a branch named 'task' already exists"
+    }))
+    const w = await mountWithFolder()
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(w.emitted('launch')).toBeUndefined()
+    expect(w.text()).toContain("a branch named 'task' already exists")
+  })
+
+  it('pre-flight create success emits worktreePath, branch, and worktreeChoice', async () => {
+    setWtInfo({ isRepo: true, branchPrefix: 'hardy/', worktreeDefault: true })
+    ;(window.api as unknown as { createWorktree: unknown }).createWorktree = vi.fn(async () => ({
+      ok: true,
+      worktreePath: '/cfg/worktrees/repo/hardy-thing',
+      branch: 'hardy/thing'
+    }))
+    const w = await mountWithFolder()
+    await w.find('#composer-input').setValue('thing')
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(w.emitted('launch')?.[0]?.[0]).toMatchObject({
+      mode: 'interactive',
+      worktreePath: '/cfg/worktrees/repo/hardy-thing',
+      branch: 'hardy/thing',
+      worktreeChoice: true
+    })
+  })
+
+  it('worktree control shows for a git-repo agent launch, not for a terminal', async () => {
+    setWtInfo({ isRepo: true, worktreeDefault: true })
+    const agent = mount(Composer, { props: { variant: 'agent', tool: 'claude', initialFolder: 'C:/repo' } })
+    await flushPromises()
+    expect(agent.find('.wt-check').exists()).toBe(true)
+    const term = mount(Composer, { props: { variant: 'terminal', initialFolder: 'C:/repo' } })
+    await flushPromises()
+    expect(term.find('.wt-check').exists()).toBe(false)
+  })
+
+  it('project-locked mode hides the folder picker, shows a project header, and still launches with the folder', async () => {
+    setWtInfo({ isRepo: false })
+    const w = mount(Composer, {
+      props: { variant: 'agent', tool: 'claude', projectName: 'my-app', initialFolder: 'C:/code/my-app' }
+    })
+    await flushPromises()
+    // No folder field; a read-only project header instead.
+    expect(w.find('#composer-folder').exists()).toBe(false)
+    expect(w.find('.proj-header__name').text()).toBe('my-app')
+    // Launch is enabled (folder is pinned) and carries the project folder.
+    await w.find('form').trigger('submit')
+    expect(w.emitted('launch')?.[0]?.[0]).toMatchObject({ mode: 'interactive', folder: 'C:/code/my-app' })
+  })
+
+  it('non-locked mode still shows the folder field (regression guard)', async () => {
+    const w = await mountComposer('agent')
+    expect(w.find('#composer-folder').exists()).toBe(true)
+    expect(w.find('.proj-header').exists()).toBe(false)
+  })
+
+  it('launches on Ctrl+Enter from the form', async () => {
+    const w = await mountComposer('agent')
+    await w.find('#composer-folder').setValue('C:/code/app')
     await w.find('form').trigger('keydown', { key: 'Enter', ctrlKey: true })
     expect(w.emitted('launch')?.[0]?.[0]).toMatchObject({ mode: 'interactive', folder: 'C:/code/app' })
   })

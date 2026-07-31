@@ -17,6 +17,9 @@
   --teal:  oklch(0.78 0.085 168);
   --green: oklch(0.79 0.11 155);
   --amber: oklch(0.80 0.115 68);
+  /* Trough of the "working" status glyph's slow colour pulse — a dimmer amber it
+     breathes toward. Same hue as --amber; only used for that animation. */
+  --amber-dim: oklch(0.56 0.075 68);
   --tan:   oklch(0.77 0.045 78);
   --rust:  oklch(0.68 0.15 38);
 

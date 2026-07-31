@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { isTicketKey } from '../../../shared/ticket-key'
-import type { PromptSummary, RepoInfo } from '../../../shared/ipc'
+import { slugifyForBranch, sanitizeBranchRef } from '../../../shared/branch'
+import type { PromptSummary, RepoInfo, WorktreeInfo } from '../../../shared/ipc'
 import type { ComposerLaunch } from './composer-types'
 
 // variant is fixed by the New-tab menu choice: 'agent' runs a CLI agent (Claude,
@@ -11,13 +12,14 @@ import type { ComposerLaunch } from './composer-types'
 const props = defineProps<{
   variant: 'agent' | 'terminal'
   tool?: string
-  // Seed the start mode; the Open item in the New-tab menu passes 'open' for the
-  // fast unprompted path. Defaults to 'task'.
-  initialMode?: 'task' | 'open'
   // Optional prefill (deep-link entry point): seed folder/input/role.
   initialInput?: string
   initialFolder?: string
   initialRole?: string
+  // S6: when launched from a project, the folder is fixed to the project. The name
+  // is shown as a read-only header instead of the folder picker, and the folder is
+  // pinned to initialFolder.
+  projectName?: string
 }>()
 const emit = defineEmits<{ (e: 'launch', payload: ComposerLaunch): void }>()
 
@@ -30,9 +32,19 @@ const input = ref(props.initialInput ?? '')
 const yolo = ref(false)
 const shell = ref('')
 const tool = ref(props.tool ?? '')
-// 'task' = the agent starts with a role + task prompt (and optional YOLO).
-// 'open' = launch a bare, unprompted agent — just the CLI in the chosen folder.
-const mode = ref<'task' | 'open'>(props.initialMode ?? 'task')
+
+// S5 worktree toggle (Task mode only). `wtInfo` is resolved live per folder (is it
+// a git repo, the repo's branchPrefix, the project's remembered choice). The
+// checkbox prefills from worktreeDefault until the user toggles it; the branch
+// prefills as branchPrefix + a slug of the prompt until the user edits it.
+const wtInfo = ref<WorktreeInfo>({ isRepo: false, branchPrefix: '', worktreeDefault: false })
+const worktree = ref(false)
+const worktreeTouched = ref(false)
+const branch = ref('')
+const branchTouched = ref(false)
+// A worktree:create refusal (a branch/path collision) is shown here; on a refusal
+// the composer does NOT launch, so the user can fix the branch and retry.
+const createError = ref<string | null>(null)
 
 const prompts = ref<PromptSummary[]>([])
 const repos = ref<RepoInfo[]>([])
@@ -41,10 +53,12 @@ const shells = ref<string[]>([])
 const tools = ref<string[]>([])
 const yoloAvailable = ref(false)
 
+// S6: launched from a project → the folder is fixed; hide the picker, show a header.
+const locked = computed(() => !!props.projectName)
 const isTerminal = computed(() => props.variant === 'terminal')
-// Only the 'task' mode surfaces the role/description/YOLO controls; 'open' hides
-// them and launches the agent with nothing.
-const isTask = computed(() => !isTerminal.value && mode.value === 'task')
+// The composer is task-only now (bare "New Session" launches come from the sidebar
+// + menu, not here): an agent composer always drives a role + task prompt.
+const isTask = computed(() => !isTerminal.value)
 
 // A ticket key (e.g. ISC-835) vs free text. Detection drives the hint and the
 // folder prefill; the app hands the agent the key, which reads it via its MCP.
@@ -115,13 +129,9 @@ onMounted(async () => {
   } catch {
     recentFolders.value = []
   }
-  // Open mode is the fast path: prefill the folder with the last one used so the
-  // flow collapses to New-tab → Open → launch. A prefilled folder counts as
-  // chosen (folderTouched), so nothing overwrites it.
-  if (mode.value === 'open' && !folder.value.trim() && recentFolders.value[0]) {
-    folder.value = recentFolders.value[0]
-    folderTouched.value = true
-  }
+  // Resolve the worktree state for the initial folder (the watch only fires on a
+  // later change). Only meaningful for the agent variant, but harmless otherwise.
+  if (!isTerminal.value) await refreshWorktreeInfo()
 })
 
 // Prefill the folder from the ticket's mapped repo, until the user takes over.
@@ -134,6 +144,50 @@ watch(detectedTicket, async (key) => {
     /* leave the folder as-is */
   }
 })
+
+// Prefill the branch as branchPrefix + a slug of the prompt, until the user edits
+// it (branchTouched, mirroring folderTouched). Always a valid ref; an empty prefix
+// and empty prompt fall back to 'task'.
+function prefillBranch(): void {
+  if (branchTouched.value) return
+  branch.value = sanitizeBranchRef(wtInfo.value.branchPrefix + slugifyForBranch(input.value))
+}
+
+// Resolve the worktree state for the current folder (git repo? branchPrefix?
+// remembered choice?). Best-effort: a failure leaves the checkbox disabled. Prefill
+// the checkbox from the remembered choice and re-derive the branch, unless the user
+// has already taken over either control.
+async function refreshWorktreeInfo(): Promise<void> {
+  const f = folder.value.trim()
+  if (!f) {
+    wtInfo.value = { isRepo: false, branchPrefix: '', worktreeDefault: false }
+  } else {
+    try {
+      wtInfo.value = await window.api.worktreeInfo(f)
+    } catch {
+      wtInfo.value = { isRepo: false, branchPrefix: '', worktreeDefault: false }
+    }
+  }
+  if (!worktreeTouched.value) worktree.value = wtInfo.value.isRepo && wtInfo.value.worktreeDefault
+  prefillBranch()
+}
+
+let wtDebounce: ReturnType<typeof setTimeout> | null = null
+watch(folder, () => {
+  createError.value = null
+  if (wtDebounce) clearTimeout(wtDebounce)
+  wtDebounce = setTimeout(() => void refreshWorktreeInfo(), 250)
+})
+// Re-derive the branch as the prompt changes (until the user edits the branch).
+watch(input, () => prefillBranch())
+
+function onBranchInput(): void {
+  branchTouched.value = true
+}
+function onWorktreeToggle(): void {
+  worktreeTouched.value = true
+  createError.value = null
+}
 
 function pickRepo(path: string): void {
   folder.value = path
@@ -162,22 +216,47 @@ function onFormKeydown(e: KeyboardEvent): void {
   }
 }
 
-function launch(): void {
+async function launch(): Promise<void> {
   if (!canLaunch.value) return
   if (isTerminal.value) {
     emit('launch', { mode: 'terminal', folder: folder.value.trim(), shell: shell.value })
     return
   }
-  // 'open' mode launches a bare agent — no role, no task text, no YOLO.
-  const task = isTask.value
+  const folderVal = folder.value.trim()
+  // S5: a launch with the worktree checkbox on creates the worktree FIRST
+  // (pre-flight). A collision refuses here — we surface the reason and do NOT launch,
+  // so the agent never spawns in the wrong cwd. On success the worktree path rides
+  // along and RightPanel makes it the cwd.
+  let worktreePath: string | undefined
+  let worktreeBranch: string | undefined
+  const useWorktree = worktree.value && wtInfo.value.isRepo
+  if (useWorktree) {
+    createError.value = null
+    try {
+      const res = await window.api.createWorktree({ folder: folderVal, branch: sanitizeBranchRef(branch.value) })
+      if (!res.ok) {
+        createError.value = res.error
+        return
+      }
+      worktreePath = res.worktreePath
+      worktreeBranch = res.branch
+    } catch (err) {
+      createError.value = err instanceof Error ? err.message : String(err)
+      return
+    }
+  }
   emit('launch', {
     mode: 'interactive',
-    folder: folder.value.trim(),
-    role: task ? role.value || undefined : undefined,
-    input: task ? input.value.trim() || undefined : undefined,
-    ticketKey: task ? detectedTicket.value ?? undefined : undefined,
-    yolo: task ? yolo.value : false,
-    tool: tool.value || undefined
+    folder: folderVal,
+    role: role.value || undefined,
+    input: input.value.trim() || undefined,
+    ticketKey: detectedTicket.value ?? undefined,
+    yolo: yolo.value,
+    tool: tool.value || undefined,
+    worktreePath,
+    branch: worktreeBranch,
+    // Remember the per-project checkbox state.
+    worktreeChoice: worktree.value
   })
 }
 </script>
@@ -185,25 +264,14 @@ function launch(): void {
 <template>
   <form class="composer" @submit.prevent="launch" @keydown="onFormKeydown">
     <div class="composer__inner">
-      <!-- Agent: choose whether the session starts with a task prompt or bare. -->
-      <div v-if="!isTerminal" class="seg" role="group" aria-label="Session mode">
-        <button
-          type="button"
-          class="seg-btn"
-          :class="{ 'seg-btn--on': mode === 'task' }"
-          :aria-pressed="mode === 'task'"
-          @click="mode = 'task'"
-        >Task</button>
-        <button
-          type="button"
-          class="seg-btn"
-          :class="{ 'seg-btn--on': mode === 'open' }"
-          :aria-pressed="mode === 'open'"
-          @click="mode = 'open'"
-        >Open</button>
+      <!-- S6: launched from a project — the folder is the project, shown as a
+           read-only header instead of the picker. -->
+      <div v-if="locked" class="proj-header">
+        <span class="proj-header__label">Project</span>
+        <span class="proj-header__name">{{ projectName }}</span>
       </div>
 
-      <div class="field">
+      <div v-if="!locked" class="field">
         <label class="flabel" for="composer-folder">Folder</label>
         <div class="folder-row">
           <input
@@ -240,6 +308,31 @@ function launch(): void {
             @click="pickRepo(r.path)"
           >{{ r.key }}</button>
         </div>
+      </div>
+
+      <!-- Task mode: optional git worktree isolation for this run (S5). Beside the
+           folder picker; disabled with a reason when the folder is not a git repo. -->
+      <div v-if="isTask" class="field worktree">
+        <label class="wt-check" :class="{ 'wt-check--off': !wtInfo.isRepo }">
+          <input v-model="worktree" type="checkbox" :disabled="!wtInfo.isRepo" @change="onWorktreeToggle" />
+          <span class="wt-text">
+            run in a new worktree
+            <span v-if="!wtInfo.isRepo" class="wt-reason">not a git repository</span>
+          </span>
+        </label>
+        <div v-if="worktree && wtInfo.isRepo" class="wt-branch">
+          <label class="flabel" for="composer-branch">Branch</label>
+          <input
+            id="composer-branch"
+            v-model="branch"
+            class="control"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            @input="onBranchInput"
+          />
+        </div>
+        <span v-if="createError" class="hint hint--error" role="alert">{{ createError }}</span>
       </div>
 
       <!-- Agent: which CLI to launch (Claude, Codex, …). -->
@@ -318,6 +411,10 @@ function launch(): void {
 .composer__inner { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 15px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .flabel { font-size: 12px; font-weight: 600; color: var(--ink-soft); }
+/* S6 project header: the fixed launch scope, in place of the folder picker. */
+.proj-header { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; }
+.proj-header__label { font-size: 12px; font-weight: 600; color: var(--ink-muted); }
+.proj-header__name { font-size: 14px; font-weight: 600; color: var(--ink); }
 
 .control {
   background: var(--surface); color: var(--ink);
@@ -355,6 +452,20 @@ function launch(): void {
 
 .hint { font-size: 12px; color: var(--teal); }
 .hint--muted { color: var(--ink-muted); }
+.hint--error { color: var(--rust); }
+
+/* S5 worktree controls. The checkbox mirrors the YOLO row's affordance; the reason
+   text (not colour) carries the disabled state (DESIGN Color-Is-State). */
+.worktree { gap: 8px; }
+.wt-check { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+/* tan (secondary emphasis), not teal — the One Signal Rule reserves teal for the
+   surface's one primary action (Launch). */
+.wt-check input { accent-color: var(--tan); }
+.wt-text { font-size: 12.5px; color: var(--ink-soft); }
+.wt-reason { color: var(--ink-muted); font-size: 11px; margin-left: 6px; }
+.wt-check--off { cursor: default; opacity: 0.7; }
+.wt-branch { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+.wt-branch .control { font-family: var(--font-mono, Consolas, monospace); font-size: 12.5px; }
 
 .yolo { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
 .yolo input { accent-color: var(--amber); }

@@ -17,11 +17,15 @@ export function registerYoloIpc(
   const meta = new Map<string, { cwd: string; tool: string; canResume: boolean }>()
 
   const runner = new YoloRunner(spawner, {
-    onLog: (id, text) => getSender()?.send(YOLO.log, { id, text }),
+    onLog: (id, text) => {
+      getSender()?.send(YOLO.log, { id, text })
+      deps.statusHub?.active(id)
+    },
     onPr: (id, url, term) => getSender()?.send(YOLO.pr, { id, url, term }),
     onExit: (id, e) => {
       const m = meta.get(id)
       meta.delete(id)
+      deps.statusHub?.exit(id, e.exitCode)
       getSender()?.send(YOLO.exit, {
         id,
         exitCode: e.exitCode,
@@ -53,6 +57,7 @@ export function registerYoloIpc(
         patterns: buildForgePatterns(config),
         resolved: launch.resolved
       })
+      deps.statusHub?.registerHeadless(req.id)
       return { ok: true }
     } catch (err) {
       meta.delete(req.id)
@@ -68,6 +73,7 @@ export function registerYoloIpc(
   ipcMain.on(YOLO.kill, (_e, id: string) => {
     runner.kill(id)
     meta.delete(id)
+    deps.statusHub?.dispose(id)
   })
 
   return runner

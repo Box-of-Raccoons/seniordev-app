@@ -23,7 +23,16 @@ export const CliToolSchema = z.object({
   // don't consume the markers (claude), where the raw ESC acts as the Escape key.
   bracketedPaste: z.boolean().optional(),
   headless: HeadlessSchema.optional(),
-  resumeArgs: z.array(z.string()).optional()
+  resumeArgs: z.array(z.string()).optional(),
+  // How this tool pre-assigns a session id on argv at spawn, e.g.
+  // ["--session-id", "{{sessionId}}"] (claude). Absent ⇒ the tool has no
+  // launch-time id flag (codex) and its id is discovered post-hoc instead.
+  sessionIdArgs: z.array(z.string()).optional(),
+  // Regex sources the S1 buffer scan matches against a quiet TUI to tell "waiting
+  // on you at an approval prompt" from ordinary idle output. Default [] so a tool
+  // with none configured degrades to no prompt detection rather than throwing;
+  // a config.yaml can add or replace patterns when a vendor reshuffles its TUI.
+  approvalPatterns: z.array(z.string()).default([])
 })
 
 export const ForgeSchema = z.object({
@@ -47,7 +56,15 @@ export const ConfigSchema = z.object({
   repos: z.array(RepoSchema).default([]),
   promptsDir: z.string().optional(),
   yoloPreamble: z.string().optional(),
-  yoloRecap: z.string().optional()
+  yoloRecap: z.string().optional(),
+  // Minimum width, in px, a workspace pane can be resized to (S2 split panes).
+  // Configurable because VS Code's fixed ~329px minimum is their single
+  // most-requested change in this area; 320 is a sensible default.
+  minPaneWidth: z.number().int().positive().default(320),
+  // Days of inactivity after which a project is auto-archived (S3, spec 4.5).
+  // Runs at startup + daily, never archives a project with a live tab, and is
+  // fully reversible. 0 disables archiving. Non-negative integer.
+  archiveAfterDays: z.number().int().nonnegative().default(14)
 })
 
 export type Config = z.infer<typeof ConfigSchema>
