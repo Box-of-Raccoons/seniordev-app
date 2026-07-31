@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      chokidar:
-        specifier: ^4.0.3
-        version: 4.0.3
       node-pty:
         specifier: ^1.1.0
         version: 1.1.0
@@ -39,6 +36,9 @@ importers:
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
+      chokidar:
+        specifier: ^4.0.3
+        version: 4.0.3
       electron:
         specifier: ^31.0.0
         version: 31.7.7
