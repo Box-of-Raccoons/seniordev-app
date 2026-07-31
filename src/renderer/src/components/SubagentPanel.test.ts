@@ -50,7 +50,7 @@ describe('SubagentPanel', () => {
     const { w, ws } = setup()
     await w.find('[aria-label="Collapse subagents panel"]').trigger('click')
     expect(ws.subagentPanel.collapsed).toBe(true)
-    expect(w.find('.collapsed-toggle').exists()).toBe(true)
+    expect(w.find('.sp-rail').exists()).toBe(true)
     // Expanding again restores the header.
     await w.find('[aria-label="Expand subagents panel"]').trigger('click')
     expect(ws.subagentPanel.collapsed).toBe(false)

@@ -21,7 +21,8 @@ export interface SubagentTile {
 // in for "still running"). `done` (codex task_complete) wins over the tiers.
 export type SubagentStatus = 'active' | 'idle' | 'stale' | 'done'
 export const ACTIVE_MS = 20_000 // quiet <= 20s ⇒ active
-export const STALE_MS = 90_000 // quiet  > 90s ⇒ stale (likely finished/abandoned)
+export const STALE_MS = 90_000 // quiet  > 90s ⇒ stale (likely finished/abandoned; faded)
+export const REMOVE_MS = 180_000 // quiet  > 3min ⇒ auto-removed (the panel self-cleans)
 export const MAX_LINES = 100 // cap a tile's scrolling log
 
 export type TileMap = Record<string, SubagentTile>
@@ -83,6 +84,15 @@ export function applyDone(map: TileMap, e: SubagentDoneEvent): TileMap {
   if (tile) {
     tile.done = true
     tile.lastTs = Math.max(tile.lastTs, e.ts)
+  }
+  return map
+}
+
+// Drop tiles that have been quiet past REMOVE_MS so the panel self-cleans to
+// "what's running now" without needing a manual Clear. Mutates + returns the map.
+export function pruneStale(map: TileMap, now: number, removeMs = REMOVE_MS): TileMap {
+  for (const [k, t] of Object.entries(map)) {
+    if (now - t.lastTs > removeMs) delete map[k]
   }
   return map
 }

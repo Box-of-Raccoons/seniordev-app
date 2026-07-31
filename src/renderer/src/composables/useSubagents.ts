@@ -3,6 +3,7 @@ import {
   applySpawn,
   applyActivity,
   applyDone,
+  pruneStale,
   sortTiles,
   filterTiles,
   tileStatus,
@@ -72,6 +73,7 @@ export function useSubagents(opts?: { api?: SubagentApi; now?: () => number; tic
     now.value = clock()
     timer = setInterval(() => {
       now.value = clock()
+      pruneStale(record, now.value) // self-clean tiles quiet past REMOVE_MS
     }, tickMs)
   }
   const stop = (): void => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useSubagents, type SubagentApi } from './useSubagents'
-import { ACTIVE_MS } from './subagent-tiles'
+import { ACTIVE_MS, REMOVE_MS } from './subagent-tiles'
 import type { SubagentSpawnEvent, SubagentActivityEvent, SubagentDoneEvent } from '../../../shared/ipc'
 
 // A fake api that captures the registered callbacks so a test can drive events.
@@ -86,6 +86,20 @@ describe('useSubagents', () => {
     api.done({ session: 'p', agent: 'a', ts: 1000 })
     expect(s.statusOf(s.tiles.value[0])).toBe('done')
     s.clearFinished()
+    expect(s.totalCount.value).toBe(0)
+    s.stop()
+  })
+
+  it('auto-prunes a tile once it has been quiet past REMOVE_MS (on tick)', () => {
+    let clockNow = 1000
+    const api = fakeApi()
+    const s = useSubagents({ api, now: () => clockNow, tickMs: 1000 })
+    s.start()
+    api.spawn({ session: 'p', agent: 'a', ts: 1000 })
+    expect(s.totalCount.value).toBe(1)
+    // Jump past the removal window and let the interval tick fire the prune.
+    clockNow = 1000 + REMOVE_MS + 2000
+    vi.advanceTimersByTime(1000)
     expect(s.totalCount.value).toBe(0)
     s.stop()
   })

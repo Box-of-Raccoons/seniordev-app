@@ -3,6 +3,7 @@ import {
   applySpawn,
   applyActivity,
   applyDone,
+  pruneStale,
   formatActivityLine,
   tileStatus,
   sortTiles,
@@ -10,6 +11,7 @@ import {
   relativeLabel,
   ACTIVE_MS,
   STALE_MS,
+  REMOVE_MS,
   type TileMap,
   type SubagentTile
 } from './subagent-tiles'
@@ -103,6 +105,25 @@ describe('filterTiles (this app only)', () => {
   })
   it('keeps only tiles whose session is in the known set when appOnly is on', () => {
     expect(filterTiles(tiles, true, new Set(['known'])).map((t) => t.agent)).toEqual(['a'])
+  })
+})
+
+describe('pruneStale', () => {
+  it('removes tiles quiet past REMOVE_MS, keeps the rest', () => {
+    const now = 1_000_000
+    const map: TileMap = {}
+    applySpawn(map, { session: 's', agent: 'fresh', ts: now - 1000 })
+    applySpawn(map, { session: 's', agent: 'old', ts: now - (REMOVE_MS + 1000) })
+    pruneStale(map, now)
+    expect(Object.keys(map)).toEqual(['fresh'])
+  })
+
+  it('honors a custom removeMs', () => {
+    const now = 1000
+    const map: TileMap = {}
+    applySpawn(map, { session: 's', agent: 'a', ts: 0 })
+    pruneStale(map, now, 500) // quiet 1000 > 500 ⇒ removed
+    expect(map.a).toBeUndefined()
   })
 })
 
