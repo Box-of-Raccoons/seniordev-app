@@ -32,7 +32,9 @@ export interface UseSubagents {
   appOnly: Ref<boolean> // "this app only" — the panel binds + persists this
   statusOf: (tile: SubagentTile) => SubagentStatus
   labelOf: (tile: SubagentTile) => string
+  nameOf: (tile: SubagentTile) => string | undefined // parent session's conversation title, if known
   setKnownSessions: (ids: Iterable<string>) => void
+  setSessionNames: (names: Map<string, string>) => void
   clearFinished: () => void
   start: () => void
   stop: () => void
@@ -47,14 +49,21 @@ export function useSubagents(opts?: { api?: SubagentApi; now?: () => number; tic
   const now = ref(clock())
   const appOnly = ref(false)
   const knownSessions = ref<Set<string>>(new Set())
+  // Parent-session id → the app's conversation title for it (S8). Lets a tile show
+  // which session spawned it; empty for subagents from sessions this app doesn't own.
+  const sessionNames = ref<Map<string, string>>(new Map())
 
   const tiles = computed(() => filterTiles(sortTiles(Object.values(record)), appOnly.value, knownSessions.value))
   const totalCount = computed(() => Object.keys(record).length)
 
   const statusOf = (tile: SubagentTile): SubagentStatus => tileStatus(tile, now.value)
   const labelOf = (tile: SubagentTile): string => relativeLabel(tile.lastTs, now.value)
+  const nameOf = (tile: SubagentTile): string | undefined => sessionNames.value.get(tile.session) || undefined
   const setKnownSessions = (ids: Iterable<string>): void => {
     knownSessions.value = new Set(ids)
+  }
+  const setSessionNames = (names: Map<string, string>): void => {
+    sessionNames.value = names
   }
   // Drop finished/stale tiles so the panel stays about what is running now.
   const clearFinished = (): void => {
@@ -85,5 +94,5 @@ export function useSubagents(opts?: { api?: SubagentApi; now?: () => number; tic
     }
   }
 
-  return { tiles, totalCount, appOnly, statusOf, labelOf, setKnownSessions, clearFinished, start, stop }
+  return { tiles, totalCount, appOnly, statusOf, labelOf, nameOf, setKnownSessions, setSessionNames, clearFinished, start, stop }
 }

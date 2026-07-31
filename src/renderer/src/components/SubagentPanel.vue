@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import StatusGlyph from './StatusGlyph.vue'
 import type { UseWorkspace } from '../composables/useWorkspace'
 import type { UseSubagents } from '../composables/useSubagents'
 import type { SubagentTile, SubagentStatus } from '../composables/subagent-tiles'
-import type { SubagentPanelPlacement } from '../../../shared/ipc'
+import type { SubagentPanelPlacement, TabStatus } from '../../../shared/ipc'
 
 // S8: a read-only, collapsible panel of live subagent activity (ported watchers
 // feed it via useSubagents). Styled to sit beside the Projects sidebar — same
@@ -33,12 +34,32 @@ function toggleCollapsed(): void {
 }
 
 const STATUS_LABEL: Record<SubagentStatus, string> = { active: 'active', idle: 'idle', stale: 'stale', done: 'done' }
+// Map a subagent status onto the sidebar's shared StatusGlyph vocabulary so the
+// panel and the Projects sidebar draw the SAME icons: a running agent = the
+// "working" glyph (amber pulsing circle), everything quiet = the "idle" hollow
+// ring. stale/done are distinguished by the tile's fade + text label, not a
+// different-colored dot.
+const GLYPH: Record<SubagentStatus, TabStatus> = { active: 'working', idle: 'idle', stale: 'idle', done: 'idle' }
 function statusOf(tile: SubagentTile): SubagentStatus {
   return props.subagents.statusOf(tile)
 }
-function shortId(agent: string): string {
-  return agent.length > 8 ? agent.slice(0, 8) : agent
+function glyphStatus(tile: SubagentTile): TabStatus {
+  return GLYPH[statusOf(tile)]
 }
+
+// #4 transcript zoom (borrowed from racconsole's .zoom): double-click a tile's
+// header — or click its expand button — to blow that tile's log up to a
+// full-viewport overlay; Escape or a click on the scrim closes it. No separate
+// window, keeping everything in the one app window.
+const zoomedAgent = ref<string | null>(null)
+function toggleZoom(agent: string): void {
+  zoomedAgent.value = zoomedAgent.value === agent ? null : agent
+}
+function onKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape' && zoomedAgent.value) zoomedAgent.value = null
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 // Resize: drag the inner edge (left for a right rail, top for a bottom strip).
 let dragging = false
@@ -99,10 +120,10 @@ const vStick = {
         <span
           v-for="tile in tiles"
           :key="tile.agent"
-          class="dot"
-          :class="`st-${statusOf(tile)}`"
           :title="`${tile.agentType || 'subagent'} · ${STATUS_LABEL[statusOf(tile)]}`"
-        />
+        >
+          <StatusGlyph :status="glyphStatus(tile)" />
+        </span>
       </div>
     </div>
 
@@ -122,7 +143,7 @@ const vStick = {
 
       <header class="sp-head">
         <span class="sp-title">Subagents</span>
-        <span v-if="tiles.length" class="count">{{ tiles.length }}</span>
+        <span v-if="tiles.length" class="sp-count">({{ tiles.length }})</span>
         <div class="sp-controls">
           <label class="app-only" title="Show only subagents from sessions launched in this app">
             <input type="checkbox" v-model="panel.appOnly" />
@@ -165,16 +186,40 @@ const vStick = {
       <div class="sp-body">
         <p v-if="!tiles.length" class="sp-empty">No subagents running.</p>
 
-        <article v-for="tile in tiles" :key="tile.agent" class="tile" :class="`st-${statusOf(tile)}`">
-          <div class="tile-head">
-            <span class="dot" :class="`st-${statusOf(tile)}`" aria-hidden="true" />
-            <span class="tile-type">{{ tile.agentType || 'subagent' }}</span>
-            <span class="tile-id">{{ shortId(tile.agent) }}</span>
+        <article
+          v-for="tile in tiles"
+          :key="tile.agent"
+          class="tile"
+          :class="[`st-${statusOf(tile)}`, { zoom: zoomedAgent === tile.agent }]"
+        >
+          <div class="tile-head" @dblclick="toggleZoom(tile.agent)">
+            <StatusGlyph :status="glyphStatus(tile)" />
+            <span class="tile-type" :title="tile.agent">{{ tile.agentType || 'subagent' }}</span>
             <span class="tile-time">
               <span v-if="statusOf(tile) !== 'active'" class="tile-status">{{ STATUS_LABEL[statusOf(tile)] }}</span>
               {{ subagents.labelOf(tile) }}
             </span>
+            <button
+              class="icon-btn tile-expand"
+              :aria-label="zoomedAgent === tile.agent ? 'Close transcript' : 'Open transcript'"
+              :title="zoomedAgent === tile.agent ? 'Close transcript' : 'Open transcript'"
+              @click.stop="toggleZoom(tile.agent)"
+            >
+              <svg v-if="zoomedAgent === tile.agent" width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M4 4 L12 12 M12 4 L4 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M6 2.5 H2.5 V6 M10 2.5 H13.5 V6 M6 13.5 H2.5 V10 M10 13.5 H13.5 V10"
+                  stroke="currentColor"
+                  stroke-width="1.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
           </div>
+          <p v-if="subagents.nameOf(tile)" class="tile-session" :title="subagents.nameOf(tile)">↳ {{ subagents.nameOf(tile) }}</p>
           <p v-if="tile.description" class="tile-desc">{{ tile.description }}</p>
           <div v-if="tile.lines.length" v-stick class="tile-log">
             <div v-for="(line, i) in tile.lines" :key="i" class="log-line">{{ line }}</div>
@@ -278,10 +323,12 @@ const vStick = {
   font-weight: 600;
   color: var(--ink-soft);
 }
-.count {
-  font-size: 11px;
+/* Counter reads as part of the title (same size/weight), parenthesized — not a
+   superscript-looking mono badge. */
+.sp-count {
+  font-size: 13px;
+  font-weight: 600;
   color: var(--ink-muted);
-  font-family: var(--font-mono, Consolas, monospace);
 }
 .sp-controls {
   margin-left: auto;
@@ -367,38 +414,16 @@ const vStick = {
   align-items: center;
   gap: 6px;
 }
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+/* Status icon reuses the sidebar's StatusGlyph (same working/idle vocabulary);
+   keep it from shrinking in the flex row. */
+.tile-head .status-glyph,
+.sp-rail-dots .status-glyph {
   flex: 0 0 auto;
-  border: 1.5px solid var(--ink-muted);
-}
-.dot.st-active {
-  background: var(--teal);
-  border-color: var(--teal);
-}
-.dot.st-idle {
-  background: transparent;
-  border-color: var(--amber);
-}
-.dot.st-stale {
-  background: transparent;
-  border-color: var(--ink-muted);
-}
-.dot.st-done {
-  background: var(--green);
-  border-color: var(--green);
 }
 .tile-type {
   font-size: 13px;
   font-weight: 600;
   color: var(--ink);
-}
-.tile-id {
-  font-family: var(--font-mono, Consolas, monospace);
-  font-size: 11px;
-  color: var(--ink-muted);
 }
 .tile-time {
   margin-left: auto;
@@ -414,6 +439,14 @@ const vStick = {
 }
 .st-done .tile-status {
   color: var(--green);
+}
+.tile-session {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tile-desc {
   margin: 4px 0 0;
@@ -436,6 +469,35 @@ const vStick = {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Compact expand affordance in the tile header (dbl-click the header works too). */
+.tile-expand {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+/* #4 zoom: blow a tile up to a full-viewport transcript overlay (racconsole's
+   .zoom idiom) with a scrim; the log fills the tile and drops its height cap. */
+.tile.zoom {
+  position: fixed;
+  inset: 32px;
+  width: auto;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+  box-shadow: 0 0 0 1px var(--hairline-strong), 0 0 0 100vmax var(--scrim), var(--shadow-overlay);
+}
+.tile.zoom .tile-log {
+  max-height: none;
+  flex: 1 1 auto;
+  margin-top: 8px;
+}
+.tile.zoom .log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -104,6 +104,19 @@ describe('useSubagents', () => {
     s.stop()
   })
 
+  it('nameOf returns the parent session title when set, else undefined', () => {
+    const api = fakeApi()
+    const s = useSubagents({ api, now: () => 1000 })
+    s.start()
+    api.spawn({ session: 'p1', agent: 'a1', ts: 1000 })
+    api.spawn({ session: 'external', agent: 'a2', ts: 1000 })
+    s.setSessionNames(new Map([['p1', 'My Session']]))
+    const byAgent = Object.fromEntries(s.tiles.value.map((t) => [t.agent, t]))
+    expect(s.nameOf(byAgent.a1)).toBe('My Session')
+    expect(s.nameOf(byAgent.a2)).toBeUndefined()
+    s.stop()
+  })
+
   it('stop() unsubscribes every listener', () => {
     const api = fakeApi()
     const s = useSubagents({ api, now: () => 1 })

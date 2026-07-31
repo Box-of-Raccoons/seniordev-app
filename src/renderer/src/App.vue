@@ -34,6 +34,12 @@ async function refreshKnownSessions(): Promise<void> {
   try {
     const convs = await window.api.listConversations()
     subagents.setKnownSessions(convs.map((c) => c.agentSessionId).filter((id): id is string => !!id))
+    // Map each parent session id → its conversation title so a tile can name the
+    // session that spawned it. Only this app's sessions have a title; others stay
+    // unnamed in the panel.
+    const names = new Map<string, string>()
+    for (const c of convs) if (c.agentSessionId && c.title) names.set(c.agentSessionId, c.title)
+    subagents.setSessionNames(names)
   } catch {
     // A read failure just leaves the known set as-is; the app-only filter degrades
     // to "show nothing extra", never a crash.

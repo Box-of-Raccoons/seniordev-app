@@ -23,7 +23,7 @@ export type SubagentStatus = 'active' | 'idle' | 'stale' | 'done'
 export const ACTIVE_MS = 20_000 // quiet <= 20s ⇒ active
 export const STALE_MS = 90_000 // quiet  > 90s ⇒ stale (likely finished/abandoned; faded)
 export const REMOVE_MS = 180_000 // quiet  > 3min ⇒ auto-removed (the panel self-cleans)
-export const MAX_LINES = 100 // cap a tile's scrolling log
+export const MAX_LINES = 300 // cap a tile's scrolling log (racconsole's cap; enough for the zoom view)
 
 export type TileMap = Record<string, SubagentTile>
 

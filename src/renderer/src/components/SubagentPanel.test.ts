@@ -43,7 +43,7 @@ describe('SubagentPanel', () => {
     expect(w.find('.tile').exists()).toBe(true)
     expect(w.find('.tile-type').text()).toBe('Explore')
     expect(w.find('.tile-log').text()).toContain('▸ Read /a/b.ts')
-    expect(w.find('.count').text()).toBe('1')
+    expect(w.find('.sp-count').text()).toBe('(1)')
   })
 
   it('collapse control switches to the collapsed strip', async () => {
@@ -62,6 +62,25 @@ describe('SubagentPanel', () => {
     expect(ws.subagentPanel.placement).toBe('right')
     await w.find('[aria-label="Move panel to bottom"]').trigger('click')
     expect(ws.subagentPanel.placement).toBe('bottom')
+  })
+
+  it('shows the parent session name when known', async () => {
+    const { w, api, subagents } = setup()
+    api.spawn({ session: 'p1', agent: 'a1', agentType: 'Explore', ts: 1000 })
+    subagents.setSessionNames(new Map([['p1', 'Build the panel']]))
+    await w.vm.$nextTick()
+    expect(w.find('.tile-session').text()).toContain('Build the panel')
+  })
+
+  it('expand control zooms a tile to the transcript overlay and back', async () => {
+    const { w, api } = setup()
+    api.spawn({ session: 'p1', agent: 'a1', agentType: 'Explore', ts: 1000 })
+    await w.vm.$nextTick()
+    expect(w.find('.tile.zoom').exists()).toBe(false)
+    await w.find('[aria-label="Open transcript"]').trigger('click')
+    expect(w.find('.tile.zoom').exists()).toBe(true)
+    await w.find('[aria-label="Close transcript"]').trigger('click')
+    expect(w.find('.tile.zoom').exists()).toBe(false)
   })
 
   it('the "this app" checkbox drives the persisted appOnly flag', async () => {
