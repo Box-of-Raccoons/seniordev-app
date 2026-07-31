@@ -17,16 +17,17 @@ export function startSubagentForwarding(deps: SubagentForwarderDeps): { dispose:
   const claude = (deps.makeClaude ?? createClaudeSubagentWatcher)()
   const codex = (deps.makeCodex ?? createCodexSubagentWatcher)()
 
-  const wire = (w: SubagentWatcher): void => {
+  const wire = (w: SubagentWatcher, tag: string): void => {
     w.on('spawn', (e) => deps.getSender()?.send(SUBAGENTS.spawn, e))
     w.on('activity', (e) => deps.getSender()?.send(SUBAGENTS.activity, e))
     w.on('done', (e) => deps.getSender()?.send(SUBAGENTS.done, e))
     // A watcher error is non-fatal: the panel simply stops receiving updates for
-    // that CLI. Never let it crash the main process.
-    w.on('error', () => {})
+    // that CLI. Never let it crash the main process — but DO surface it rather
+    // than swallow it (a silent handler would hide a real watcher failure).
+    w.on('error', (err) => console.error(`[subagents] ${tag} watcher error:`, err?.message ?? err))
   }
-  wire(claude)
-  wire(codex)
+  wire(claude, 'claude')
+  wire(codex, 'codex')
 
   return {
     dispose: (): void => {
