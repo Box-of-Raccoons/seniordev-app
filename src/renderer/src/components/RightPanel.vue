@@ -347,7 +347,7 @@ function launch(t: LiveTab, p: ComposerLaunch): void {
 
 let startupSeq = 0
 function startStartupSession(
-  s: { mode: 'interactive' | 'yolo'; promptName?: string; promptText?: string; tool?: string },
+  s: { mode: 'interactive' | 'yolo'; promptName?: string; promptText?: string; tool?: string; folder?: string },
   ticketKey?: string
 ): void {
   const prompt = s.promptName ? { name: s.promptName } : s.promptText ? { text: s.promptText } : undefined
@@ -358,7 +358,10 @@ function startStartupSession(
     prompt,
     tool: s.tool,
     ticketKey,
-    input: ticketKey
+    input: ticketKey,
+    // Spawn in the given folder (a --folder from the CLI); without it the agent
+    // falls back to the home dir and hits its "trust this folder?" gate.
+    cwdOverride: s.folder
   })
 }
 
