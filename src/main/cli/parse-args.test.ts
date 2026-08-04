@@ -47,4 +47,26 @@ describe('parseStartupArgs', () => {
     expect(o.warnings).toHaveLength(1)
     expect(o.warnings![0]).toContain('C:/missing.md')
   })
+
+  it('accepts the --prompt=value (equals) form', () => {
+    const o = parseStartupArgs(['--prompt=hello from the CLI'], noRead)
+    expect(o.session?.mode).toBe('interactive')
+    expect(o.session?.promptText).toBe('hello from the CLI')
+  })
+
+  it('accepts --tool=value and --prompt=@file (equals form)', () => {
+    const read = vi.fn(() => 'FILE BODY')
+    const o = parseStartupArgs(['--tool=codex', '--prompt=@C:/p.md'], read)
+    expect(read).toHaveBeenCalledWith('C:/p.md')
+    expect(o.session).toEqual({ mode: 'interactive', promptName: undefined, promptText: 'FILE BODY', tool: 'codex' })
+  })
+
+  it('an =form --prompt survives Chromium argv reordering (a switch inserted after the flag)', () => {
+    // The exact shape Electron delivered for `electron . --prompt "x"`: it clustered
+    // its own switch right after --prompt and pushed the value/app-path to the end,
+    // so the space form grabbed the switch as the prompt. The equals form keeps the
+    // value welded to the flag regardless of order.
+    const o = parseStartupArgs(['--prompt=hello from the CLI', '--allow-file-access-from-files', '.'], noRead)
+    expect(o.session?.promptText).toBe('hello from the CLI')
+  })
 })

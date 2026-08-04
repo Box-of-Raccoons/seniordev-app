@@ -119,6 +119,22 @@ describe('registerTerminalIpc', () => {
     vi.useRealTimers()
   })
 
+  it('delivers a raw --prompt text session (no name, no ticket) — the voice/CLI case', async () => {
+    vi.useFakeTimers()
+    const pty = fakePty()
+    registerTerminalIpc(() => undefined, () => pty as unknown as PtyProcess, { source })
+    // What startStartupSession sends for `seniordev --prompt "hello from the CLI"`:
+    // a free-text prompt, no role name, no ticket, no input.
+    const res = await handleMap.get('pty:spawn')!({}, { id: 'a', prompt: { text: 'hello from the CLI' }, cols: 80, rows: 24 })
+    expect(res).toEqual({ ok: true })
+    pty.emitData('boot screen')
+    await vi.advanceTimersByTimeAsync(800)
+    expect(pty.write).toHaveBeenNthCalledWith(1, 'hello from the CLI')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(pty.write).toHaveBeenNthCalledWith(2, '\r')
+    vi.useRealTimers()
+  })
+
   it('wraps a codex prompt in bracketed paste, then submits only after the paste settles', async () => {
     vi.useFakeTimers()
     const pty = fakePty()

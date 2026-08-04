@@ -66,4 +66,14 @@ describe('resolveSecondInstance', () => {
   it('no actionable args → empty links', () => {
     expect(resolveSecondInstance([EXE], noRead)).toEqual({ kind: 'links', links: [] })
   })
+
+  it('an =form --prompt survives Electron argv reordering (the real second-instance shape)', () => {
+    // Regression: `electron . --prompt "hello from the CLI"` reached second-instance
+    // reordered as below — Electron clustered its own switch after --prompt and moved
+    // the app path to the end, so the space form delivered the switch as the prompt.
+    // The =form the sidecar now emits welds the value to the flag.
+    const argv = ['C:/electron.exe', '--prompt=hello from the CLI', '--allow-file-access-from-files', '.']
+    const a = resolveSecondInstance(argv, noRead)
+    expect(a).toMatchObject({ kind: 'session', warm: { session: { promptText: 'hello from the CLI' } } })
+  })
 })
