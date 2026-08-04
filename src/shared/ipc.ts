@@ -218,6 +218,11 @@ export interface StartupSession {
   promptName?: string
   promptText?: string
   tool?: string
+  // Working directory for the session (--folder). Becomes the tab's cwdOverride,
+  // so the agent spawns here instead of the home-dir fallback — which matters
+  // because an agent CLI shows a "trust this folder?" gate in an untrusted dir,
+  // and that gate would swallow the injected prompt. Point it at a trusted repo.
+  folder?: string
 }
 // A deep link prefills a composer. `ticket` is the anchor; `role` and `folder`
 // are optional prefill hints. Nothing launches from a link (see SECURITY.md).
@@ -231,7 +236,15 @@ export interface StartupOptions {
   warnings?: string[]
   deeplink?: DeepLink
 }
-export const STARTUP = { get: 'startup:get' } as const
+// A warm session start: a second `seniordev --prompt|--yolo|--tool …` launch
+// arriving at the already-running instance (via second-instance). Unlike a deep
+// link — which only prefills a composer — a CLI session auto-starts, matching
+// cold-start behavior; the local command line is a trusted surface (see
+// resolve-launch.ts). `ticket` is the first positional key, if any.
+export interface WarmStartup { session: StartupSession; ticket?: string }
+// `get` (pull) hands cold-start options to the renderer; `session` (push) carries
+// a warm CLI session to the live renderer, gated on the shared DEEPLINK.ready.
+export const STARTUP = { get: 'startup:get', session: 'startup:session' } as const
 
 export interface StartYoloRequest {
   id: string

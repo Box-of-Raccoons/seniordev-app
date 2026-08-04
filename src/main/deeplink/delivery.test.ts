@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DeepLinkDelivery } from './delivery'
+import { DeepLinkDelivery, WarmDelivery } from './delivery'
 import type { DeepLink } from '../../shared/ipc'
 
 const open = (ticket: string): DeepLink => ({ action: 'open', ticket })
@@ -60,5 +60,19 @@ describe('DeepLinkDelivery', () => {
     // Already consumed by startup options — a later ready must not re-push them.
     d.rendererReady()
     expect(send).not.toHaveBeenCalled()
+  })
+})
+
+describe('WarmDelivery (generic — used for warm CLI sessions too)', () => {
+  it('queues an arbitrary payload until ready, then flushes it', () => {
+    const send = vi.fn()
+    const ensureWindow = vi.fn()
+    const d = new WarmDelivery<{ session: { mode: string }; ticket?: string }>({ send, ensureWindow })
+    const warm = { session: { mode: 'interactive' }, ticket: 'SD-9' }
+    d.deliver(warm)
+    expect(send).not.toHaveBeenCalled()
+    expect(ensureWindow).toHaveBeenCalledTimes(1)
+    d.rendererReady()
+    expect(send).toHaveBeenCalledWith(warm)
   })
 })

@@ -22,10 +22,11 @@ import { installMenu } from './menu'
 import { nodePtySpawner } from './terminal/node-pty-spawner'
 import { nodeHeadlessSpawner } from './headless/node-spawner'
 import { systemResolveCommand, systemCommandAvailable } from './terminal/resolve-command'
-import { parseDeepLink, findDeepLinkArg, linksFromArgv } from './deeplink/parse'
+import { parseDeepLink, findDeepLinkArg } from './deeplink/parse'
+import { resolveSecondInstance } from './startup/resolve-launch'
 import { findRepoForTicket } from './config/repos'
-import { DeepLinkDelivery } from './deeplink/delivery'
-import { DEEPLINK, STATUS, WORKSPACE, SIDEBAR, type WorkspaceLayout } from '../shared/ipc'
+import { DeepLinkDelivery, WarmDelivery } from './deeplink/delivery'
+import { DEEPLINK, STARTUP, STATUS, WORKSPACE, SIDEBAR, type WorkspaceLayout, type WarmStartup } from '../shared/ipc'
 import { registerSidebarIpc } from './ipc/sidebar-handlers'
 import { registerWorktreeIpc } from './ipc/worktree-handlers'
 import { nodeGitRunner } from './git/node-git-runner'
@@ -79,6 +80,16 @@ const deepLinks = new DeepLinkDelivery({
   }
 })
 
+// Warm CLI sessions (a second `seniordev --prompt …` launch) ride the same
+// queue-until-ready machinery as deep links, flushed by the shared DEEPLINK.ready
+// signal — see the second-instance handler below.
+const startupSessions = new WarmDelivery<WarmStartup>({
+  send: (warm) => mainWindow?.webContents.send(STARTUP.session, warm),
+  ensureWindow: () => {
+    if (app.isReady() && BrowserWindow.getAllWindows().length === 0) createWindow()
+  }
+})
+
 function createWindow(): void {
   // S3: restore the last window size/position from workspace.json; fall back to
   // the default 1400x900 on first run or a corrupt/missing store.
@@ -122,6 +133,7 @@ function createWindow(): void {
   win.on('closed', () => {
     mainWindow = null
     deepLinks.windowClosed()
+    startupSessions.windowClosed()
   })
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else win.loadFile(join(__dirname, '../renderer/index.html'))
@@ -158,7 +170,13 @@ if (!gotLock) {
   // the single-instance lock they opened in their own instance.
   app.on('second-instance', (_e, argv) => {
     focusMainWindow()
-    for (const link of linksFromArgv(argv)) deepLinks.deliver(link)
+    const action = resolveSecondInstance(argv, (p) => readFileSync(p, 'utf8'))
+    if (action.kind === 'session') {
+      for (const w of action.warnings) console.error('[startup]', w)
+      startupSessions.deliver(action.warm)
+      return
+    }
+    for (const link of action.links) deepLinks.deliver(link)
   })
 
   // macOS: the OS delivers the URL here (can fire before the window exists,
@@ -231,7 +249,10 @@ if (!gotLock) {
     }
     registerStartupIpc(startup)
     // Renderer listener attached → flush any queued warm links from now on.
-    ipcMain.on(DEEPLINK.ready, () => deepLinks.rendererReady())
+    ipcMain.on(DEEPLINK.ready, () => {
+      deepLinks.rendererReady()
+      startupSessions.rendererReady()
+    })
     registerPromptsIpc(store.prompts)
     const getSender = (): Electron.WebContents | undefined =>
       BrowserWindow.getFocusedWindow()?.webContents ?? BrowserWindow.getAllWindows()[0]?.webContents

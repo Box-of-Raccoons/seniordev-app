@@ -7,7 +7,7 @@ import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEve
 import type { StatusUpdateEvent } from '../shared/ipc'
 import { SUBAGENTS } from '../shared/ipc'
 import type { SubagentSpawnEvent, SubagentActivityEvent, SubagentDoneEvent } from '../shared/ipc'
-import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult } from '../shared/ipc'
+import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult, WarmStartup } from '../shared/ipc'
 
 const api = {
   resolveRepo: (key: string): Promise<RepoResolution> => ipcRenderer.invoke(IPC.resolveRepo, key),
@@ -118,6 +118,11 @@ const api = {
     return () => ipcRenderer.off(DEEPLINK.event, listener)
   },
   deepLinkReady: (): void => ipcRenderer.send(DEEPLINK.ready),
+  onStartupSession: (cb: (w: WarmStartup) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: WarmStartup): void => cb(payload)
+    ipcRenderer.on(STARTUP.session, listener)
+    return () => ipcRenderer.off(STARTUP.session, listener)
+  },
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(APP.info),
   readConfig: (): Promise<ConfigReadResult> => ipcRenderer.invoke(CONFIG.read),
   saveConfig: (text: string): Promise<SaveResult> => ipcRenderer.invoke(CONFIG.save, text),
