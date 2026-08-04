@@ -231,7 +231,15 @@ export interface StartupOptions {
   warnings?: string[]
   deeplink?: DeepLink
 }
-export const STARTUP = { get: 'startup:get' } as const
+// A warm session start: a second `seniordev --prompt|--yolo|--tool …` launch
+// arriving at the already-running instance (via second-instance). Unlike a deep
+// link — which only prefills a composer — a CLI session auto-starts, matching
+// cold-start behavior; the local command line is a trusted surface (see
+// resolve-launch.ts). `ticket` is the first positional key, if any.
+export interface WarmStartup { session: StartupSession; ticket?: string }
+// `get` (pull) hands cold-start options to the renderer; `session` (push) carries
+// a warm CLI session to the live renderer, gated on the shared DEEPLINK.ready.
+export const STARTUP = { get: 'startup:get', session: 'startup:session' } as const
 
 export interface StartYoloRequest {
   id: string

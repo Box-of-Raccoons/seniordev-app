@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import App from './App.vue'
-import type { DeepLink, MenuAction } from '../../shared/ipc'
+import type { DeepLink, MenuAction, WarmStartup } from '../../shared/ipc'
 
 // Unmount every mounted App after each test. App adds a window-level keydown
 // listener (capture phase) for the pane-move shortcut; without auto-unmount those
@@ -10,6 +10,7 @@ enableAutoUnmount(afterEach)
 
 let menuCb: (a: MenuAction) => void
 let deepLinkCb: (l: DeepLink) => void
+let startupSessionCb: (w: WarmStartup) => void
 
 const rightStartStartup = vi.fn()
 const rightCloseAll = vi.fn()
@@ -52,6 +53,7 @@ beforeEach(() => {
     getStartup: vi.fn().mockResolvedValue({ tickets: [] }),
     onMenuAction: vi.fn((cb) => { menuCb = cb; return () => {} }),
     onDeepLink: vi.fn((cb) => { deepLinkCb = cb; return () => {} }),
+    onStartupSession: vi.fn((cb) => { startupSessionCb = cb; return () => {} }),
     deepLinkReady: vi.fn(),
     getAppInfo: vi.fn().mockResolvedValue({ name: 'SeniorDev', version: '1.0.0' }),
     // S8: the subagent panel starts its watchers + known-session refresh on mount.
@@ -204,5 +206,36 @@ describe('App deep link flow', () => {
     mountApp()
     await flushPromises()
     expect(rightOpenComposer).toHaveBeenCalledWith({ input: 'SD-6' })
+  })
+})
+
+describe('App warm CLI session flow', () => {
+  it('registers the warm-session listener before signalling readiness', async () => {
+    mountApp()
+    await flushPromises()
+    const listenOrder = (window.api.onStartupSession as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    const readyOrder = (window.api.deepLinkReady as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    expect(listenOrder).toBeLessThan(readyOrder)
+  })
+
+  it('auto-starts a new session tab (no reset, no confirm) with its prompt + ticket', async () => {
+    const w = mountApp()
+    await flushPromises()
+    rightStartStartup.mockClear()
+    startupSessionCb({ session: { mode: 'interactive', promptText: 'do the thing' }, ticket: 'SD-9' })
+    await flushPromises()
+    expect(rightStartStartup).toHaveBeenCalledWith({ mode: 'interactive', promptText: 'do the thing' }, 'SD-9')
+    // A warm session adds a tab; it must not close existing sessions.
+    expect(rightCloseAll).not.toHaveBeenCalled()
+    expect(w.findComponent({ name: 'ConfirmDialog' }).exists()).toBe(false)
+  })
+
+  it('passes a ticketless warm session straight through', async () => {
+    mountApp()
+    await flushPromises()
+    rightStartStartup.mockClear()
+    startupSessionCb({ session: { mode: 'yolo', promptName: 'fix-bug' } })
+    await flushPromises()
+    expect(rightStartStartup).toHaveBeenCalledWith({ mode: 'yolo', promptName: 'fix-bug' }, undefined)
   })
 })

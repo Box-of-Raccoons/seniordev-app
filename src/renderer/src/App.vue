@@ -58,6 +58,7 @@ const modal = ref<'about' | 'app-config' | 'prompt-config' | null>(null)
 const confirmReset = ref(false)
 let offMenu: (() => void) | null = null
 let offDeepLink: (() => void) | null = null
+let offStartupSession: (() => void) | null = null
 
 function onMenu(action: MenuAction): void {
   if (action === 'new-session') {
@@ -125,6 +126,13 @@ onMounted(async () => {
   } catch {
     // keep defaults
   }
+  // A warm CLI session (`seniordev --prompt …` while running) auto-starts a new
+  // tab, mirroring cold start — the local command line is trusted, so no review
+  // step (unlike a deep link). Registered before deepLinkReady() below, which
+  // gates both warm channels, so nothing is pushed before this listener attaches.
+  offStartupSession = window.api.onStartupSession((w) =>
+    rightPanel.value?.startStartupSession(w.session, w.ticket)
+  )
   // Only now can main push deep links — anything sent earlier would be lost.
   window.api.deepLinkReady()
   try {
@@ -146,6 +154,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   offMenu?.()
   offDeepLink?.()
+  offStartupSession?.()
   offSidebarChanged?.()
   subagents.stop()
   window.removeEventListener('keydown', onPaneKeydown, true)
