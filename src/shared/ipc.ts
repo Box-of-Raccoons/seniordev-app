@@ -218,6 +218,11 @@ export interface StartupSession {
   promptName?: string
   promptText?: string
   tool?: string
+  // Working directory for the session (--folder). Becomes the tab's cwdOverride,
+  // so the agent spawns here instead of the home-dir fallback — which matters
+  // because an agent CLI shows a "trust this folder?" gate in an untrusted dir,
+  // and that gate would swallow the injected prompt. Point it at a trusted repo.
+  folder?: string
 }
 // A deep link prefills a composer. `ticket` is the anchor; `role` and `folder`
 // are optional prefill hints. Nothing launches from a link (see SECURITY.md).

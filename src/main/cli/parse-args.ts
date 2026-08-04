@@ -8,6 +8,7 @@ export function parseStartupArgs(argv: string[], readFile: (p: string) => string
   let promptName: string | undefined
   let promptText: string | undefined
   let tool: string | undefined
+  let folder: string | undefined
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
@@ -38,6 +39,7 @@ export function parseStartupArgs(argv: string[], readFile: (p: string) => string
       }
     }
     else if (flag === '--tool') tool = inlineVal !== undefined ? inlineVal : argv[++i]
+    else if (flag === '--folder') folder = inlineVal !== undefined ? inlineVal : argv[++i]
     else if (flag === '--prompt') {
       mode = mode ?? 'interactive'
       const v = inlineVal !== undefined ? inlineVal : (argv[++i] ?? '')
@@ -58,7 +60,9 @@ export function parseStartupArgs(argv: string[], readFile: (p: string) => string
 
   const hasSession =
     mode !== undefined || promptName !== undefined || promptText !== undefined || tool !== undefined
-  const session = hasSession ? { mode: mode ?? 'interactive', promptName, promptText, tool } : undefined
+  const session = hasSession
+    ? { mode: mode ?? 'interactive', promptName, promptText, tool, ...(folder !== undefined ? { folder } : {}) }
+    : undefined
   return {
     tickets,
     session,

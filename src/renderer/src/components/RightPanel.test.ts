@@ -222,6 +222,18 @@ describe('RightPanel', () => {
     expect(w.text()).toContain('fix-bug')
   })
 
+  it('startStartupSession threads --folder into the session tab cwd', async () => {
+    const w = mountRP()
+    ;(w.vm as unknown as { startStartupSession: (s: unknown, k?: string) => void }).startStartupSession(
+      { mode: 'interactive', promptText: 'do the thing', folder: 'C:/Users/hardy/code/seniordev-app' }
+    )
+    await w.vm.$nextTick()
+    const tv = w.find('.tv')
+    expect(tv.exists()).toBe(true)
+    // The folder becomes the tab's cwdOverride → the agent spawns in a trusted dir.
+    expect(tv.attributes('data-cwd')).toBe('C:/Users/hardy/code/seniordev-app')
+  })
+
   it('openComposer opens an agent composer prefilled with the input', async () => {
     const w = mountRP()
     ;(w.vm as unknown as { openComposer: (p: { input?: string }) => void }).openComposer({ input: 'SD-6' })

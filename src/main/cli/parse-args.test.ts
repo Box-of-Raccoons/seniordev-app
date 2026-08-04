@@ -69,4 +69,14 @@ describe('parseStartupArgs', () => {
     const o = parseStartupArgs(['--prompt=hello from the CLI', '--allow-file-access-from-files', '.'], noRead)
     expect(o.session?.promptText).toBe('hello from the CLI')
   })
+
+  it('parses --folder onto the session (the trusted working dir)', () => {
+    const o = parseStartupArgs(['--prompt=go', '--folder=C:/Users/hardy/code/x'], noRead)
+    expect(o.session?.folder).toBe('C:/Users/hardy/code/x')
+  })
+
+  it('omits folder when not given (no stray key)', () => {
+    const o = parseStartupArgs(['--prompt=go'], noRead)
+    expect(o.session).not.toHaveProperty('folder')
+  })
 })
