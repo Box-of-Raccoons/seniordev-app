@@ -38,6 +38,10 @@ export function parseStartupArgs(argv: string[], readFile: (p: string) => string
         }
       }
     }
+    // Mode-independent role: `--yolo <name>` is the only other way to name a
+    // prompt, and it forces yolo mode — so an interactive session with a role
+    // (e.g. the voice sidecar's confirm-gate downgrade) needs this flag.
+    else if (flag === '--role') promptName = inlineVal !== undefined ? inlineVal : argv[++i]
     else if (flag === '--tool') tool = inlineVal !== undefined ? inlineVal : argv[++i]
     else if (flag === '--folder') folder = inlineVal !== undefined ? inlineVal : argv[++i]
     else if (flag === '--prompt') {

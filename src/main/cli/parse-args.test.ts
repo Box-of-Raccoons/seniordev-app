@@ -70,6 +70,18 @@ describe('parseStartupArgs', () => {
     expect(o.session?.promptText).toBe('hello from the CLI')
   })
 
+  it('--role=name keeps interactive mode (unlike --yolo, which forces yolo)', () => {
+    const read = vi.fn(() => 'spoken task')
+    const o = parseStartupArgs(['--role=orchestrator', '--prompt=@C:/t.txt'], read)
+    expect(o.session).toEqual({ mode: 'interactive', promptName: 'orchestrator', promptText: 'spoken task', tool: undefined })
+  })
+
+  it('--role composes with --yolo and a ticket positional', () => {
+    const o = parseStartupArgs(['SD-20', '--yolo', '--role=orchestrator', '--prompt=fix it'], noRead)
+    expect(o.tickets).toEqual(['SD-20'])
+    expect(o.session).toEqual({ mode: 'yolo', promptName: 'orchestrator', promptText: 'fix it', tool: undefined })
+  })
+
   it('parses --folder onto the session (the trusted working dir)', () => {
     const o = parseStartupArgs(['--prompt=go', '--folder=C:/Users/hardy/code/x'], noRead)
     expect(o.session?.folder).toBe('C:/Users/hardy/code/x')
