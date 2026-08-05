@@ -358,7 +358,9 @@ function startStartupSession(
     prompt,
     tool: s.tool,
     ticketKey,
-    input: ticketKey,
+    // When a role prompt is named, promptText loses the `prompt` slot above —
+    // carry it as the input so it still lands in the role's {{request}}.
+    input: ticketKey ?? s.promptText,
     // Spawn in the given folder (a --folder from the CLI); without it the agent
     // falls back to the home dir and hits its "trust this folder?" gate.
     cwdOverride: s.folder
