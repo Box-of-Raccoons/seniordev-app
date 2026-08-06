@@ -222,6 +222,27 @@ describe('RightPanel', () => {
     expect(w.text()).toContain('fix-bug')
   })
 
+  it('startStartupSession carries promptText as input when a role is named', async () => {
+    const w = mountRP()
+    ;(w.vm as unknown as { startStartupSession: (s: unknown, k?: string) => void }).startStartupSession(
+      { mode: 'yolo', promptName: 'orchestrator', promptText: 'fix the login page' }
+    )
+    await w.vm.$nextTick()
+    // The role takes the prompt slot; the spoken text must survive as the
+    // input (→ {{request}}), not be silently dropped.
+    expect(w.find('.yv').attributes('data-input')).toBe('fix the login page')
+  })
+
+  it('startStartupSession prefers the ticket key as input over promptText', async () => {
+    const w = mountRP()
+    ;(w.vm as unknown as { startStartupSession: (s: unknown, k?: string) => void }).startStartupSession(
+      { mode: 'yolo', promptName: 'orchestrator', promptText: 'work the ticket' },
+      'SD-20'
+    )
+    await w.vm.$nextTick()
+    expect(w.find('.yv').attributes('data-input')).toBe('SD-20')
+  })
+
   it('startStartupSession threads --folder into the session tab cwd', async () => {
     const w = mountRP()
     ;(w.vm as unknown as { startStartupSession: (s: unknown, k?: string) => void }).startStartupSession(
