@@ -262,3 +262,36 @@ describe('Composer', () => {
     expect(w.emitted('launch')?.[0]?.[0]).toMatchObject({ mode: 'interactive', folder: 'C:/code/app' })
   })
 })
+
+// Focus needs the component in the real document: jsdom only tracks
+// document.activeElement for attached elements.
+describe('Composer focus', () => {
+  async function mountAttached(props: Record<string, unknown>) {
+    const w = mount(Composer, { props: { variant: 'agent', tool: 'claude', ...props }, attachTo: document.body })
+    await flushPromises()
+    return w
+  }
+
+  it('focuses the task field when it opens as the active tab', async () => {
+    const w = await mountAttached({ active: true })
+    expect(document.activeElement).toBe(w.find('#composer-input').element)
+    w.unmount()
+  })
+
+  it('focuses the folder field in terminal mode, which has no task field', async () => {
+    const w = await mountAttached({ variant: 'terminal', active: true })
+    expect(document.activeElement).toBe(w.find('#composer-folder').element)
+    w.unmount()
+  })
+
+  it('does not steal focus while inactive, and takes it when the tab is switched to', async () => {
+    const w = await mountAttached({ active: false })
+    const field = w.find('#composer-input').element
+    expect(document.activeElement).not.toBe(field)
+
+    await w.setProps({ active: true })
+    await flushPromises()
+    expect(document.activeElement).toBe(field)
+    w.unmount()
+  })
+})
