@@ -79,6 +79,27 @@ function requestNewSession(): void {
   else doReset()
 }
 
+// Installing an update restarts the app, which kills every running pty. The
+// count is named in the confirm so the choice is made with the cost visible;
+// declining is free, since the update installs on the next ordinary quit anyway.
+const confirmInstall = ref(false)
+const liveSessions = computed(
+  () => ws.panes.allTabs.value.filter((e) => e.tab.kind !== 'composer' && !e.tab.exited).length
+)
+const installMessage = computed(() => {
+  const n = liveSessions.value
+  if (n === 0) return 'SeniorDev will restart to install the update.'
+  return `Restarting closes ${n} running session${n === 1 ? '' : 's'}. The update installs on its own the next time you quit, so you can leave this until then.`
+})
+function requestInstall(): void {
+  modal.value = null
+  confirmInstall.value = true
+}
+function doInstall(): void {
+  confirmInstall.value = false
+  window.api.installUpdate()
+}
+
 function doReset(): void {
   rightPanel.value?.closeAll()
   rightPanel.value?.newTab()
@@ -172,7 +193,7 @@ onBeforeUnmount(() => {
       :style="subagentRightStyle"
     />
   </div>
-  <AboutModal v-if="modal === 'about'" @close="modal = null" />
+  <AboutModal v-if="modal === 'about'" @close="modal = null" @install="requestInstall" />
   <AppConfigModal v-if="modal === 'app-config'" @close="modal = null" />
   <PromptConfigModal v-if="modal === 'prompt-config'" @close="modal = null" />
   <ConfirmDialog
@@ -182,6 +203,14 @@ onBeforeUnmount(() => {
     confirm-label="Close all"
     @confirm="doReset"
     @cancel="confirmReset = false"
+  />
+  <ConfirmDialog
+    v-if="confirmInstall"
+    title="Restart and install"
+    :message="installMessage"
+    confirm-label="Restart now"
+    @confirm="doInstall"
+    @cancel="confirmInstall = false"
   />
   <Transition name="splash-fade">
     <Splash v-if="splashVisible" @dismiss="splashHide" />

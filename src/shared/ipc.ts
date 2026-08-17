@@ -332,6 +332,26 @@ export const MENU = { action: 'menu:action' } as const
 export interface AppInfo { name: string; version: string }
 export const APP = { info: 'app:info' } as const
 
+// Auto-update (electron-updater over the GitHub Releases feed). The app downloads
+// in the background and installs on quit; `install` is the explicit "restart now"
+// path, which the renderer only offers after warning about live sessions.
+export type UpdateState = 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
+export interface UpdateStatus {
+  state: UpdateState
+  version?: string
+  percent?: number
+  message?: string
+}
+// `supported` is false in an unpackaged build (pnpm dev), where there is no
+// updater at all — the UI hides the affordance rather than showing a dead button.
+export interface UpdateInfo extends UpdateStatus { supported: boolean }
+export const UPDATE = {
+  get: 'update:get', // renderer → main (current status, e.g. on modal open)
+  check: 'update:check', // renderer → main (manual check)
+  install: 'update:install', // renderer → main (quit and install now)
+  status: 'update:status' // main → renderer (every status transition)
+} as const
+
 export type ConfigReadResult = { ok: true; text: string; path: string; isTemplate?: boolean } | { ok: false; error: string }
 export type SaveResult = { ok: true } | { ok: false; error: string }
 export interface RecapInfo { text: string; isDefault: boolean }

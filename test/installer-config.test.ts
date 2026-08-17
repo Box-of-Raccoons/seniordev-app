@@ -12,8 +12,10 @@ describe('electron-builder NSIS config', () => {
   // vitest runs from the repo root, matching the resolve('resources/...') pattern
   // the other tests use.
   const cfg = parse(readFileSync(resolve('electron-builder.yml'), 'utf8')) as {
-    nsis?: { oneClick?: boolean; perMachine?: boolean }
+    nsis?: { oneClick?: boolean; perMachine?: boolean; artifactName?: string }
     afterPack?: string
+    mac?: { target?: string[] }
+    publish?: { provider?: string; owner?: string; repo?: string }
   }
 
   it('uses a per-user oneClick installer (never the crashing assisted installer)', () => {
@@ -28,5 +30,31 @@ describe('electron-builder NSIS config', () => {
   it('wires the afterPack hook that ad-hoc signs the macOS app', () => {
     expect(cfg.afterPack).toBe('build/adhoc-sign.cjs')
     expect(existsSync(resolve('build/adhoc-sign.cjs'))).toBe(true)
+  })
+})
+
+// Guards for the auto-update feed. Each of these is a silent failure if it
+// drifts: the app keeps building and shipping, and only the update path breaks.
+describe('electron-builder auto-update config', () => {
+  const cfg = parse(readFileSync(resolve('electron-builder.yml'), 'utf8')) as {
+    nsis?: { artifactName?: string }
+    mac?: { target?: string[] }
+    publish?: { provider?: string; owner?: string; repo?: string }
+  }
+
+  it('names the GitHub feed explicitly, so app-update.yml ships with the app', () => {
+    expect(cfg.publish?.provider).toBe('github')
+    expect(cfg.publish?.owner).toBe('Box-of-Raccoons')
+    expect(cfg.publish?.repo).toBe('seniordev-app')
+  })
+
+  it('builds a mac zip alongside the dmg — Squirrel.Mac can only update from a zip', () => {
+    expect(cfg.mac?.target).toContain('zip')
+    expect(cfg.mac?.target).toContain('dmg')
+  })
+
+  it('keeps spaces out of the installer name, which GitHub would rewrite to dots', () => {
+    expect(cfg.nsis?.artifactName).toBeDefined()
+    expect(cfg.nsis?.artifactName).not.toMatch(/ /)
   })
 })

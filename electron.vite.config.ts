@@ -11,7 +11,11 @@ export default defineConfig({
     // chokidar ships without readdirp and throws ERR_MODULE_NOT_FOUND at launch.
     // Bundling removes the runtime node_modules dependency entirely. node-pty stays
     // external (native — cannot be bundled).
-    plugins: [externalizeDepsPlugin({ exclude: ['chokidar'] })],
+    // electron-updater is excluded for the same reason: its transitives
+    // (builder-util-runtime, js-yaml, semver, …) live only as nested symlinks under
+    // .pnpm, so leaving it external ships an updater that throws at launch — the
+    // exact failure the chokidar fix above was for, and one no test catches.
+    plugins: [externalizeDepsPlugin({ exclude: ['chokidar', 'electron-updater'] })],
     build: {
       rollupOptions: {
         input: { index: resolve('src/main/index.ts') }
