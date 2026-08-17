@@ -508,6 +508,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
         <div v-show="isVisible(entry.paneId, entry.tab.ptyId)" class="term-slot">
           <Composer
             v-if="entry.tab.kind === 'composer'"
+            :active="panes.isActiveInFocusedPane(entry.tab.ptyId)"
             :variant="entry.tab.variant ?? 'agent'"
             :tool="entry.tab.tool"
             :initial-input="entry.tab.prefill?.input"
@@ -529,6 +530,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
           <TerminalView
             v-else-if="entry.tab.kind === 'shell'"
             :id="entry.tab.ptyId"
+            :active="panes.isActiveInFocusedPane(entry.tab.ptyId)"
             :shell="entry.tab.shell"
             :cwd-override="entry.tab.cwdOverride"
             @exited="onTabExited(entry.tab, $event)"
@@ -536,6 +538,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
           <TerminalView
             v-else
             :id="entry.tab.ptyId"
+            :active="panes.isActiveInFocusedPane(entry.tab.ptyId)"
             :conversation-id="entry.tab.conversationId"
             :conversation-title="entry.tab.title"
             :ticket-key="entry.tab.ticketKey ?? null"
