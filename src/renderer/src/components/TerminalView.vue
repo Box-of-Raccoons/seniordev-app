@@ -53,11 +53,18 @@ onMounted(async () => {
   // Clipboard: bind copy/paste that xterm/Electron don't wire by default. The
   // policy (Ctrl+C copies only with a selection, else SIGINT passes through;
   // Ctrl+V and the Shift variants copy/paste) lives in clipboardAction.
+  //
+  // preventDefault is load-bearing on both branches. Returning false only stops
+  // xterm's own key handling; the browser still runs its default editing action on
+  // the hidden textarea. For paste that fires a `paste` event which xterm's
+  // handlePasteEvent writes to the pty — a second, duplicate paste. For copy it
+  // fires a `copy` event whose handler writes the (now cleared) selection, blanking
+  // the clipboard we just filled.
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== 'keydown') return true
     const action = clipboardAction(e, term?.hasSelection() ?? false)
-    if (action === 'copy') { copySelection(); return false }
-    if (action === 'paste') { pasteText(); return false }
+    if (action === 'copy') { e.preventDefault(); copySelection(); return false }
+    if (action === 'paste') { e.preventDefault(); pasteText(); return false }
     return true
   })
   // Right-click: copy a selection if there is one, otherwise paste — the
