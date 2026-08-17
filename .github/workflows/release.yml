@@ -129,9 +129,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: seniordev-${{ matrix.os }}
+          # The mac zip is not an optional extra: latest-mac.yml points auto-update
+          # at it, so omitting it publishes a feed referencing a file that 404s.
           path: |
             release/*.exe
             release/*.dmg
+            release/*.zip
             release/latest*.yml
           if-no-files-found: ignore
 
@@ -153,6 +156,7 @@ jobs:
           files: |
             artifacts/**/*.exe
             artifacts/**/*.dmg
+            artifacts/**/*.zip
             artifacts/**/latest*.yml
           fail_on_unmatched_files: false
           generate_release_notes: true
