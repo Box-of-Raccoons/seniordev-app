@@ -56,6 +56,7 @@ beforeEach(() => {
     onStartupSession: vi.fn((cb) => { startupSessionCb = cb; return () => {} }),
     deepLinkReady: vi.fn(),
     getAppInfo: vi.fn().mockResolvedValue({ name: 'SeniorDev', version: '1.0.0' }),
+    installUpdate: vi.fn(),
     // S8: the subagent panel starts its watchers + known-session refresh on mount.
     onSubagentSpawn: vi.fn(() => () => {}),
     onSubagentActivity: vi.fn(() => () => {}),
@@ -80,6 +81,50 @@ describe('App menu wiring', () => {
     menuCb('app-config')
     await flushPromises()
     expect(w.findComponent({ name: 'AppConfigModal' }).exists()).toBe(false)
+  })
+
+  it('an install request confirms first, naming how many sessions the restart kills', async () => {
+    const w = mountApp()
+    await flushPromises()
+    // Two live sessions plus a composer (which owns no pty and must not be counted).
+    const ws = w.findComponent({ name: 'RightPanel' }).props('ws') as {
+      panes: { addTab: (t: Record<string, unknown>) => void }
+    }
+    ws.panes.addTab({ title: 'one', kind: 'terminal' })
+    ws.panes.addTab({ title: 'two', kind: 'yolo' })
+    ws.panes.addTab({ title: 'draft', kind: 'composer' })
+
+    menuCb('about')
+    await flushPromises()
+    w.findComponent({ name: 'AboutModal' }).vm.$emit('install')
+    await flushPromises()
+
+    // About closes, the confirm takes over — no stacked modals.
+    expect(w.findComponent({ name: 'AboutModal' }).exists()).toBe(false)
+    const confirm = w.findComponent({ name: 'ConfirmDialog' })
+    expect(confirm.exists()).toBe(true)
+    expect(confirm.props('message')).toContain('closes 2 running sessions')
+    expect(window.api.installUpdate).not.toHaveBeenCalled() // not until confirmed
+
+    await confirm.get('button.confirm-yes').trigger('click')
+    expect(window.api.installUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancelling the install confirm leaves the app running and installs nothing', async () => {
+    const w = mountApp()
+    await flushPromises()
+    menuCb('about')
+    await flushPromises()
+    w.findComponent({ name: 'AboutModal' }).vm.$emit('install')
+    await flushPromises()
+
+    // With no sessions open the message drops the warning rather than saying "0".
+    const confirm = w.findComponent({ name: 'ConfirmDialog' })
+    expect(confirm.props('message')).toBe('SeniorDev will restart to install the update.')
+    await confirm.get('button.confirm-no').trigger('click')
+    await flushPromises()
+    expect(w.findComponent({ name: 'ConfirmDialog' }).exists()).toBe(false)
+    expect(window.api.installUpdate).not.toHaveBeenCalled()
   })
 
   it('move-tab menu actions route to RightPanel.moveActiveTab with a direction', async () => {

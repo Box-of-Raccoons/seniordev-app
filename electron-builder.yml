@@ -34,11 +34,22 @@ extraResources:
     to: assets
     filter:
       - '**/*.png'
+# Where electron-updater looks for new versions at runtime. Stated explicitly
+# rather than left to be inferred from package.json's repository field, because
+# this block is also what makes electron-builder write app-update.yml into the
+# packaged app — the file the updater reads to find this feed. The repo is
+# public, so the update check needs no token.
+publish:
+  provider: github
+  owner: Box-of-Raccoons
+  repo: seniordev-app
 win:
   target: nsis
   icon: build/icon.png
 mac:
-  target: dmg
+  # zip is REQUIRED for auto-update, not a duplicate of the dmg: Squirrel.Mac can
+  # only apply an update from a zip. The dmg remains the first-install download.
+  target: [dmg, zip]
   category: public.app-category.developer-tools
   icon: build/icon.png
   # Real Developer ID signing + notarization for distribution (supersedes the
@@ -69,3 +80,9 @@ linux:
 nsis:
   oneClick: true
   perMachine: false
+  # No spaces in the artifact name. electron-builder's default
+  # (`${productName} Setup ${version}.${ext}`) produces "SeniorDev Setup 0.5.2.exe",
+  # which GitHub rewrites to "SeniorDev.Setup.0.5.2.exe" on upload — while latest.yml
+  # keeps pointing at "SeniorDev-Setup-0.5.2.exe". Naming it this way makes the
+  # published asset and the update feed agree by construction.
+  artifactName: ${productName}-Setup-${version}.${ext}
