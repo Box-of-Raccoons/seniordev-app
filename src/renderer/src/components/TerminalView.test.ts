@@ -92,6 +92,30 @@ describe('TerminalView unmount safety (SD-9 B2)', () => {
   })
 })
 
+describe('TerminalView focus', () => {
+  it('takes focus when it mounts as the active tab, so typing works without a click', async () => {
+    const w = mount(TerminalView, { props: { id: 't3', ticketKey: null, active: true } })
+    await flushPromises()
+    resolveSpawn({ ok: true })
+    await flushPromises()
+    expect(focusSpy).toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('never steals focus while inactive, and takes it when the tab is switched to', async () => {
+    const w = mount(TerminalView, { props: { id: 't4', ticketKey: null, active: false } })
+    await flushPromises()
+    resolveSpawn({ ok: true })
+    await flushPromises()
+    expect(focusSpy).not.toHaveBeenCalled()
+
+    await w.setProps({ active: true })
+    await flushPromises()
+    expect(focusSpy).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+})
+
 // A synthetic keydown for the custom handler: only the fields the policy reads,
 // plus the preventDefault spy the double-paste guard depends on.
 function keydown(over: Partial<KeyboardEvent> = {}): KeyboardEvent & { preventDefault: ReturnType<typeof vi.fn> } {

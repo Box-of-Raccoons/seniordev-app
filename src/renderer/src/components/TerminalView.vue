@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -7,7 +7,9 @@ import { TERM_BG, TERM_FONT_FAMILY, TERM_FONT_SIZE } from '../term-style'
 import { clipboardAction } from '../terminal-clipboard'
 import { readBufferText, normalizeForStability, stepIdle, initialIdleState, type IdleState } from '../status-matcher'
 
-const props = defineProps<{ id: string; conversationId?: string; conversationTitle?: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string; worktreePath?: string; branch?: string; worktreeChoice?: boolean }>()
+// `active` is true only while this tab is the active tab of the focused pane —
+// the one condition under which taking keyboard focus is wanted rather than theft.
+const props = defineProps<{ id: string; conversationId?: string; conversationTitle?: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string; worktreePath?: string; branch?: string; worktreeChoice?: boolean; active?: boolean }>()
 const emit = defineEmits<{ (e: 'exited', code: number): void }>()
 const host = ref<HTMLDivElement | null>(null)
 let term: Terminal | null = null
@@ -37,6 +39,12 @@ function copySelection(): void {
 function pasteText(): void {
   window.api.clipboardReadText().then((t) => { if (t) term?.paste(t) })
 }
+// Take keyboard focus when this tab becomes the active one, so a new or switched-to
+// tab types immediately without a click. flush:'post' matters: the slot is toggled
+// with v-show, and focusing an element that is still display:none is a no-op — the
+// callback has to run after the DOM update, not before it.
+watch(() => props.active, (on) => { if (on) term?.focus() }, { flush: 'post' })
+
 // The tab can close during the awaited spawn round-trip below; onBeforeUnmount
 // then disposes term and nulls host. This flag lets the async onMounted bail
 // before touching a disposed terminal or a gone host (SD-9 B2; same guard as
@@ -49,6 +57,9 @@ onMounted(async () => {
   term.loadAddon(fit)
   term.open(host.value!)
   fit.fit()
+  // The watcher above only sees later transitions; a tab that mounts already active
+  // (a new tab, or a composer morphing into its session) focuses here.
+  if (props.active) term.focus()
 
   // Clipboard: bind copy/paste that xterm/Electron don't wire by default. The
   // policy (Ctrl+C copies only with a selection, else SIGINT passes through;

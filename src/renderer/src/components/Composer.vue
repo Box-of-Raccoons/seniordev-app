@@ -20,6 +20,9 @@ const props = defineProps<{
   // is shown as a read-only header instead of the folder picker, and the folder is
   // pinned to initialFolder.
   projectName?: string
+  // True only while this tab is the active tab of the focused pane — the one
+  // condition under which taking keyboard focus is wanted rather than theft.
+  active?: boolean
 }>()
 const emit = defineEmits<{ (e: 'launch', payload: ComposerLaunch): void }>()
 
@@ -84,7 +87,28 @@ function baseName(p: string): string {
   return p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p
 }
 
+const formEl = ref<HTMLFormElement | null>(null)
+// Focus the field the developer is going to type in first: the task prompt where
+// there is one, else the folder picker, else whatever control leads the form
+// (project-locked Terminal mode). Ordered explicitly — a single querySelector with
+// a comma would return whichever matches first in the DOM, not the one we want.
+function focusPrimary(): void {
+  const root = formEl.value
+  if (!root) return
+  const el =
+    root.querySelector<HTMLElement>('#composer-input') ??
+    root.querySelector<HTMLElement>('#composer-folder') ??
+    root.querySelector<HTMLElement>('.control')
+  el?.focus()
+}
+// flush:'post' because the tab slot is toggled with v-show, and focusing an element
+// that is still display:none is a no-op.
+watch(() => props.active, (on) => { if (on) focusPrimary() }, { flush: 'post' })
+
 onMounted(async () => {
+  // Before the awaits below: the form is already in the DOM, and a new tab should
+  // be typable immediately rather than after the prompts/repos round-trips.
+  if (props.active) focusPrimary()
   if (!isTerminal.value) {
     try {
       prompts.value = await window.api.listPrompts()
@@ -262,7 +286,7 @@ async function launch(): Promise<void> {
 </script>
 
 <template>
-  <form class="composer" @submit.prevent="launch" @keydown="onFormKeydown">
+  <form ref="formEl" class="composer" @submit.prevent="launch" @keydown="onFormKeydown">
     <div class="composer__inner">
       <!-- S6: launched from a project — the folder is the project, shown as a
            read-only header instead of the picker. -->
