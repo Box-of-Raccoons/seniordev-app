@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, PROJECTS, CONVERSATIONS, SIDEBAR, WORKTREE, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, PROJECTS, CONVERSATIONS, SIDEBAR, WORKTREE, UPDATE, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent, WorkspaceLayout } from '../shared/ipc'
 import type { ProjectInfo, ConversationInfo, SidebarState } from '../shared/ipc'
 import type { WorktreeInfo, WorktreeCreateRequest, WorktreeCreateResult, WorktreeTeardownRequest, WorktreeTeardownResult } from '../shared/ipc'
@@ -7,6 +7,7 @@ import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEve
 import type { StatusUpdateEvent } from '../shared/ipc'
 import { SUBAGENTS } from '../shared/ipc'
 import type { SubagentSpawnEvent, SubagentActivityEvent, SubagentDoneEvent } from '../shared/ipc'
+import type { UpdateInfo } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult, WarmStartup } from '../shared/ipc'
 
 const api = {
@@ -124,6 +125,14 @@ const api = {
     return () => ipcRenderer.off(STARTUP.session, listener)
   },
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(APP.info),
+  getUpdateStatus: (): Promise<UpdateInfo> => ipcRenderer.invoke(UPDATE.get),
+  checkForUpdate: (): Promise<UpdateInfo> => ipcRenderer.invoke(UPDATE.check),
+  installUpdate: (): void => ipcRenderer.send(UPDATE.install),
+  onUpdateStatus: (cb: (e: UpdateInfo) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: UpdateInfo): void => cb(payload)
+    ipcRenderer.on(UPDATE.status, listener)
+    return () => ipcRenderer.off(UPDATE.status, listener)
+  },
   readConfig: (): Promise<ConfigReadResult> => ipcRenderer.invoke(CONFIG.read),
   saveConfig: (text: string): Promise<SaveResult> => ipcRenderer.invoke(CONFIG.save, text),
   onConfigChanged: (cb: () => void): (() => void) => {

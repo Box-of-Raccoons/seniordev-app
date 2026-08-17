@@ -16,6 +16,11 @@ import { registerComposerIpc } from './ipc/composer-handlers'
 import { registerRecentIpc } from './ipc/recent-handlers'
 import { registerClipboardIpc } from './ipc/clipboard-handlers'
 import { registerAppIpc } from './ipc/app-handlers'
+import { registerUpdateIpc } from './ipc/update-handlers'
+// electron-updater is CommonJS and has no named ESM exports: `import { autoUpdater }`
+// compiles but is undefined at runtime. The default-import destructure is the
+// supported form.
+import electronUpdater from 'electron-updater'
 import { registerConfigIpc } from './ipc/config-handlers'
 import { registerPromptConfigIpc } from './ipc/prompt-config-handlers'
 import { installMenu } from './menu'
@@ -314,6 +319,9 @@ if (!gotLock) {
     terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand, activity, statusHub, persistence })
     yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand, statusHub })
     registerAppIpc()
+    // Auto-update: downloads in the background, installs on quit. Inert in an
+    // unpackaged build, so `pnpm dev` never talks to the release feed.
+    registerUpdateIpc({ updater: electronUpdater.autoUpdater, getSender, isPackaged: app.isPackaged })
     registerConfigIpc(store, getSender)
     registerPromptConfigIpc(store, getSender)
     installMenu(getSender)
