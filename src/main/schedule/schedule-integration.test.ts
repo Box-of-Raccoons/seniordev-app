@@ -109,6 +109,39 @@ describe('schedule → delivery, end to end', () => {
     w.cleanup()
   })
 
+  it('defers rather than piling a prompt on top of a session that resumed ITSELF', () => {
+    // Claude Code v2.1.236 continues a session automatically when a claude.ai
+    // usage limit resets, and this was observed happening inside a SeniorDev pty.
+    // A schedule coming due during that self-resume must not deliver a second
+    // prompt on top of the one claude just picked back up. No new machinery is
+    // needed: a resuming session is `working`, which the gate already defers on.
+    vi.useFakeTimers()
+    let status: TabStatus = 'idle'
+    const w = wire(() => status)
+    const s = w.store.create({
+      target: { kind: 'conversation', conversationId: 'c1' },
+      prompt: 'continue',
+      trigger: { kind: 'every', intervalMs: 3600_000, notBeforeMs: null }
+    })
+    const slot = s.nextDueAt
+
+    // The limit resets and claude picks the session back up on its own.
+    status = 'working'
+    w.clock = slot
+    w.runner.tick()
+    vi.advanceTimersByTime(60_000)
+    expect(w.writes).toEqual([]) // nothing typed on top of claude's own turn
+    expect(w.store.get(s.id)?.lastOutcome).toBe('deferred')
+    expect(w.store.get(s.id)?.nextDueAt).toBe(slot) // the slot is kept, not lost
+
+    // When that turn finishes, the schedule delivers normally.
+    status = 'idle'
+    w.clock = slot + 15_000
+    w.runner.tick()
+    expect(w.writes).toEqual(['continue'])
+    w.cleanup()
+  })
+
   it('holds its slot while the session is busy, then delivers once it frees up', () => {
     vi.useFakeTimers()
     let status: TabStatus = 'working'

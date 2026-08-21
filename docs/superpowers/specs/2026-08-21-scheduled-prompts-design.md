@@ -1,29 +1,57 @@
 # Scheduled Prompts
 
-Design spec, 2026-08-21.
+Design spec, 2026-08-21. Reframed the same day: see "Scope correction" below.
 
 ## Problem
 
-SeniorDev delivers a prompt into a session exactly once: at spawn. There is no
-way to say "send this later." Three situations want one.
+SeniorDev delivers a prompt into a session exactly once, at spawn. There is no
+way to say "send this later," and no way to say "send this again."
 
-A session that hits a usage limit at 1am sits dead until a human comes back to
-it, wasting the whole overnight window even though the limit resets at 5am. A
-prompt you want to run on a rhythm (poll a build, re-check a branch, nudge a
-long-running agent) has to be retyped every time. And work you want started
-fresh on a cadence has no home at all: the composer only launches now.
+A prompt you want to run on a rhythm (poll a build, re-check a branch, nudge a
+long-running agent) has to be retyped every time. Work you want started fresh on
+a cadence has no home at all, because the composer only launches now. And a
+prompt you simply want delivered at a particular hour has nowhere to live but a
+human's memory.
+
+## Scope correction
+
+This spec was first written around a fourth case: resuming a session wedged on a
+usage limit, unattended, when the limit reset. That case is closed upstream and
+is no longer a goal here.
+
+Claude Code shipped it natively in **v2.1.236**, published 2026-08-19 (npm
+publish time 18:45 UTC), with the changelog entry: "Claude Code now continues
+your session automatically when a claude.ai usage limit resets." Confirmed by
+observation, not just by the changelog: the maintainer watched a claude session
+running inside a SeniorDev pty resume itself after a limit reset.
+
+Two consequences carry into the design rather than merely being deleted:
+
+- The feature is a **scheduler**, not an auto-resumer. The `once` trigger stays,
+  because "run this at 15:00" is ordinary scheduling, but nothing here is built
+  around a limit reset.
+- A claude session that resumes **itself** is a live interaction, not a
+  hypothetical. It is handled by the existing deferral gate rather than by any
+  new machinery: a self-resuming session reports `working`, so a firing that
+  comes due during it defers and keeps its slot instead of delivering a second
+  prompt on top of the one claude just resumed. This is asserted by test rather
+  than assumed.
+
+Nothing upstream covers recurring delivery, and nothing upstream covers `codex`,
+so the mechanism keeps its reason to exist in both directions.
 
 ## Use cases
 
-1. **Resume after a usage limit.** A live conversation is wedged. Schedule one
-   prompt ("continue") to land at 5:00, unattended.
-2. **Recurring into an existing conversation.** The same prompt into the same
+1. **Recurring into an existing conversation.** The same prompt into the same
    conversation every N minutes, or daily at a wall-clock time.
-3. **Recurring into a new session.** Folder, role, and prompt, launched fresh on
+2. **Recurring into a new session.** Folder, role, and prompt, launched fresh on
    a cadence, touching no existing session.
+3. **A one-off at a chosen time.** A single prompt delivered at 15:00 to a
+   conversation, whether or not its tab is still open.
 
 ## Non-goals
 
+- **Auto-resume on a usage limit.** Closed upstream; see "Scope correction".
 - **Cron expressions.** `once`, `every`, and `daily` cover every case above. A
   parser adds a dependency, a parse-error surface, and a UI that has to explain
   `0 5 * * *`. Add a fourth trigger variant when a real need appears.
@@ -31,9 +59,9 @@ fresh on a cadence has no home at all: the composer only launches now.
   fire only while SeniorDev runs. An OS-level trigger (launchd, Task Scheduler)
   is two platform integrations for a case the maintainer does not have: both
   machines stay awake with the app open.
-- **Schedules in `config.yaml`.** A declarative block is attractive for the
-  standing recurring schedules, but wrong for use case 1, which is inherently
-  ad hoc. Revisit once the recurring set proves stable enough to want in version
+- **Schedules in `config.yaml`.** A declarative block is attractive for standing
+  recurring schedules, but wrong for the ad-hoc one-off, which is authored in the
+  moment. Revisit once the recurring set proves stable enough to want in version
   control.
 
 ## Data model
@@ -50,7 +78,7 @@ export interface Schedule {
   title: string                    // label in the UI; derived from prompt when blank
   target:
     | { kind: 'conversation'; conversationId: string }
-    | { kind: 'launch'; cwd: string; tool: string; role: string; worktree: boolean }
+    | { kind: 'launch'; session: StartupSession; ticket?: string }
   prompt: string                   // injected text, or the launch's seed prompt
   trigger:
     | { kind: 'once';  atMs: number }
@@ -65,20 +93,31 @@ export interface Schedule {
   lastFiredAt: number | null
   lastOutcome: 'fired' | 'deferred' | 'skipped' | 'missed' | 'failed' | null
   lastReason: string | null        // why it skipped or failed, in plain language
+  deferredSinceAt: number | null   // when the current deferral began, so it can expire
   createdAt: number
 }
 ```
+
+The record lives in `src/shared/ipc.ts`, not in the store. The preload tsconfig
+cannot reach `src/main`, which is the constraint that settles it, and it matches
+the split the codebase already draws between `Conversation` and
+`ConversationInfo`.
 
 ### Decisions inside the record
 
 **A `conversation` target holds a `conversationId`, never a tab id.** Tab ids are
 per-launch. A conversation survives the tab closing and the app restarting, which
-use case 1 requires: the wedged tab may well be closed before 5am.
+a one-off at a chosen time requires: the tab may well be closed by then.
+
+**A `launch` target holds a `StartupSession`** (`shared/ipc.ts`), the shape the
+app already auto-starts a session from when a warm `seniordev --prompt ...`
+arrives. Firing one is a push down machinery that exists rather than a second
+parallel launch format, and it carries `mode: 'yolo'` natively.
 
 **`daily` stores hour and minute, not an absolute timestamp.** `nextDueAt` is
 recomputed from local date components on each firing, so 5am stays 5am across a
-DST shift. Storing an interval would drift to 4am or 6am twice a year, on exactly
-the unattended overnight runs where nobody would notice.
+DST shift. Storing an interval would drift an hour twice a year, on exactly the
+unattended runs nobody is watching closely enough to catch it.
 
 **`notBeforeMs` on `every` is an earliest-start, not a fire-at.** It holds the
 first moment a firing is permitted, after which the interval runs normally. It is
@@ -106,8 +145,8 @@ Pure core, impure edge, matching the existing split between
 **The scheduler runs in main, not the renderer.** `src/main/index.ts:118` sets
 `webPreferences` without `backgroundThrottling`, so it defaults to `true` and
 Chromium clamps timers in a hidden or occluded window. A renderer-side timer
-would fire the 5am resume whenever the window was next focused, which is the one
-behavior the feature cannot have. The main process has no such throttling.
+would fire an overnight schedule whenever the window was next focused, which is
+the one behaviour a scheduler cannot have. The main process has no such throttling.
 
 **One ticker, wall-clock comparison, not one timer per schedule.** The runner
 holds a single 15s interval and compares `nextDueAt` against `Date.now()`. Long
@@ -115,9 +154,11 @@ holds a single 15s interval and compares `nextDueAt` against `Date.now()`. Long
 DST jump, and a window missed while the app was down through the same code path.
 
 **Two of the three delivery paths need the renderer.** Injecting into a live tab
-happens entirely in main, through the existing `deliverPromptWhenReady`
-(`src/main/ipc/terminal-handlers.ts:99`), which already gets ConPTY readiness and
-the separate Enter keystroke right. Launching new, and resuming a closed
+happens entirely in main, through prompt delivery
+(`src/main/terminal/prompt-delivery.ts`, extracted from terminal-handlers so the
+spawn path and the runner share one implementation and one cancel map). The
+scheduled path calls `deliverNow`, which skips the readiness wait; see
+"Delivery timing" below for why that is not optional. Launching new, and resuming a closed
 conversation, both need a *tab*, which is renderer state; both go out through
 `WarmDelivery` (`src/main/deeplink/delivery.ts`), already generic and already
 serving deep links and warm CLI sessions, including its behavior of summoning a
@@ -232,20 +273,52 @@ tests and is not re-tested here. No new dependencies.
 The full suite's pass and fail counts are recorded before the first edit, so the
 closing "no regressions" claim is a diff against a real baseline.
 
+## Delivery timing
+
+The readiness wait that prompt delivery uses at spawn is **wrong for a scheduled
+firing**, and this was measured rather than reasoned about. Driving a real
+`node-pty` child, delivery into an established, already-idle session resolved
+after **15,056ms, through the `MAX_WAIT_MS` safety valve**, never through the
+quiet path. The cause is in `terminal/activity.ts`: `watch` only resolves on
+output arriving *after* the watch begins, and a settled session emits none, so
+the quiet path cannot succeed there.
+
+The latency was the smaller half of the problem. The valve writes regardless of
+state, so across those fifteen seconds a session could reach an approval prompt
+and be typed into anyway, straight through the gate the runner had just applied.
+
+So the scheduled path calls `deliverNow`, which writes immediately. This is
+sound because the caller has already established receptiveness: `idle` from the
+status hub means the rendered buffer settled *and* did not match the tool's
+approval patterns, which is a stronger claim than byte-quiet. Re-measured after
+the change: **1105ms end to end**, prompt received and submitted by a real child
+process. A bracketed paste still waits before its Enter, which remains correct
+because the paste is itself the output the watch needs.
+
+`QUIET_MS` (700) and `SUBMIT_DELAY_MS` (300) are unchanged and the spawn path is
+untouched; its twelve existing delivery tests pass against the extracted module
+without modification.
+
 ## Risks
 
-**Unverified assumption, load-bearing for use case 1.** This design assumes a
-rate-limited claude sits quiet with a message that does not match
-`approvalPatterns`, so the tab reads `idle` and its composer accepts text. If it
-instead reads `needsYou`, the schedule correctly refuses to fire and the feature
-no-ops in precisely the situation it was built for. Settling it requires
-observing a real usage limit: leave the tab open and note the glyph. If the
-assumption is wrong, the fix is a tool-specific "limit reached" pattern that
-resolves to a fourth disposition, receptive but not idle.
+**The feature has never run inside the Electron app.** Every layer is tested,
+including a real store on a real file driving the real runner into the real
+delivery, and delivery itself is verified against a real pty. What is not
+verified is the app booting, starting the runner, rendering the modal, and
+creating a schedule end to end. This was blocked rather than skipped: the
+maintainer's installed SeniorDev.app was running with live sessions, a second
+instance dies on the single-instance lock (`index.ts:172`), and forcing one past
+it with a separate `--user-data-dir` would still leave two processes writing the
+same `~/.config/SeniorDev` stores, with the boot-time archive job able to archive
+real projects. It needs a hand check with the app closed.
 
-**Delivery timing is inherited, not re-derived.** `QUIET_MS` (700) and
-`SUBMIT_DELAY_MS` (300) in `terminal-handlers.ts` were tuned against live CLI
-behavior. A scheduled injection into an established session is a different
-runtime state from a delivery into a freshly booted TUI, and the constants may
-not transfer. Verify a scheduled injection against a real session before calling
-the feature done.
+**A claude session now resumes itself.** Claude Code v2.1.236 continues a session
+automatically when a claude.ai usage limit resets, and this was observed inside a
+SeniorDev pty. A schedule that comes due during a self-resume therefore meets a
+session that is `working`, and defers rather than delivering a second prompt on
+top of it. That is the existing gate doing its job rather than new machinery, and
+it is asserted by test. What is *not* covered is a tighter race: a firing and a
+self-resume landing in the same instant, before the hub has reported `working`.
+The window is one status update wide, the consequence is a duplicated prompt
+rather than anything destructive, and it is not worth new machinery unless it is
+seen in practice.

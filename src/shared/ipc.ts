@@ -242,9 +242,10 @@ export const DEEPLINK = { event: 'deeplink:event', ready: 'deeplink:ready' } as 
 // store, the same split as Conversation / ConversationInfo.
 //
 // A `conversation` target holds a conversationId, never a tab id: tab ids are
-// per-launch, and the point of a 5am resume is that it survives the tab being
-// closed. A `launch` target holds a StartupSession, the shape the app already
-// auto-starts a session from, rather than a second parallel launch format.
+// per-launch, and a schedule has to survive the tab being closed and the app
+// being restarted between authoring and firing. A `launch` target holds a
+// StartupSession, the shape the app already auto-starts a session from, rather
+// than a second parallel launch format.
 export type ScheduleTarget =
   | { kind: 'conversation'; conversationId: string }
   | { kind: 'launch'; session: StartupSession; ticket?: string }
