@@ -170,7 +170,13 @@ export function conversationDragPayload(conv: ConversationInfo): ConversationDra
 // The addTab partial that resumes a conversation into a chosen pane: reuse the
 // record id (so the spawn upserts the same conversation, never a duplicate row)
 // and drive the tool's resumeArgs via `resume`. Requires a real agentSessionId.
-export function resumeTabSpec(conv: { id: string; title: string; tool: string; cwd: string; agentSessionId: string }): NewTab {
+export function resumeTabSpec(
+  conv: { id: string; title: string; tool: string; cwd: string; agentSessionId: string },
+  // A scheduled resume seeds the prompt it was created with, so the reopened
+  // session is asked its question rather than just sitting there. Absent for a
+  // sidebar resume, which reopens and hands the session straight to the user.
+  prompt?: string
+): NewTab {
   return {
     title: conv.title || 'session',
     kind: 'terminal',
@@ -178,7 +184,8 @@ export function resumeTabSpec(conv: { id: string; title: string; tool: string; c
     tool: conv.tool,
     conversationId: conv.id,
     resume: { sessionId: conv.agentSessionId },
-    cwdOverride: conv.cwd
+    cwdOverride: conv.cwd,
+    ...(prompt ? { prompt: { text: prompt } } : {})
   }
 }
 

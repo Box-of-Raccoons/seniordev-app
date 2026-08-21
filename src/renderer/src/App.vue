@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar.vue'
 import SubagentPanel from './components/SubagentPanel.vue'
 import AboutModal from './components/AboutModal.vue'
 import AppConfigModal from './components/AppConfigModal.vue'
+import SchedulesModal from './components/SchedulesModal.vue'
 import PromptConfigModal from './components/PromptConfigModal.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import Splash from './components/Splash.vue'
@@ -54,9 +55,11 @@ const sidebarStyle = computed(() => ({
 }))
 // Boot splash: shown from first paint, dismissed once startup work settles below.
 const { visible: splashVisible, ready: splashReady, hide: splashHide } = useSplash()
-const modal = ref<'about' | 'app-config' | 'prompt-config' | null>(null)
+const modal = ref<'about' | 'app-config' | 'prompt-config' | 'schedules' | null>(null)
 const confirmReset = ref(false)
 let offMenu: (() => void) | null = null
+let offScheduledResume: (() => void) | null = null
+let offScheduleNotice: (() => void) | null = null
 let offDeepLink: (() => void) | null = null
 let offStartupSession: (() => void) | null = null
 
@@ -154,6 +157,23 @@ onMounted(async () => {
   offStartupSession = window.api.onStartupSession((w) =>
     rightPanel.value?.startStartupSession(w.session, w.ticket)
   )
+  // A scheduled resume rides the same ready-gate: main queues it until this
+  // listener exists, so a schedule that comes due during boot is not lost.
+  // Optional-called like getSidebarState below: these listeners register BEFORE
+  // deepLinkReady(), so a throw here would stop readiness ever being signalled
+  // and take deep links down with it.
+  offScheduledResume = window.api.onScheduledResume?.((r) =>
+    void rightPanel.value?.startScheduledResume(r.conversationId, r.prompt)
+  ) ?? null
+  // A firing that refused or failed says so out loud. A schedule that silently
+  // did not run is the failure mode worth spending a notification on; a routine
+  // success stays quiet.
+  offScheduleNotice = window.api.onScheduleNotice?.((n) => {
+    // Guarded: Notification is absent under jsdom and can be denied at runtime.
+    if (typeof Notification === 'function') {
+      new Notification(`Schedule ${n.outcome}: ${n.title}`, { body: n.reason })
+    }
+  }) ?? null
   // Only now can main push deep links — anything sent earlier would be lost.
   window.api.deepLinkReady()
   try {
@@ -176,6 +196,8 @@ onBeforeUnmount(() => {
   offMenu?.()
   offDeepLink?.()
   offStartupSession?.()
+  offScheduledResume?.()
+  offScheduleNotice?.()
   offSidebarChanged?.()
   subagents.stop()
   window.removeEventListener('keydown', onPaneKeydown, true)
@@ -195,6 +217,7 @@ onBeforeUnmount(() => {
   </div>
   <AboutModal v-if="modal === 'about'" @close="modal = null" @install="requestInstall" />
   <AppConfigModal v-if="modal === 'app-config'" @close="modal = null" />
+  <SchedulesModal v-if="modal === 'schedules'" @close="modal = null" />
   <PromptConfigModal v-if="modal === 'prompt-config'" @close="modal = null" />
   <ConfirmDialog
     v-if="confirmReset"

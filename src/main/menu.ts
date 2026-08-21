@@ -36,7 +36,9 @@ export function menuTemplate(send: (action: MenuAction) => void, dev = false): M
       label: 'Config',
       submenu: [
         { label: 'App Config…', click: () => send('app-config') },
-        { label: 'Prompt Config…', click: () => send('prompt-config') }
+        { label: 'Prompt Config…', click: () => send('prompt-config') },
+        { type: 'separator' },
+        { label: 'Schedules…', click: () => send('schedules') }
       ]
     },
     {

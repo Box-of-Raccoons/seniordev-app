@@ -408,6 +408,7 @@ export const SUBAGENTS = {
 
 export type MenuAction =
   | 'new-session'
+  | 'schedules'
   | 'app-config'
   | 'prompt-config'
   | 'about'

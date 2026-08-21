@@ -11,6 +11,7 @@ import { shouldNotify, notificationText } from '../status-notify'
 import { type LiveTab } from '../composables/usePanes'
 import type { UseWorkspace } from '../composables/useWorkspace'
 import type { UseSubagents } from '../composables/useSubagents'
+import type { ConversationInfo } from '../../../shared/ipc'
 import { shouldAutoClose } from '../auto-close'
 import {
   CONVERSATION_DND_TYPE,
@@ -346,6 +347,25 @@ function launch(t: LiveTab, p: ComposerLaunch): void {
 }
 
 let startupSeq = 0
+// A scheduled firing whose conversation has no live tab: reopen it and seed the
+// prompt the schedule carries. Main has already confirmed the agent has a real
+// transcript to resume (session-resumable), so this only has to find the record
+// and build the tab. A conversation that has since gone is dropped quietly — the
+// schedule's own record already says why it could not run.
+async function startScheduledResume(conversationId: string, prompt: string): Promise<void> {
+  const live = panes.findByConversationId(conversationId)
+  if (live) return // it came back to life between the decision and the push
+  let convs: ConversationInfo[]
+  try {
+    convs = await window.api.listConversations()
+  } catch {
+    return
+  }
+  const conv = convs.find((c) => c.id === conversationId)
+  if (!conv?.agentSessionId) return
+  panes.addTab(resumeTabSpec({ ...conv, agentSessionId: conv.agentSessionId }, prompt))
+}
+
 function startStartupSession(
   s: { mode: 'interactive' | 'yolo'; promptName?: string; promptText?: string; tool?: string; folder?: string },
   ticketKey?: string
@@ -381,7 +401,7 @@ function moveActiveTab(dir: -1 | 1): void {
   panes.moveActiveToAdjacentPane(dir)
 }
 
-defineExpose({ newTab, openComposer, startStartupSession, closeAll, hasSessions, moveActiveTab })
+defineExpose({ newTab, openComposer, startStartupSession, startScheduledResume, closeAll, hasSessions, moveActiveTab })
 
 function resumeYolo(from: LiveTab, p: { sessionId: string; cwd: string; tool: string }): void {
   panes.addTab({
