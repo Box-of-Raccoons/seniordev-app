@@ -34,17 +34,23 @@ const stubs = {
 let listSchedules: ReturnType<typeof vi.fn>
 let setScheduleEnabled: ReturnType<typeof vi.fn>
 let removeSchedule: ReturnType<typeof vi.fn>
+let createSchedule: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   listSchedules = vi.fn().mockResolvedValue([])
   setScheduleEnabled = vi.fn().mockResolvedValue(undefined)
   removeSchedule = vi.fn().mockResolvedValue(undefined)
+  createSchedule = vi.fn().mockResolvedValue(undefined)
   ;(window as unknown as { api: unknown }).api = {
     listSchedules,
     setScheduleEnabled,
     removeSchedule,
     onSchedulesChanged: vi.fn(() => () => {}),
-    listConversations: vi.fn().mockResolvedValue([{ id: 'c1', title: 'GG-14 login fix' }])
+    createSchedule,
+    pickFolder: vi.fn().mockResolvedValue('/picked/repo'),
+    listConversations: vi
+      .fn()
+      .mockResolvedValue([{ id: 'c1', title: 'GG-14 login fix', archivedAt: null }])
   }
 })
 
@@ -115,5 +121,60 @@ describe('SchedulesModal', () => {
     const w = mountModal()
     await flushPromises()
     expect(w.text()).toContain('Nothing scheduled')
+  })
+})
+
+describe('SchedulesModal — creating one', () => {
+  async function openForm() {
+    const w = mountModal()
+    await flushPromises()
+    await w.findAll('button').find((b) => b.text() === 'New schedule…')!.trigger('click')
+    return w
+  }
+
+  it('creates a daily conversation schedule with the selected session', async () => {
+    const w = await openForm()
+    await w.find('textarea').setValue('continue')
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(createSchedule).toHaveBeenCalledTimes(1)
+    const arg = createSchedule.mock.calls[0][0]
+    expect(arg.target).toEqual({ kind: 'conversation', conversationId: 'c1' })
+    expect(arg.trigger.kind).toBe('daily')
+    expect(arg.prompt).toBe('continue')
+  })
+
+  it('refuses an empty prompt in the form instead of creating anything', async () => {
+    const w = await openForm()
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(createSchedule).not.toHaveBeenCalled()
+    expect(w.text()).toContain('Give it a prompt to deliver.')
+  })
+
+  it('refuses a launch with no folder', async () => {
+    const w = await openForm()
+    await w.find('select').setValue('launch')
+    await w.find('textarea').setValue('do the thing')
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(createSchedule).not.toHaveBeenCalled()
+    expect(w.text()).toContain('folder')
+  })
+
+  it('spells out what YOLO mode means where it is chosen', async () => {
+    // An unattended auto-executing run on a timer is the highest-consequence
+    // thing this form makes; the checkbox must say so, not just say "YOLO".
+    const w = await openForm()
+    await w.find('select').setValue('launch')
+    expect(w.text()).toContain('auto-executes and opens a PR')
+  })
+
+  it('fills the folder from the native picker', async () => {
+    const w = await openForm()
+    await w.find('select').setValue('launch')
+    await w.findAll('button').find((b) => b.text() === 'Browse…')!.trigger('click')
+    await flushPromises()
+    expect((w.find('input[type=text]').element as HTMLInputElement).value).toBe('/picked/repo')
   })
 })
