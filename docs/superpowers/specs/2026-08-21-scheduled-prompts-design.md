@@ -213,27 +213,43 @@ whenever due.
 
 ## UI
 
-**Creating a `launch` schedule reuses the Composer.** Launch grows a sibling
-action, Schedule. Same surface, same validation; it stores the composer state as
-a `Schedule` rather than spawning. A scheduled launch is a saved composer.
-
-**Creating a `conversation` schedule is an action on the tab.** Use case 1 is
-"staring at a wedged session," so it is a tab context-menu item plus a
-keybinding, opening a small `ModalShell` dialog: the prompt, and when. Bound to
-that conversation already.
-
-**A pending schedule is visible on its tab.** A small clock affordance on the tab
-and sidebar row when a schedule targets that conversation, with the next fire
-time on hover. Something that will type into a session at 5am does not belong
-only inside a modal ("show the work, always").
-
-**The full list lives in `SchedulesModal.vue`**, alongside `AppConfigModal` and
-`PromptConfigModal`: every schedule, its next fire time, its last outcome and
-reason, and enable, disable, or delete. `RightPanel.vue` was considered and
+**Everything lives in `SchedulesModal.vue`**, reached from Config, alongside
+`AppConfigModal` and `PromptConfigModal`. One surface authors a schedule, shows
+what it will do and when, and retires it. `RightPanel.vue` was considered and
 rejected: the panel is per-session, and `launch` schedules belong to no session.
 
-Per DESIGN.md and the accessibility target, the clock affordance carries a text
-label or title, never color alone, and honors `prefers-reduced-motion`.
+The list gives each schedule its title, what it points at, its trigger in words,
+when it next runs, and what happened last time. A refused firing always carries
+its reason rather than a bare status word, because "skipped" alone leaves the
+reader guessing whether their session was typed into. Every state has a text
+label, so nothing is signalled by colour alone. A recurring YOLO launch is named
+as one, since it is the highest-consequence thing the list can hold.
+
+The wording is a separate pure module (`renderer/src/schedule-format.ts`) and the
+form's validation is another (`renderer/src/schedule-draft.ts`), so both are
+tested directly; the component only arranges them. Validation is the only thing
+between a typo and an unattended agent run: a sub-minute interval, a launch with
+no folder (an agent CLI would sit on its trust-this-folder gate and swallow the
+prompt), a time that is not a time.
+
+### Considered and not built
+
+**A Schedule sibling to Launch in the Composer.** The original plan; dropped
+because the modal's form already covers both target kinds, and a second authoring
+surface would mean two paths to keep in step for no new capability.
+
+**A tab context-menu item for scheduling into the session you are looking at.**
+This was justified entirely by the ad-hoc "staring at a wedged session" case,
+which is now a non-goal (see "Scope correction"). Worth revisiting only if
+authoring from the modal proves too far from where the thought occurs.
+
+**A clock affordance on the tab and sidebar row when a schedule targets that
+conversation.** This one is a real gap rather than a dropped idea. Something that
+will type into a session unattended should be visible on that session, which is
+design principle 1 ("show the work, always"); today it is visible only inside the
+modal. Deliberately deferred rather than forgotten: it touches tab and sidebar
+rendering, and it should carry a text label or title and never colour alone, per
+the WCAG 2.1 AA target in DESIGN.md.
 
 ## PRODUCT.md amendment
 
