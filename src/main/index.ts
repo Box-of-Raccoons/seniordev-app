@@ -33,6 +33,7 @@ import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery, WarmDelivery } from './deeplink/delivery'
 import { DEEPLINK, STARTUP, STATUS, WORKSPACE, SIDEBAR, SCHEDULES, type WorkspaceLayout, type WarmStartup, type ScheduledResume } from '../shared/ipc'
 import { registerSidebarIpc } from './ipc/sidebar-handlers'
+import { registerScheduleIpc } from './ipc/schedule-handlers'
 import { registerWorktreeIpc } from './ipc/worktree-handlers'
 import { nodeGitRunner } from './git/node-git-runner'
 import { createSessionActivity } from './terminal/activity'
@@ -387,6 +388,7 @@ if (!gotLock) {
     // The first tick runs here, catching anything whose slot passed while the app
     // was closed. Nothing fires before this point, so a schedule cannot race the
     // renderer's readiness: a delivery that needs a tab queues until it signals.
+    registerScheduleIpc({ store: schedulesStore, getSender, runner: scheduleRunner })
     scheduleRunner.start()
     registerAppIpc()
     // Auto-update: downloads in the background, installs on quit. Inert in an

@@ -1,59 +1,13 @@
 import { createJsonStore, type JsonStore, type VersionedDoc } from '../store/json-store'
 import { schedulesPath } from '../store/paths'
-import type { StartupSession } from '../../shared/ipc'
-import type { ScheduleOutcome, ScheduleRunState } from './scheduler'
+import type { Schedule, ScheduleCreate, ScheduleOutcome, ScheduleTarget, ScheduleTrigger, StartupSession } from '../../shared/ipc'
+import type { ScheduleRunState } from './scheduler'
 import { nextDueAfter } from './scheduler'
 
-// A schedule is a deferred launch: the prompt, where it goes, and when. Kept in
-// its own file (write frequency: one write per firing, so warm) beside the other
-// stores in the config dir.
-//
-// A `conversation` target holds a conversationId, never a tab id — tab ids are
-// per-launch, and the whole point of the 5am resume is that it survives the tab
-// being closed and the app being restarted. A `launch` target holds a
-// StartupSession, the shape the app already uses to auto-start a session from a
-// warm CLI invocation (shared/ipc.ts), so firing one is a push down machinery
-// that already exists rather than a second parallel launch format.
-export type ScheduleTarget =
-  | { kind: 'conversation'; conversationId: string }
-  | { kind: 'launch'; session: StartupSession; ticket?: string }
-
-// `daily` stores local hour/minute rather than an absolute timestamp so the hour
-// survives a DST shift; see nextDailyAfter in scheduler.ts. `notBeforeMs` on
-// `every` is an earliest-start, not a fire-at: "every 30 minutes, but not before
-// 5am". Deliberately not cron — three shapes cover the real cases without a
-// parser, its error surface, or a UI that has to explain `0 5 * * *`.
-export type ScheduleTrigger =
-  | { kind: 'once'; atMs: number }
-  | { kind: 'every'; intervalMs: number; notBeforeMs: number | null }
-  | { kind: 'daily'; hour: number; minute: number }
-
-export interface Schedule {
-  id: string
-  enabled: boolean
-  title: string
-  target: ScheduleTarget
-  prompt: string
-  trigger: ScheduleTrigger
-  // A slot that passed while the app was closed: run it once late, or record the
-  // miss and move to the next slot.
-  catchUp: boolean
-  // Never null for a recurring trigger (see normaliseMaxFirings). An uncapped
-  // recurring schedule pointed at a YOLO launch is an unbounded burn, and a
-  // confirmation dialog at creation time does not bound it — the record does.
-  maxFirings: number | null
-  stopOnFailure: boolean
-  // run state (owned by scheduler.advance)
-  firedCount: number
-  nextDueAt: number
-  lastFiredAt: number | null
-  lastOutcome: ScheduleOutcome | null
-  lastReason: string | null
-  // When the current deferral started, so the defer window can expire. Null
-  // whenever the schedule is not mid-deferral.
-  deferredSinceAt: number | null
-  createdAt: number
-}
+// The record itself is a wire type (shared/ipc.ts): the modal shows every field,
+// so it crosses the bridge whole. Re-exported here so main-side callers have one
+// import for the store and the shape it holds.
+export type { Schedule, ScheduleCreate, ScheduleTarget, ScheduleTrigger } from '../../shared/ipc'
 
 export interface SchedulesDoc extends VersionedDoc {
   version: 1
@@ -134,16 +88,6 @@ function migrateSchedules(raw: unknown): SchedulesDoc {
     })
   }
   return { version: 1, schedules }
-}
-
-export interface ScheduleCreate {
-  title?: string
-  target: ScheduleTarget
-  prompt: string
-  trigger: ScheduleTrigger
-  catchUp?: boolean
-  maxFirings?: number | null
-  stopOnFailure?: boolean
 }
 
 export interface SchedulesStore {

@@ -5,7 +5,9 @@ import type { ProjectInfo, ConversationInfo, SidebarState } from '../shared/ipc'
 import type { WorktreeInfo, WorktreeCreateRequest, WorktreeCreateResult, WorktreeTeardownRequest, WorktreeTeardownResult } from '../shared/ipc'
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
 import type { StatusUpdateEvent } from '../shared/ipc'
-import { SUBAGENTS } from '../shared/ipc'
+import { SUBAGENTS, SCHEDULES } from '../shared/ipc'
+import type { ScheduledResume, ScheduleNotice } from '../shared/ipc'
+import type { Schedule, ScheduleCreate } from '../shared/ipc'
 import type { SubagentSpawnEvent, SubagentActivityEvent, SubagentDoneEvent } from '../shared/ipc'
 import type { UpdateInfo } from '../shared/ipc'
 import type { MenuAction, AppInfo, ConfigReadResult, SaveResult, RecapInfo, PreambleInfo, PromptReadResult, WarmStartup } from '../shared/ipc'
@@ -119,6 +121,26 @@ const api = {
     return () => ipcRenderer.off(DEEPLINK.event, listener)
   },
   deepLinkReady: (): void => ipcRenderer.send(DEEPLINK.ready),
+  listSchedules: (): Promise<Schedule[]> => ipcRenderer.invoke(SCHEDULES.list),
+  createSchedule: (c: ScheduleCreate): Promise<Schedule> => ipcRenderer.invoke(SCHEDULES.create, c),
+  setScheduleEnabled: (id: string, enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke(SCHEDULES.setEnabled, id, enabled),
+  removeSchedule: (id: string): Promise<void> => ipcRenderer.invoke(SCHEDULES.remove, id),
+  onSchedulesChanged: (cb: () => void): (() => void) => {
+    const listener = (): void => cb()
+    ipcRenderer.on(SCHEDULES.changed, listener)
+    return () => ipcRenderer.off(SCHEDULES.changed, listener)
+  },
+  onScheduledResume: (cb: (r: ScheduledResume) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: ScheduledResume): void => cb(payload)
+    ipcRenderer.on(SCHEDULES.resume, listener)
+    return () => ipcRenderer.off(SCHEDULES.resume, listener)
+  },
+  onScheduleNotice: (cb: (n: ScheduleNotice) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: ScheduleNotice): void => cb(payload)
+    ipcRenderer.on(SCHEDULES.notice, listener)
+    return () => ipcRenderer.off(SCHEDULES.notice, listener)
+  },
   onStartupSession: (cb: (w: WarmStartup) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: WarmStartup): void => cb(payload)
     ipcRenderer.on(STARTUP.session, listener)

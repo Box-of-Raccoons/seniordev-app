@@ -1,6 +1,6 @@
-import { advance, dueNow, wasMissed, type ScheduleOutcome } from './scheduler'
-import type { Schedule, SchedulesStore } from './schedules-store'
-import type { TabStatus } from '../../shared/ipc'
+import { advance, dueNow, wasMissed } from './scheduler'
+import type { SchedulesStore } from './schedules-store'
+import type { Schedule, ScheduleOutcome, TabStatus } from '../../shared/ipc'
 
 // The impure half of scheduling: one ticker, and the dispatch from a due
 // schedule to one of the three delivery paths. Every policy question it faces is

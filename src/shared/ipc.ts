@@ -237,6 +237,65 @@ export const DEEPLINK = { event: 'deeplink:event', ready: 'deeplink:ready' } as 
 // can create — a `launch` schedule reuses STARTUP.session wholesale, and `resume`
 // below is the one push this feature adds, reopening a stored conversation with
 // its prompt seeded. Both ride the same DEEPLINK.ready gate as deep links.
+// A schedule is a launch the developer deferred. The record crosses the bridge
+// whole (the modal shows every field), so it lives here rather than in the main
+// store, the same split as Conversation / ConversationInfo.
+//
+// A `conversation` target holds a conversationId, never a tab id: tab ids are
+// per-launch, and the point of a 5am resume is that it survives the tab being
+// closed. A `launch` target holds a StartupSession, the shape the app already
+// auto-starts a session from, rather than a second parallel launch format.
+export type ScheduleTarget =
+  | { kind: 'conversation'; conversationId: string }
+  | { kind: 'launch'; session: StartupSession; ticket?: string }
+
+// Deliberately not cron: three shapes cover the real cases with no parser, no
+// parse-error surface, and no UI that has to explain `0 5 * * *`. `daily` stores
+// LOCAL hour/minute so 5am stays 5am across a DST shift; `notBeforeMs` on `every`
+// is an earliest-start ("every 30 minutes, but not before 5am"), not a fire-at.
+export type ScheduleTrigger =
+  | { kind: 'once'; atMs: number }
+  | { kind: 'every'; intervalMs: number; notBeforeMs: number | null }
+  | { kind: 'daily'; hour: number; minute: number }
+
+// How a firing resolved. `deferred` is the only one that does not advance the
+// schedule: the target was busy, so the same slot is retried on the next tick.
+export type ScheduleOutcome = 'fired' | 'deferred' | 'skipped' | 'missed' | 'failed'
+
+export interface Schedule {
+  id: string
+  enabled: boolean
+  title: string
+  target: ScheduleTarget
+  prompt: string
+  trigger: ScheduleTrigger
+  // A slot that passed while the app was closed: run it once late, or record the
+  // miss and move on to the next one.
+  catchUp: boolean
+  // Never null for a recurring trigger. An uncapped recurring schedule pointed at
+  // a YOLO launch is an unbounded burn, and a confirm at creation time does not
+  // bound it — the record does.
+  maxFirings: number | null
+  stopOnFailure: boolean
+  firedCount: number
+  nextDueAt: number
+  lastFiredAt: number | null
+  lastOutcome: ScheduleOutcome | null
+  lastReason: string | null
+  deferredSinceAt: number | null
+  createdAt: number
+}
+
+export interface ScheduleCreate {
+  title?: string
+  target: ScheduleTarget
+  prompt: string
+  trigger: ScheduleTrigger
+  catchUp?: boolean
+  maxFirings?: number | null
+  stopOnFailure?: boolean
+}
+
 export interface ScheduledResume {
   conversationId: string
   prompt: string

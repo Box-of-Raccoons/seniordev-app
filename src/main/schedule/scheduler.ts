@@ -4,11 +4,7 @@
 // tests. The impure half (the ticker and the three delivery paths) lives in
 // runner.ts, mirroring the terminal/status.ts vs terminal/status-hub.ts split.
 
-import type { Schedule, ScheduleTrigger } from './schedules-store'
-
-// How a firing resolved. `deferred` is the only one that does NOT advance
-// nextDueAt: the target was busy, so the same slot is retried on the next tick.
-export type ScheduleOutcome = 'fired' | 'deferred' | 'skipped' | 'missed' | 'failed'
+import type { Schedule, ScheduleOutcome, ScheduleTrigger } from '../../shared/ipc'
 
 // A target that never falls idle would defer forever, and a schedule that
 // silently never runs is worse than one that visibly gave up. After this long
