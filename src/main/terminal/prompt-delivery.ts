@@ -21,6 +21,23 @@ export const MAX_WAIT_MS = 15000
 export interface PromptDelivery {
   /** Type `prompt` into session `id` once it is ready, then submit it. */
   deliver(id: string, prompt: string, bracketedPaste: boolean): void
+  /**
+   * Type `prompt` into a session ALREADY known to be receptive, with no
+   * readiness wait. For the scheduled path, where the status hub has just
+   * reported the tab `idle`.
+   *
+   * Waiting here is not merely redundant, it is wrong twice over. An established
+   * idle session emits no output, and activity.watch only resolves on output
+   * arriving AFTER the watch begins — so the quiet path never trips and every
+   * delivery falls through the 15s safety valve (measured: 15,056ms against a
+   * real pty). And that valve writes regardless of state, so during those 15
+   * seconds the session can reach an approval prompt and receive the text
+   * anyway, which is the one thing the schedule gate exists to prevent.
+   *
+   * `idle` from the hub is the stronger signal in any case: the rendered buffer
+   * settled AND did not match the tool's approval patterns.
+   */
+  deliverNow(id: string, prompt: string, bracketedPaste: boolean): void
   /** Abandon a delivery in flight (the tab was killed or exited mid-delivery). */
   cancel(id: string): void
 }
@@ -49,29 +66,37 @@ export function createPromptDelivery(deps: {
     cancels.set(id, c)
   }
 
+  // The write-then-submit half, shared by both entry points. The submit is a
+  // separate keystroke either way; only whether we wait to BEGIN differs.
+  function writeAndSubmit(id: string, prompt: string, bracketedPaste: boolean): void {
+    // Bracketed paste (ESC[200~ … ESC[201~) tells a TUI that honors it (codex)
+    // to take a multi-line prompt as ONE composer block, not submit per line.
+    // Only for opted-in tools: the raw ESC would clear claude's composer.
+    deps.write(id, bracketedPaste ? `\x1b[200~${prompt}\x1b[201~` : prompt)
+    if (bracketedPaste) {
+      // A large paste takes codex a beat to ingest; a fixed delay can beat it to
+      // the composer and the Enter is dropped (the prompt lands but never runs).
+      // Wait for the paste to render and the session to fall quiet again, THEN
+      // submit — Enter as its own keystroke. This wait is sound even for an idle
+      // session: the paste itself is the output the watch needs.
+      waitForQuiet(id, QUIET_MS, () => deps.write(id, '\r'))
+    } else {
+      // claude's carefully-tuned path is unchanged: Enter a fixed beat later.
+      const t = setTimeout(() => {
+        deps.write(id, '\r')
+        cancels.delete(id)
+      }, SUBMIT_DELAY_MS)
+      cancels.set(id, () => clearTimeout(t))
+    }
+  }
+
   return {
     cancel,
     deliver(id, prompt, bracketedPaste) {
-      waitForQuiet(id, QUIET_MS, () => {
-        // Bracketed paste (ESC[200~ … ESC[201~) tells a TUI that honors it (codex)
-        // to take a multi-line prompt as ONE composer block, not submit per line.
-        // Only for opted-in tools: the raw ESC would clear claude's composer.
-        deps.write(id, bracketedPaste ? `\x1b[200~${prompt}\x1b[201~` : prompt)
-        if (bracketedPaste) {
-          // A large paste takes codex a beat to ingest; a fixed delay can beat it
-          // to the composer and the Enter is dropped (the prompt lands but never
-          // runs). Wait for the paste to render and the session to fall quiet
-          // again, THEN submit — Enter as its own keystroke.
-          waitForQuiet(id, QUIET_MS, () => deps.write(id, '\r'))
-        } else {
-          // claude's carefully-tuned path is unchanged: Enter a fixed beat later.
-          const t = setTimeout(() => {
-            deps.write(id, '\r')
-            cancels.delete(id)
-          }, SUBMIT_DELAY_MS)
-          cancels.set(id, () => clearTimeout(t))
-        }
-      })
+      waitForQuiet(id, QUIET_MS, () => writeAndSubmit(id, prompt, bracketedPaste))
+    },
+    deliverNow(id, prompt, bracketedPaste) {
+      writeAndSubmit(id, prompt, bracketedPaste)
     }
   }
 }

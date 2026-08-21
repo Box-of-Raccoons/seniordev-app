@@ -358,7 +358,10 @@ if (!gotLock) {
           // Bracketed paste is per tool (codex yes, claude no — the raw ESC would
           // clear its composer), and the tool is on the conversation record.
           const tool = persistence?.conversations.get(conversationId)?.tool ?? store.config?.defaultTool ?? 'claude'
-          promptDelivery.deliver(ptyId, prompt, store.config?.cliTools[tool]?.bracketedPaste ?? false)
+          // deliverNow, not deliver: the hub has just reported this tab idle, so a
+          // readiness wait would only add the 15s valve and a window in which the
+          // session could reach an approval prompt and be typed into anyway.
+          promptDelivery.deliverNow(ptyId, prompt, store.config?.cliTools[tool]?.bracketedPaste ?? false)
         },
         resumeConversation: (conversationId, prompt) => {
           const conv = persistence?.conversations.get(conversationId)
