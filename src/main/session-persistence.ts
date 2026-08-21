@@ -49,6 +49,10 @@ export interface SessionPersistence {
   onAgentSpawn(info: AgentSpawnInfo): void
   // A pty exited or was killed: its project is no longer pinned live.
   onTabExit(ptyId: string): void
+  // The live pty currently running a conversation, or undefined when none is.
+  // The schedule runner asks this to choose between writing into an open tab and
+  // resuming a closed one; a conversation is at most one live pty.
+  ptyForConversation(conversationId: string): string | undefined
   // Re-attempt codex id discovery from the on-disk rollout for any codex
   // conversation still missing one (the live poll can lose the race). Returns how
   // many ids were backfilled. Idempotent; safe to call repeatedly.
@@ -144,13 +148,21 @@ export function createSessionPersistence(deps?: {
   // Live tabs pin their project against archiving. ptyId -> projectId; a project
   // is "live" while any of its ptys is running.
   const livePtys = new Map<string, string>()
+  // ptyId -> conversationId for the same live tabs. Keyed the same way round as
+  // livePtys so both are cleared by the one ptyId that onTabExit is given; the
+  // reverse lookup scans instead of keeping a second map that could drift out of
+  // step (the map holds one entry per open tab, so the scan is free).
+  const liveConversations = new Map<string, string>()
 
   return {
     projects,
     conversations,
     onAgentSpawn(info) {
       const project = projects.ensureForCwd(info.cwd, { defaultTool: info.tool })
-      if (info.ptyId) livePtys.set(info.ptyId, project.id)
+      if (info.ptyId) {
+        livePtys.set(info.ptyId, project.id)
+        liveConversations.set(info.ptyId, info.conversationId)
+      }
       // Remember the last per-project worktree choice, but only when the launch
       // actually carried one (a Task-mode agent launch). Other launches leave it.
       if (info.worktreeDefault !== undefined) projects.setWorktreeDefault(project.id, info.worktreeDefault)
@@ -210,8 +222,15 @@ export function createSessionPersistence(deps?: {
           /* discovery is best-effort; a failure means no resume available */
         })
     },
+    ptyForConversation(conversationId) {
+      for (const [ptyId, convId] of liveConversations) {
+        if (convId === conversationId) return ptyId
+      }
+      return undefined
+    },
     onTabExit(ptyId) {
       livePtys.delete(ptyId)
+      liveConversations.delete(ptyId)
       // A just-ended codex session's rollout is now fully on disk, so retry any id
       // the live poll missed. And any finished session's resumability may have
       // changed (claude wrote its transcript once it had content). Either way,
