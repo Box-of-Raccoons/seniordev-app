@@ -230,6 +230,33 @@ export interface DeepLink { action: 'open' | 'yolo'; ticket: string; role?: stri
 // `ready` is the renderer's listener-attached signal: main queues warm links
 // until it arrives, so nothing is pushed at a window that can't hear it yet.
 export const DEEPLINK = { event: 'deeplink:event', ready: 'deeplink:ready' } as const
+
+// Scheduled prompts. A schedule is a launch the developer deferred: it delivers
+// its prompt into an existing conversation, or starts a fresh session, at a time
+// they chose. Two of the three delivery paths need a TAB, which only the renderer
+// can create — a `launch` schedule reuses STARTUP.session wholesale, and `resume`
+// below is the one push this feature adds, reopening a stored conversation with
+// its prompt seeded. Both ride the same DEEPLINK.ready gate as deep links.
+export interface ScheduledResume {
+  conversationId: string
+  prompt: string
+}
+// A firing that refused or failed, surfaced to the user. A routine success is
+// deliberately silent, or a recurring schedule becomes a notification stream.
+export interface ScheduleNotice {
+  title: string
+  outcome: 'skipped' | 'missed' | 'failed'
+  reason: string
+}
+export const SCHEDULES = {
+  list: 'schedules:list',
+  create: 'schedules:create',
+  setEnabled: 'schedules:setEnabled',
+  remove: 'schedules:remove',
+  changed: 'schedules:changed', // main → renderer: the list moved, re-read it
+  resume: 'schedules:resume', // main → renderer: reopen this conversation and seed it
+  notice: 'schedules:notice' // main → renderer: a firing refused or failed
+} as const
 export interface StartupOptions {
   tickets: string[]
   session?: StartupSession

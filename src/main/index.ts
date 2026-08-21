@@ -31,11 +31,15 @@ import { parseDeepLink, findDeepLinkArg } from './deeplink/parse'
 import { resolveSecondInstance } from './startup/resolve-launch'
 import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery, WarmDelivery } from './deeplink/delivery'
-import { DEEPLINK, STARTUP, STATUS, WORKSPACE, SIDEBAR, type WorkspaceLayout, type WarmStartup } from '../shared/ipc'
+import { DEEPLINK, STARTUP, STATUS, WORKSPACE, SIDEBAR, SCHEDULES, type WorkspaceLayout, type WarmStartup, type ScheduledResume } from '../shared/ipc'
 import { registerSidebarIpc } from './ipc/sidebar-handlers'
 import { registerWorktreeIpc } from './ipc/worktree-handlers'
 import { nodeGitRunner } from './git/node-git-runner'
 import { createSessionActivity } from './terminal/activity'
+import { createPromptDelivery } from './terminal/prompt-delivery'
+import { createSchedulesStore, type SchedulesStore } from './schedule/schedules-store'
+import { createScheduleRunner, type ScheduleRunner } from './schedule/runner'
+import { isConversationResumable } from './session-resumable'
 import { createStatusHub } from './terminal/status-hub'
 import { createSessionPersistence, type SessionPersistence } from './session-persistence'
 import { pollForTitle } from './session-title'
@@ -74,6 +78,8 @@ let yolo: YoloRunner | null = null
 let persistence: SessionPersistence | null = null
 let workspace: WorkspaceStore | null = null
 let subagents: { dispose: () => void } | null = null
+let schedules: SchedulesStore | null = null
+let scheduleRunner: ScheduleRunner | null = null
 let mainWindow: BrowserWindow | null = null
 
 // Warm links are queued until the renderer says it's listening (DEEPLINK.ready);
@@ -90,6 +96,16 @@ const deepLinks = new DeepLinkDelivery({
 // signal — see the second-instance handler below.
 const startupSessions = new WarmDelivery<WarmStartup>({
   send: (warm) => mainWindow?.webContents.send(STARTUP.session, warm),
+  ensureWindow: () => {
+    if (app.isReady() && BrowserWindow.getAllWindows().length === 0) createWindow()
+  }
+})
+
+// A scheduled resume rides the same queue-until-ready machinery: a schedule can
+// come due with no window open (macOS keeps the app alive with none), and the
+// firing must summon one rather than be dropped on the floor.
+const scheduleResumes = new WarmDelivery<ScheduledResume>({
+  send: (r) => mainWindow?.webContents.send(SCHEDULES.resume, r),
   ensureWindow: () => {
     if (app.isReady() && BrowserWindow.getAllWindows().length === 0) createWindow()
   }
@@ -316,8 +332,62 @@ if (!gotLock) {
     }
     runArchive()
     setInterval(runArchive, 24 * 60 * 60 * 1000).unref?.()
-    terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand, activity, statusHub, persistence })
+    // One prompt delivery for the whole app: the spawn path and the schedule
+    // runner both write through it, so its cancel map covers a scheduled delivery
+    // in flight as well as a launch one. `terminals` is assigned on the next line
+    // and the write only runs later, from a timer.
+    const promptDelivery = createPromptDelivery({
+      write: (id, data) => terminals?.write(id, data),
+      activity
+    })
+    terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand, activity, statusHub, persistence, promptDelivery })
     yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand, statusHub })
+
+    // Scheduled prompts. The runner is the only thing here that acts on its own,
+    // so every path it can take is gated: it writes into a live session only when
+    // that session is idle, and refuses one sitting at an approval prompt. The two
+    // paths that need a tab go out through the renderer, because main cannot make
+    // one — a launch reuses the warm-CLI-session push, a resume uses its own.
+    schedules = createSchedulesStore()
+    const schedulesStore = schedules
+    scheduleRunner = createScheduleRunner({
+      store: schedulesStore,
+      executor: {
+        injectIntoTab: (ptyId, prompt, conversationId) => {
+          // Bracketed paste is per tool (codex yes, claude no — the raw ESC would
+          // clear its composer), and the tool is on the conversation record.
+          const tool = persistence?.conversations.get(conversationId)?.tool ?? store.config?.defaultTool ?? 'claude'
+          promptDelivery.deliver(ptyId, prompt, store.config?.cliTools[tool]?.bracketedPaste ?? false)
+        },
+        resumeConversation: (conversationId, prompt) => {
+          const conv = persistence?.conversations.get(conversationId)
+          if (!conv) return { ok: false, reason: 'the conversation is no longer stored' }
+          // Asked fresh, from the agent's own transcript, exactly as the sidebar
+          // does: a stored id is not proof there is anything to resume.
+          if (!isConversationResumable(conv)) return { ok: false, reason: 'the agent has no transcript to resume' }
+          scheduleResumes.deliver({ conversationId, prompt })
+          return { ok: true }
+        },
+        launch: (schedule) => {
+          if (schedule.target.kind !== 'launch') return
+          startupSessions.deliver({ session: schedule.target.session, ticket: schedule.target.ticket })
+        }
+      },
+      ptyForConversation: (conversationId) => persistence?.ptyForConversation(conversationId),
+      statusOf: (ptyId) => statusHub.statusOf(ptyId),
+      conversationIsLive: (conversationId) => {
+        const conv = persistence?.conversations.get(conversationId)
+        return !!conv && conv.archivedAt === null
+      },
+      notify: (schedule, outcome, reason) => {
+        getSender()?.send(SCHEDULES.notice, { title: schedule.title, outcome, reason })
+      },
+      onChanged: () => getSender()?.send(SCHEDULES.changed)
+    })
+    // The first tick runs here, catching anything whose slot passed while the app
+    // was closed. Nothing fires before this point, so a schedule cannot race the
+    // renderer's readiness: a delivery that needs a tab queues until it signals.
+    scheduleRunner.start()
     registerAppIpc()
     // Auto-update: downloads in the background, installs on quit. Inert in an
     // unpackaged build, so `pnpm dev` never talks to the release feed.
@@ -337,6 +407,8 @@ if (!gotLock) {
   })
 
   app.on('before-quit', () => {
+    scheduleRunner?.stop()
+    schedules?.flush()
     terminals?.killAll()
     yolo?.killAll()
     subagents?.dispose()
