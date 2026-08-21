@@ -11,6 +11,8 @@ import { shouldNotify, notificationText } from '../status-notify'
 import { type LiveTab } from '../composables/usePanes'
 import type { UseWorkspace } from '../composables/useWorkspace'
 import type { UseSubagents } from '../composables/useSubagents'
+import type { UseScheduleBadges } from '../composables/useScheduleBadges'
+import { describeNextRun } from '../schedule-format'
 import type { ConversationInfo } from '../../../shared/ipc'
 import { shouldAutoClose } from '../auto-close'
 import {
@@ -32,7 +34,17 @@ interface Prefill {
 // `ws` (useWorkspace) so the Projects sidebar — a sibling under App — reads the
 // same source of truth. RightPanel still OWNS the behaviour over that state: the
 // status/notification glue, the workspace-save watcher, and the layout view.
-const props = defineProps<{ ws: UseWorkspace; subagents: UseSubagents }>()
+const props = defineProps<{ ws: UseWorkspace; subagents: UseSubagents; scheduleBadges?: UseScheduleBadges }>()
+
+// A live tab says when something is queued to type into it. Same reasoning as the
+// sidebar row: unattended machine work is visible on the thing it will act on.
+// The tab strip is tight, so the word lives in the title and aria-label rather
+// than inline, but it is never conveyed by colour alone.
+function tabScheduleNote(conversationId: string): string | null {
+  const s = props.scheduleBadges?.soonestFor(conversationId)
+  if (!s) return null
+  return `Scheduled: ${s.title}, next ${describeNextRun(s, props.scheduleBadges?.now.value ?? Date.now())}`
+}
 const panes = props.ws.panes
 
 // S8: when the subagent panel is docked at the bottom, it mounts here as a flex
@@ -478,6 +490,13 @@ function isVisible(paneId: string, ptyId: string): boolean {
               >
                 <StatusGlyph class="term-tab__status" :status="statuses[tab.ptyId] ?? null" />
                 <button class="term-tab__label" @click="panes.focusTab(pane.id, tab.ptyId)">{{ tab.title }}</button>
+                <span
+                  v-if="tabScheduleNote(tab.conversationId)"
+                  class="term-tab__sched"
+                  role="img"
+                  :aria-label="tabScheduleNote(tab.conversationId)!"
+                  :title="tabScheduleNote(tab.conversationId)!"
+                >&#9201;</span>
                 <button class="term-tab__close" :aria-label="`Close ${tab.title}`" @click="closeTerm(tab.ptyId)">×</button>
               </div>
             </nav>
@@ -613,8 +632,10 @@ function isVisible(paneId: string, ptyId: string): boolean {
   border: 1px solid var(--hairline); border-radius: var(--radius-sm);
 }
 .term-tab--active { background: var(--surface-2); color: var(--ink); }
-.term-tab--dead .term-tab__label { color: var(--ink-muted); text-decoration: line-through; }
+.term-tab--dead .term-tab__sched { color: var(--teal); font-size: 11px; flex: 0 0 auto; }
+.term-tab__label { color: var(--ink-muted); text-decoration: line-through; }
 .term-tab__status { display: inline-flex; align-items: center; padding-left: 9px; }
+.term-tab__sched { color: var(--teal); font-size: 11px; flex: 0 0 auto; }
 .term-tab__label {
   background: transparent; border: 0; color: inherit; font: inherit;
   padding: 5px 4px 5px 8px; cursor: pointer;

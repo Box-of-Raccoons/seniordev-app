@@ -243,13 +243,28 @@ This was justified entirely by the ad-hoc "staring at a wedged session" case,
 which is now a non-goal (see "Scope correction"). Worth revisiting only if
 authoring from the modal proves too far from where the thought occurs.
 
-**A clock affordance on the tab and sidebar row when a schedule targets that
-conversation.** This one is a real gap rather than a dropped idea. Something that
-will type into a session unattended should be visible on that session, which is
-design principle 1 ("show the work, always"); today it is visible only inside the
-modal. Deliberately deferred rather than forgotten: it touches tab and sidebar
-rendering, and it should carry a text label or title and never colour alone, per
-the WCAG 2.1 AA target in DESIGN.md.
+**A tab context-menu item for scheduling into the session you are looking at.**
+Justified entirely by the ad-hoc "staring at a wedged session" case, which is now
+a non-goal (see "Scope correction"). Worth revisiting only if authoring from the
+modal proves too far from where the thought occurs.
+
+### The badge, which was a gap and is now built
+
+A schedule that will type into a session unattended is visible **on** that
+session, not only inside the modal, which is design principle 1 ("show the work,
+always"). A sidebar conversation row carries a `scheduled` tag, and a live tab
+carries a small clock.
+
+One composable (`composables/useScheduleBadges.ts`) is created in `App` and
+passed to both consumers the same way `ws` and `subagents` are, so the list is
+fetched once rather than per consumer. It surfaces only **enabled** schedules: a
+retired one means nothing is going to happen, and saying otherwise would be
+noise.
+
+Per the WCAG 2.1 AA target, neither is colour alone. The sidebar tag is the word
+"scheduled" with the schedule's title and next run time on hover; the tab's clock
+carries the same sentence as its `aria-label` and `title`, because the tab strip
+has no room for the word inline.
 
 ## PRODUCT.md amendment
 

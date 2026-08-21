@@ -12,6 +12,7 @@ import Splash from './components/Splash.vue'
 import { useSplash } from './composables/useSplash'
 import { useWorkspace } from './composables/useWorkspace'
 import { useSubagents } from './composables/useSubagents'
+import { useScheduleBadges } from './composables/useScheduleBadges'
 import type { MenuAction, DeepLink } from '../../shared/ipc'
 
 // A3: the shared workspace state lives here (App is the common ancestor of the
@@ -24,6 +25,9 @@ const rightPanel = ref<InstanceType<typeof RightPanel> | null>(null)
 // so the tiles survive moving the panel between the right rail and the bottom
 // strip). The panel component is a pure view over this.
 const subagents = useSubagents()
+// Which conversations have a schedule pointed at them, for the sidebar and tab
+// badges. Fetched once here rather than by each consumer.
+const scheduleBadges = useScheduleBadges()
 // The right-rail column sizing, mirroring sidebarStyle: a fixed flex-basis (a slim
 // strip when collapsed, else the persisted size). Only used when placement=right.
 const SUBAGENT_COLLAPSED_PX = 36
@@ -135,6 +139,7 @@ onMounted(async () => {
   // S8: begin watching subagent activity; mirror the persisted "this app only"
   // preference into the store's live filter, and keep the known-session set fresh.
   subagents.start()
+  scheduleBadges.start()
   watch(() => ws.subagentPanel.appOnly, (v) => (subagents.appOnly.value = v), { immediate: true })
   void refreshKnownSessions()
   offSidebarChanged = window.api.onSidebarChanged(() => void refreshKnownSessions())
@@ -193,6 +198,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  scheduleBadges.stop()
   offMenu?.()
   offDeepLink?.()
   offStartupSession?.()
@@ -206,8 +212,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="shell">
-    <Sidebar :ws="ws" :style="sidebarStyle" />
-    <RightPanel ref="rightPanel" :ws="ws" :subagents="subagents" />
+    <Sidebar :ws="ws" :schedule-badges="scheduleBadges" :style="sidebarStyle" />
+    <RightPanel ref="rightPanel" :ws="ws" :subagents="subagents" :schedule-badges="scheduleBadges" />
     <SubagentPanel
       v-if="ws.subagentPanel.placement === 'right'"
       :subagents="subagents"

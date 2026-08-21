@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import Sidebar from './Sidebar.vue'
 import { useWorkspace, type UseWorkspace } from '../composables/useWorkspace'
-import type { ProjectInfo, ConversationInfo } from '../../../shared/ipc'
+import type { ProjectInfo, ConversationInfo, Schedule } from '../../../shared/ipc'
+import type { UseScheduleBadges } from '../composables/useScheduleBadges'
+import { ref } from 'vue'
 
 function project(over: Partial<ProjectInfo>): ProjectInfo {
   return {
@@ -375,5 +377,63 @@ describe('Sidebar', () => {
     expect(w.text()).toContain('old work')
     await w.find('.arch-conv-row .restore').trigger('click')
     expect(setConversationArchived).toHaveBeenCalledWith('c-arch', false)
+  })
+})
+
+// Schedule badge (added with the scheduled-prompts feature). A hand-built stand-in
+// for the composable, so the render is asserted against a known answer rather than
+// against a second moving part.
+function badgesFor(found: Schedule | null): UseScheduleBadges {
+  return {
+    schedules: ref<Schedule[]>(found ? [found] : []),
+    now: ref(Date.now()),
+    start: () => {},
+    stop: () => {},
+    soonestFor: (id) => (found && id === 'c1' ? found : null)
+  }
+}
+
+function schedule(over: Partial<Schedule> = {}): Schedule {
+  return {
+    id: 's1', enabled: true, title: 'nightly sweep',
+    target: { kind: 'conversation', conversationId: 'c1' },
+    prompt: 'go', trigger: { kind: 'daily', hour: 5, minute: 0 },
+    catchUp: false, maxFirings: 10, stopOnFailure: true,
+    firedCount: 0, nextDueAt: Date.now() + 4 * 3600_000,
+    lastFiredAt: null, lastOutcome: null, lastReason: null, deferredSinceAt: null, createdAt: 0,
+    ...over
+  }
+}
+
+describe('Sidebar schedule badge', () => {
+  async function mountWithBadges(b?: UseScheduleBadges) {
+    setApi([project({})], [conv({ id: 'c1', title: 'GG-14 login fix' })])
+    const w = mount(Sidebar, { props: { ws: useWorkspace(), scheduleBadges: b }, global: { stubs } })
+    await flushPromises()
+    return w
+  }
+
+  it('marks a conversation that has something queued to type into it', async () => {
+    // Proving the composable resolves a schedule is not the same as proving the
+    // ROW says so, which is the whole point of the affordance.
+    const w = await mountWithBadges(badgesFor(schedule()))
+    const tag = w.find('.tag--sched')
+    expect(tag.exists()).toBe(true)
+    // The word carries the state; colour is emphasis, never the signal itself.
+    expect(tag.text()).toBe('scheduled')
+    expect(tag.attributes('title')).toContain('nightly sweep')
+    expect(tag.attributes('title')).toContain('next')
+  })
+
+  it('leaves an unscheduled conversation unmarked', async () => {
+    const w = await mountWithBadges(badgesFor(null))
+    expect(w.find('.tag--sched').exists()).toBe(false)
+  })
+
+  it('renders normally when no badges are supplied at all', async () => {
+    // The prop is optional: the sidebar must not depend on scheduling existing.
+    const w = await mountWithBadges(undefined)
+    expect(w.text()).toContain('GG-14 login fix')
+    expect(w.find('.tag--sched').exists()).toBe(false)
   })
 })
