@@ -98,3 +98,33 @@ describe('buildCreate — caps and targets', () => {
     expect(r.ok && r.create.stopOnFailure).toBe(true)
   })
 })
+
+describe('buildCreate — model', () => {
+  it('carries an explicit model into the launch session', () => {
+    const t = unwrap(buildCreate(draft({ targetKind: 'launch', folder: '/repo', model: 'claude-haiku-4-5' }), NOW))
+      .target as { session: { model?: string } }
+    expect(t.session.model).toBe('claude-haiku-4-5')
+  })
+
+  it('omits the model entirely when left blank, rather than sending an empty one', () => {
+    // Blank means "whatever the tool would pick", which IS the absent-model
+    // behaviour; sending '' would look like a deliberate choice downstream.
+    const t = unwrap(buildCreate(draft({ targetKind: 'launch', folder: '/repo', model: '   ' }), NOW))
+      .target as { session: { model?: string } }
+    expect('model' in t.session).toBe(false)
+  })
+
+  it('trims a pasted model id', () => {
+    const t = unwrap(buildCreate(draft({ targetKind: 'launch', folder: '/repo', model: ' claude-opus-5 ' }), NOW))
+      .target as { session: { model?: string } }
+    expect(t.session.model).toBe('claude-opus-5')
+  })
+
+  it('never puts a model on a conversation target, which cannot use one', () => {
+    // An existing session already has its model; a resume drops model args by
+    // design (session.ts), so offering one there would be a lie.
+    const r = buildCreate(draft({ targetKind: 'conversation', model: 'claude-opus-5' }), NOW)
+    expect(r.ok && r.create.target.kind).toBe('conversation')
+    expect(JSON.stringify(r.ok && r.create.target)).not.toContain('claude-opus-5')
+  })
+})

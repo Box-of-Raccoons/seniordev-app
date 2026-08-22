@@ -232,6 +232,28 @@ between a typo and an unattended agent run: a sub-minute interval, a launch with
 no folder (an agent CLI would sit on its trust-this-folder gate and swallow the
 prompt), a time that is not a time.
 
+### Model, for a scheduled launch
+
+A scheduled launch may name its own model, so a routine job (checking mail,
+polling a build) need not burn whatever the default happens to be. The field
+appears only for "a new session": an existing conversation already has its model,
+and a resume drops `modelArgs` by design (`terminal/session.ts`), so offering the
+choice there would be a lie.
+
+The app had no per-launch model override before this. Model was resolved purely
+from config: prompt frontmatter, then the tool's `defaultModel`, then nothing.
+`buildInteractiveLaunch` already accepted a model and turned it into argv through
+each tool's `modelArgs`; nothing fed it except a prompt. A schedule now can, and
+**its choice wins over the prompt's declared model**, being the more specific of
+the two and authored deliberately for this run.
+
+The control is a text input with a `<datalist>`, not a dropdown. Suggestions come
+from a new optional `models: [...]` per tool in `config.yaml`, which is purely a
+convenience list: nothing validates against it, so a model id newer than the
+config stays usable the day it ships, and the field works before any config edit.
+Blank omits the model entirely rather than sending an empty one, since blank
+already means exactly the absent-model behaviour.
+
 ### Considered and not built
 
 **A Schedule sibling to Launch in the Composer.** The original plan; dropped

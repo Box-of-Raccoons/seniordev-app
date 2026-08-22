@@ -22,6 +22,9 @@ export interface SpawnTerminalRequest {
   cols: number
   rows: number
   prompt?: { name?: string; text?: string }
+  // An explicit per-launch model, which WINS over the prompt's declared model.
+  // The schedule's choice is the most specific and was authored deliberately.
+  model?: string
   resume?: { sessionId: string }
   // S5 worktree isolation. When the composer's "run in a new worktree" toggle is
   // on, the worktree is created pre-flight (worktree:create) and its path arrives
@@ -78,7 +81,10 @@ export const RECENT = { list: 'recent:list', record: 'recent:record' } as const
 export const CLIPBOARD = { readText: 'clipboard:readText', writeText: 'clipboard:writeText' } as const
 // Agent CLI tools offered in the New-tab menu (claude, codex, …) — the default
 // tool plus any others whose command resolves on PATH. Returns tool names.
-export const TOOLS = { list: 'tools:list' } as const
+// `models` returns the model ids suggested per tool where a launch can choose
+// one (the schedules form), keyed by tool name. Suggestions only: a model absent
+// from the list is still accepted, so an id newer than the config stays usable.
+export const TOOLS = { list: 'tools:list', models: 'tools:models' } as const
 
 // Resolved workspace-layout settings the renderer needs (S2). Read-only scalars
 // derived from config; the renderer re-fetches on CONFIG.changed.
@@ -218,6 +224,11 @@ export interface StartupSession {
   promptName?: string
   promptText?: string
   tool?: string
+  // An explicit model for this launch, overriding what the prompt or the tool
+  // would otherwise resolve to. Absent ⇒ unchanged behaviour (prompt frontmatter,
+  // then the tool's defaultModel, then nothing). Only meaningful for a launch: a
+  // resume reconnects to an existing session and drops model args by design.
+  model?: string
   // Working directory for the session (--folder). Becomes the tab's cwdOverride,
   // so the agent spawns here instead of the home-dir fallback — which matters
   // because an agent CLI shows a "trust this folder?" gate in an untrusted dir,

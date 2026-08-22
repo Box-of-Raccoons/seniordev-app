@@ -379,7 +379,7 @@ async function startScheduledResume(conversationId: string, prompt: string): Pro
 }
 
 function startStartupSession(
-  s: { mode: 'interactive' | 'yolo'; promptName?: string; promptText?: string; tool?: string; folder?: string },
+  s: { mode: 'interactive' | 'yolo'; promptName?: string; promptText?: string; tool?: string; folder?: string; model?: string },
   ticketKey?: string
 ): void {
   const prompt = s.promptName ? { name: s.promptName } : s.promptText ? { text: s.promptText } : undefined
@@ -389,6 +389,9 @@ function startStartupSession(
     kind: s.mode === 'yolo' ? 'yolo' : 'terminal',
     prompt,
     tool: s.tool,
+    // A scheduled launch may name its own model, so a routine job need not burn
+    // the default one. Absent leaves prompt/tool resolution exactly as it was.
+    model: s.model,
     ticketKey,
     // When a role prompt is named, promptText loses the `prompt` slot above —
     // carry it as the input so it still lands in the role's {{request}}.
@@ -562,6 +565,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
             :ticket-key="entry.tab.ticketKey ?? null"
             :input="entry.tab.input"
             :prompt="entry.tab.prompt"
+            :model="entry.tab.model"
             :tool="entry.tab.tool"
             @exited="onTabExited(entry.tab, $event)"
             @resume="resumeYolo(entry.tab, $event)"
@@ -583,6 +587,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
             :ticket-key="entry.tab.ticketKey ?? null"
             :input="entry.tab.input"
             :prompt="entry.tab.prompt"
+            :model="entry.tab.model"
             :tool="entry.tab.tool"
             :resume="entry.tab.resume"
             :cwd-override="entry.tab.cwdOverride"

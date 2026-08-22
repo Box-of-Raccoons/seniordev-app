@@ -26,6 +26,7 @@ const api = {
   spawnShell: (req: SpawnShellRequest): Promise<SpawnResult> => ipcRenderer.invoke(TERM.spawnShell, req),
   listShells: (): Promise<ShellsInfo> => ipcRenderer.invoke(SHELLS.list),
   listTools: (): Promise<string[]> => ipcRenderer.invoke(TOOLS.list),
+  listToolModels: (): Promise<Record<string, string[]>> => ipcRenderer.invoke(TOOLS.models),
   getWorkspaceSettings: (): Promise<WorkspaceSettings> => ipcRenderer.invoke(WORKSPACE.getSettings),
   saveWorkspace: (layout: WorkspaceLayout): void => ipcRenderer.send(WORKSPACE.save, layout),
   // S4 Projects sidebar: read the persisted projects/conversations + sidebar

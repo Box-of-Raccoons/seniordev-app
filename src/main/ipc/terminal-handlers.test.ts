@@ -227,3 +227,59 @@ describe('registerTerminalIpc', () => {
     )
   })
 })
+
+// Per-launch model (scheduled launches choose one so a routine job need not run
+// on the default). The precedence lives in this handler, so it is asserted here.
+describe('registerTerminalIpc — per-launch model', () => {
+  const modelCfg = {
+    ...cfg,
+    cliTools: {
+      claude: {
+        command: 'claude',
+        interactiveArgs: [],
+        promptDelivery: 'stdin',
+        modelArgs: ['--model', '{{model}}'],
+        defaultModel: 'claude-opus-5'
+      }
+    }
+  } as unknown as Config
+  const modelSource = { ...source, config: modelCfg }
+
+  async function spawnWith(req: Record<string, unknown>): Promise<string[]> {
+    let args: string[] = []
+    const spawner: PtySpawner = (opts) => {
+      args = opts.args
+      return fakePty() as unknown as PtyProcess
+    }
+    registerTerminalIpc(() => undefined, spawner, { source: modelSource })
+    await handleMap.get('pty:spawn')!({}, { id: 'a', cols: 80, rows: 24, ...req })
+    return args
+  }
+
+  it('puts an explicit model on argv', async () => {
+    expect(await spawnWith({ model: 'claude-haiku-4-5' })).toEqual(['--model', 'claude-haiku-4-5'])
+  })
+
+  it('falls back to the tool default when no model is named', async () => {
+    expect(await spawnWith({})).toEqual(['--model', 'claude-opus-5'])
+  })
+
+  it('lets an explicit model WIN over the model a prompt declares', async () => {
+    // The schedule's choice is the more specific of the two and was authored
+    // deliberately for this run, so it beats the role template's declaration.
+    const withPromptModel = {
+      ...modelSource,
+      prompts: [{ name: 'p', description: '', body: 'do it', model: 'claude-opus-5' }]
+    }
+    let args: string[] = []
+    const spawner: PtySpawner = (opts) => {
+      args = opts.args
+      return fakePty() as unknown as PtyProcess
+    }
+    registerTerminalIpc(() => undefined, spawner, { source: withPromptModel })
+    await handleMap.get('pty:spawn')!({}, {
+      id: 'a', cols: 80, rows: 24, prompt: { name: 'p' }, model: 'claude-haiku-4-5'
+    })
+    expect(args).toEqual(['--model', 'claude-haiku-4-5'])
+  })
+})

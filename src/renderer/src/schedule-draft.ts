@@ -13,6 +13,7 @@ export interface ScheduleDraft {
   conversationId: string
   folder: string
   tool: string
+  model: string
   yolo: boolean
   prompt: string
   whenKind: WhenKind
@@ -30,6 +31,7 @@ export function emptyDraft(): ScheduleDraft {
     conversationId: '',
     folder: '',
     tool: '',
+    model: '',
     yolo: false,
     prompt: '',
     whenKind: 'daily',
@@ -82,7 +84,10 @@ export function buildCreate(draft: ScheduleDraft, nowMs: number): DraftResult {
         mode: draft.yolo ? 'yolo' : 'interactive',
         folder,
         promptText: prompt,
-        ...(draft.tool ? { tool: draft.tool } : {})
+        ...(draft.tool ? { tool: draft.tool } : {}),
+        // Blank means "whatever this tool would pick anyway", which is exactly
+        // the absent-model behaviour, so it is omitted rather than sent empty.
+        ...(draft.model.trim() ? { model: draft.model.trim() } : {})
       }
     }
   }

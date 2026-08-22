@@ -48,6 +48,7 @@ beforeEach(() => {
     onSchedulesChanged: vi.fn(() => () => {}),
     createSchedule,
     pickFolder: vi.fn().mockResolvedValue('/picked/repo'),
+    listToolModels: vi.fn().mockResolvedValue({ claude: ['claude-fable-5', 'claude-haiku-4-5'], codex: ['gpt-5'] }),
     listConversations: vi
       .fn()
       .mockResolvedValue([{ id: 'c1', title: 'GG-14 login fix', archivedAt: null }])
@@ -176,5 +177,58 @@ describe('SchedulesModal — creating one', () => {
     await w.findAll('button').find((b) => b.text() === 'Browse…')!.trigger('click')
     await flushPromises()
     expect((w.find('input[type=text]').element as HTMLInputElement).value).toBe('/picked/repo')
+  })
+})
+
+describe('SchedulesModal — model for a new session', () => {
+  async function openLaunchForm() {
+    const w = mountModal()
+    await flushPromises()
+    await w.findAll('button').find((b) => b.text() === 'New schedule…')!.trigger('click')
+    await w.find('select').setValue('launch')
+    return w
+  }
+
+  it('offers a model field only for a new session, never for an existing one', async () => {
+    // An existing session already has its model, and a resume drops model args by
+    // design, so offering the choice there would be a lie.
+    const w = mountModal()
+    await flushPromises()
+    await w.findAll('button').find((b) => b.text() === 'New schedule…')!.trigger('click')
+    expect(w.find('input[list="sched-models"]').exists()).toBe(false)
+    await w.find('select').setValue('launch')
+    expect(w.find('input[list="sched-models"]').exists()).toBe(true)
+  })
+
+  it('suggests every configured model, while still accepting a typed one', async () => {
+    const w = await openLaunchForm()
+    const options = w.findAll('#sched-models option').map((o) => o.attributes('value'))
+    expect(options).toContain('claude-fable-5')
+    expect(options).toContain('gpt-5')
+    // It is an input, not a select: an id newer than the config must still work.
+    expect(w.find('input[list="sched-models"]').element.tagName).toBe('INPUT')
+  })
+
+  it('sends the chosen model with the schedule', async () => {
+    const w = await openLaunchForm()
+    await w.find('input[type=text]').setValue('/repo')
+    await w.find('input[list="sched-models"]').setValue('claude-haiku-4-5')
+    await w.find('textarea').setValue('check my email')
+    await w.find('form').trigger('submit')
+    await flushPromises()
+    expect(createSchedule).toHaveBeenCalledTimes(1)
+    expect(createSchedule.mock.calls[0][0].target.session.model).toBe('claude-haiku-4-5')
+  })
+
+  it('says plainly that blank means the tool decides', async () => {
+    const w = await openLaunchForm()
+    expect(w.text()).toContain("Leave blank to use whatever this tool would pick")
+  })
+
+  it('still works when config lists no models at all', async () => {
+    ;(window.api as unknown as { listToolModels: unknown }).listToolModels = vi.fn().mockResolvedValue({})
+    const w = await openLaunchForm()
+    expect(w.find('input[list="sched-models"]').exists()).toBe(true)
+    expect(w.findAll('#sched-models option')).toHaveLength(0)
   })
 })

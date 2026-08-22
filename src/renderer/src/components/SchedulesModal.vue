@@ -10,6 +10,9 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 const schedules = ref<Schedule[]>([])
 const conversations = ref<ConversationInfo[]>([])
+// Model suggestions per tool, from config. Empty is fine: the field is a text
+// input either way, so a tool that lists none still accepts a typed id.
+const toolModels = ref<Record<string, string[]>>({})
 // Re-read on a tick so "in 20m" does not sit stale while the modal is open; the
 // firing itself is main's, this only keeps the countdown honest.
 const now = ref(Date.now())
@@ -30,6 +33,11 @@ onMounted(async () => {
     conversations.value = await window.api.listConversations()
   } catch {
     conversations.value = []
+  }
+  try {
+    toolModels.value = (await window.api.listToolModels?.()) ?? {}
+  } catch {
+    toolModels.value = {}
   }
   offChanged = window.api.onSchedulesChanged(() => void refresh())
   clockTimer = setInterval(() => (now.value = Date.now()), 15_000)
@@ -64,6 +72,14 @@ function startAdding(): void {
   formError.value = ''
   adding.value = true
 }
+
+// Suggestions for whichever tool this schedule will launch. A blank tool means
+// the app default, whose name the renderer does not know, so every configured
+// tool's ids are offered rather than none.
+const modelSuggestions = computed(() => {
+  const forTool = draft.value.tool ? toolModels.value[draft.value.tool] : undefined
+  return forTool ?? [...new Set(Object.values(toolModels.value).flat())]
+})
 
 async function pickFolder(): Promise<void> {
   const folder = await window.api.pickFolder()
@@ -119,6 +135,25 @@ async function remove(s: Schedule): Promise<void> {
               <button type="button" class="sched__btn" @click="pickFolder">Browse…</button>
             </div>
           </div>
+          <label class="form__row">
+            <span>Model</span>
+            <span class="form__model">
+              <input
+                v-model="draft.model"
+                type="text"
+                list="sched-models"
+                placeholder="the tool's default"
+                aria-describedby="sched-model-help"
+              />
+              <datalist id="sched-models">
+                <option v-for="m in modelSuggestions" :key="m" :value="m" />
+              </datalist>
+            </span>
+          </label>
+          <p id="sched-model-help" class="form__help">
+            Leave blank to use whatever this tool would pick. A routine job need not run on your default model.
+          </p>
+
           <label class="form__row">
             <span>Mode</span>
             <!-- Named explicitly: an unattended YOLO run on a timer is the most
@@ -222,6 +257,9 @@ async function remove(s: Schedule): Promise<void> {
 .form__folder input { flex: 1; }
 .form__check { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); font-size: 13px; }
 .form__error { margin: 0; color: var(--amber); font-size: 13px; }
+.form__model { display: flex; }
+.form__model input { flex: 1; }
+.form__help { margin: -4px 0 0 106px; color: var(--ink-muted); font-size: 12px; }
 .form__actions { display: flex; justify-content: flex-end; gap: 6px; }
 .sched__btn--go { border-color: var(--teal); color: var(--teal); }
 .sched__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }

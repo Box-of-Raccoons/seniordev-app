@@ -17,6 +17,11 @@ export const CliToolSchema = z.object({
   // Fallback model when a prompt doesn't declare one. Empty/absent ⇒ append
   // nothing (today's behavior — let the CLI pick its own default).
   defaultModel: z.string().optional(),
+  // Model ids offered as SUGGESTIONS where a model can be chosen per launch (the
+  // schedules form). Purely a convenience list: nothing validates against it and
+  // a model absent from it is still accepted, so an id this app has never heard
+  // of stays usable the day it ships.
+  models: z.array(z.string()).default([]),
   // Wrap a typed-in prompt in bracketed-paste markers (ESC[200~ … ESC[201~) so a
   // multi-line prompt lands as one composer block instead of submitting per line.
   // Set for TUIs that HONOR bracketed paste (codex); must stay off for TUIs that

@@ -19,6 +19,9 @@ export interface LiveTab {
   // header; the folder itself rides in prefill.folder.
   lockedProject?: string
   prompt?: { name?: string; text?: string }
+  // An explicit model for this launch (a scheduled launch that named one).
+  // Absent ⇒ the prompt's or the tool's model resolves as before.
+  model?: string
   input?: string
   ticketKey?: string
   shell?: string

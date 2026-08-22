@@ -79,7 +79,10 @@ export function registerTerminalIpc(
       // tool without sessionIdArgs (codex) ignores it inside buildInteractiveLaunch.
       const launch = buildInteractiveLaunch(
         config,
-        { ...req, sessionId: req.conversationId, model: expanded?.model },
+        // req.model is an explicit per-launch choice (a scheduled launch that
+        // named one) and wins over the prompt's declared model: it is the more
+        // specific of the two and was authored deliberately for this run.
+        { ...req, sessionId: req.conversationId, model: req.model ?? expanded?.model },
         expanded?.prompt,
         deps.resolveCommand
       )
