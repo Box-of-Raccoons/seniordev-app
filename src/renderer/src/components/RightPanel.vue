@@ -637,8 +637,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
   border: 1px solid var(--hairline); border-radius: var(--radius-sm);
 }
 .term-tab--active { background: var(--surface-2); color: var(--ink); }
-.term-tab--dead .term-tab__sched { color: var(--teal); font-size: 11px; flex: 0 0 auto; }
-.term-tab__label { color: var(--ink-muted); text-decoration: line-through; }
+.term-tab--dead .term-tab__label { color: var(--ink-muted); text-decoration: line-through; }
 .term-tab__status { display: inline-flex; align-items: center; padding-left: 9px; }
 .term-tab__sched { color: var(--teal); font-size: 11px; flex: 0 0 auto; }
 .term-tab__label {
