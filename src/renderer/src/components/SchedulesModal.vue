@@ -151,7 +151,7 @@ async function remove(s: Schedule): Promise<void> {
             </span>
           </label>
           <p id="sched-model-help" class="form__help">
-            Leave blank to use whatever this tool would pick. A routine job need not run on your default model.
+            Leave blank to use whatever this tool would pick.
           </p>
 
           <label class="form__row">
