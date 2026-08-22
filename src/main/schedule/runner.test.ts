@@ -28,8 +28,8 @@ function harness(opts: {
 
   const executor: ScheduleExecutor = {
     injectIntoTab: (ptyId, prompt) => void injected.push({ ptyId, prompt }),
-    resumeConversation: (conversationId, prompt) => {
-      resumed.push({ conversationId, prompt })
+    resumeConversation: (schedule, conversationId) => {
+      resumed.push({ conversationId, prompt: schedule.prompt })
       return opts.resume ?? { ok: true }
     },
     launch: (s) => void launched.push(s)

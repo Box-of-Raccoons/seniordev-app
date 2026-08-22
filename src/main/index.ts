@@ -31,13 +31,14 @@ import { parseDeepLink, findDeepLinkArg } from './deeplink/parse'
 import { resolveSecondInstance } from './startup/resolve-launch'
 import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery, WarmDelivery } from './deeplink/delivery'
-import { DEEPLINK, STARTUP, STATUS, WORKSPACE, SIDEBAR, SCHEDULES, type WorkspaceLayout, type WarmStartup, type ScheduledResume } from '../shared/ipc'
+import { DEEPLINK, STARTUP, STATUS, WORKSPACE, SIDEBAR, SCHEDULES, type WorkspaceLayout, type WarmStartup, type ScheduledResume, type ScheduleResumeDropped } from '../shared/ipc'
 import { registerSidebarIpc } from './ipc/sidebar-handlers'
 import { registerScheduleIpc } from './ipc/schedule-handlers'
 import { registerWorktreeIpc } from './ipc/worktree-handlers'
 import { nodeGitRunner } from './git/node-git-runner'
 import { createSessionActivity } from './terminal/activity'
 import { createPromptDelivery } from './terminal/prompt-delivery'
+import { deliveryOptionsFor } from './terminal/delivery-options'
 import { createSchedulesStore, type SchedulesStore } from './schedule/schedules-store'
 import { createScheduleRunner, type ScheduleRunner } from './schedule/runner'
 import { showScheduleNotice } from './schedule/notify'
@@ -359,20 +360,31 @@ if (!gotLock) {
       executor: {
         injectIntoTab: (ptyId, prompt, conversationId) => {
           // Bracketed paste is per tool (codex yes, claude no — the raw ESC would
-          // clear its composer), and the tool is on the conversation record.
-          const tool = persistence?.conversations.get(conversationId)?.tool ?? store.config?.defaultTool ?? 'claude'
+          // clear its composer), resolved through the same helper the spawn path
+          // uses so the two write paths cannot disagree. No config throws rather
+          // than guessing: fire() records the throw as a failed firing, which
+          // notifies, instead of typing an unframed multi-line prompt into codex.
+          const { bracketedPaste } = deliveryOptionsFor(
+            persistence?.conversations.get(conversationId)?.tool,
+            store.config ?? null
+          )
           // deliverNow, not deliver: the hub has just reported this tab idle, so a
           // readiness wait would only add the 15s valve and a window in which the
           // session could reach an approval prompt and be typed into anyway.
-          promptDelivery.deliverNow(ptyId, prompt, store.config?.cliTools[tool]?.bracketedPaste ?? false)
+          promptDelivery.deliverNow(ptyId, prompt, bracketedPaste)
         },
-        resumeConversation: (conversationId, prompt) => {
+        resumeConversation: (schedule, conversationId) => {
           const conv = persistence?.conversations.get(conversationId)
           if (!conv) return { ok: false, reason: 'the conversation is no longer stored' }
           // Asked fresh, from the agent's own transcript, exactly as the sidebar
           // does: a stored id is not proof there is anything to resume.
           if (!isConversationResumable(conv)) return { ok: false, reason: 'the agent has no transcript to resume' }
-          scheduleResumes.deliver({ conversationId, prompt })
+          scheduleResumes.deliver({
+            conversationId,
+            prompt: schedule.prompt,
+            scheduleId: schedule.id,
+            title: schedule.title
+          })
           return { ok: true }
         },
         launch: (schedule) => {
@@ -397,6 +409,13 @@ if (!gotLock) {
     // was closed. Nothing fires before this point, so a schedule cannot race the
     // renderer's readiness: a delivery that needs a tab queues until it signals.
     registerScheduleIpc({ store: schedulesStore, getSender, runner: scheduleRunner })
+    // A resume push the renderer could not complete. The stored record already
+    // says `fired` — main handed the resume off and the runner had no way to hear
+    // back — so this notice is the user-visible correction, not a rewrite of the
+    // outcome. A full main↔renderer ack protocol was deliberately deferred.
+    ipcMain.on(SCHEDULES.resumeDropped, (_e, payload: ScheduleResumeDropped) => {
+      showScheduleNotice({ title: payload.title, outcome: 'skipped', reason: payload.reason })
+    })
     scheduleRunner.start()
     registerAppIpc()
     // Auto-update: downloads in the background, installs on quit. Inert in an

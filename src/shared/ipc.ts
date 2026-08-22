@@ -311,6 +311,17 @@ export interface ScheduleCreate {
 export interface ScheduledResume {
   conversationId: string
   prompt: string
+  // The schedule this push came from. Carried so a resume the renderer cannot
+  // complete can name itself in the correction notice below.
+  scheduleId: string
+  title: string
+}
+// The renderer could not open the tab a scheduled resume asked for, so the
+// prompt was never delivered. Main has already recorded the firing, so this is
+// the correction the user sees.
+export interface ScheduleResumeDropped {
+  title: string
+  reason: string
 }
 export const SCHEDULES = {
   list: 'schedules:list',
@@ -318,7 +329,8 @@ export const SCHEDULES = {
   setEnabled: 'schedules:setEnabled',
   remove: 'schedules:remove',
   changed: 'schedules:changed', // main → renderer: the list moved, re-read it
-  resume: 'schedules:resume' // main → renderer: reopen this conversation and seed it
+  resume: 'schedules:resume', // main → renderer: reopen this conversation and seed it
+  resumeDropped: 'schedules:resumeDropped' // renderer → main: that resume never landed
 } as const
 export interface StartupOptions {
   tickets: string[]

@@ -167,7 +167,7 @@ onMounted(async () => {
   // deepLinkReady(), so a throw here would stop readiness ever being signalled
   // and take deep links down with it.
   offScheduledResume = window.api.onScheduledResume?.((r) =>
-    void rightPanel.value?.startScheduledResume(r.conversationId, r.prompt)
+    void rightPanel.value?.startScheduledResume(r)
   ) ?? null
   // Only now can main push deep links — anything sent earlier would be lost.
   window.api.deepLinkReady()

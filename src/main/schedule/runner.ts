@@ -22,9 +22,11 @@ export interface ScheduleExecutor {
   // The conversation comes along because delivery differs per tool: codex takes a
   // bracketed paste, claude must not (the raw ESC clears its composer).
   injectIntoTab(ptyId: string, prompt: string, conversationId: string): void
-  // Reopen a closed conversation with its resume id and seed the prompt.
+  // Reopen a closed conversation with its resume id and seed the prompt. The
+  // whole schedule comes along: the push crosses to the renderer, which can only
+  // report a resume it failed to open by naming the schedule back.
   // Rejects with a reason when the conversation cannot be resumed.
-  resumeConversation(conversationId: string, prompt: string): { ok: true } | { ok: false; reason: string }
+  resumeConversation(schedule: Schedule, conversationId: string): { ok: true } | { ok: false; reason: string }
   // Start a fresh session from a stored launch spec.
   launch(schedule: Schedule): void
 }
@@ -94,7 +96,7 @@ export function createScheduleRunner(deps: RunnerDeps): ScheduleRunner {
 
     const ptyId = deps.ptyForConversation(conversationId)
     if (ptyId === undefined) {
-      const res = deps.executor.resumeConversation(conversationId, schedule.prompt)
+      const res = deps.executor.resumeConversation(schedule, conversationId)
       return res.ok ? FIRED : { outcome: 'skipped', reason: res.reason }
     }
 

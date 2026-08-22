@@ -6,7 +6,7 @@ import type { WorktreeInfo, WorktreeCreateRequest, WorktreeCreateResult, Worktre
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
 import type { StatusUpdateEvent } from '../shared/ipc'
 import { SUBAGENTS, SCHEDULES } from '../shared/ipc'
-import type { ScheduledResume } from '../shared/ipc'
+import type { ScheduledResume, ScheduleResumeDropped } from '../shared/ipc'
 import type { Schedule, ScheduleCreate } from '../shared/ipc'
 import type { SubagentSpawnEvent, SubagentActivityEvent, SubagentDoneEvent } from '../shared/ipc'
 import type { UpdateInfo } from '../shared/ipc'
@@ -137,6 +137,10 @@ const api = {
     ipcRenderer.on(SCHEDULES.resume, listener)
     return () => ipcRenderer.off(SCHEDULES.resume, listener)
   },
+  // The renderer could not open the tab that resume asked for, so the prompt was
+  // never delivered; main turns this into the correcting notice.
+  scheduleResumeDropped: (payload: ScheduleResumeDropped): void =>
+    ipcRenderer.send(SCHEDULES.resumeDropped, payload),
   onStartupSession: (cb: (w: WarmStartup) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: WarmStartup): void => cb(payload)
     ipcRenderer.on(STARTUP.session, listener)

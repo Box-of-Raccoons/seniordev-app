@@ -246,6 +246,17 @@ describe('usePanes S4 sidebar support', () => {
     expect(p.findByConversationId('conv-missing')).toBeNull()
   })
 
+  it('findLiveByConversationId ignores a tab whose process has exited', () => {
+    // The tab stays on screen after its agent exits; a scheduled resume has to
+    // see past it and reopen the conversation rather than treat it as live.
+    const p = usePanes()
+    const a = p.addTab({ ...composer, conversationId: 'conv-a' })
+    expect(p.findLiveByConversationId('conv-a')).toEqual({ ptyId: a.ptyId, paneId: p.panes[0].id })
+    p.markExited(a.ptyId)
+    expect(p.findLiveByConversationId('conv-a')).toBeNull()
+    expect(p.findByConversationId('conv-a')).not.toBeNull() // unchanged for its own callers
+  })
+
   it('leftmostPaneId tracks the first column as panes are added on the left', () => {
     const p = usePanes()
     const a = p.addTab(composer)

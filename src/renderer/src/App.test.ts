@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import App from './App.vue'
-import type { DeepLink, MenuAction, WarmStartup } from '../../shared/ipc'
+import type { DeepLink, MenuAction, WarmStartup, ScheduledResume } from '../../shared/ipc'
 
 // Unmount every mounted App after each test. App adds a window-level keydown
 // listener (capture phase) for the pane-move shortcut; without auto-unmount those
@@ -14,7 +14,7 @@ let startupSessionCb: (w: WarmStartup) => void
 
 const rightStartStartup = vi.fn()
 const rightStartScheduledResume = vi.fn()
-let scheduledResumeCb: (r: { conversationId: string; prompt: string }) => void
+let scheduledResumeCb: (r: ScheduledResume) => void
 const rightCloseAll = vi.fn()
 const rightNewTab = vi.fn()
 const rightOpenComposer = vi.fn()
@@ -275,9 +275,12 @@ describe('App scheduled firing flow', () => {
     mountApp()
     await flushPromises()
     rightStartScheduledResume.mockClear()
-    scheduledResumeCb({ conversationId: 'c1', prompt: 'continue' })
+    const resume: ScheduledResume = { conversationId: 'c1', prompt: 'continue', scheduleId: 's1', title: 'nightly' }
+    scheduledResumeCb(resume)
     await flushPromises()
-    expect(rightStartScheduledResume).toHaveBeenCalledWith('c1', 'continue')
+    // The whole payload rides through: RightPanel names the schedule back to main
+    // when it cannot open the tab.
+    expect(rightStartScheduledResume).toHaveBeenCalledWith(resume)
   })
 
   it('opens the schedules modal from the menu', async () => {
