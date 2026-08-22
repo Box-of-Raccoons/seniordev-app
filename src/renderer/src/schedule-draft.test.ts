@@ -76,14 +76,34 @@ describe('buildCreate — triggers', () => {
       .trigger as { notBeforeMs: number }
     expect(gated.notBeforeMs).toBe(new Date(2026, 7, 21, 5, 0, 0, 0).getTime())
   })
+
+  it('drops a not-before whose time has already gone today, rather than idling until tomorrow', () => {
+    // An earliest-start is a constraint, not a fire-at. Resolving 00:30 to
+    // TOMORROW's 00:30 would leave nextDueAfter sitting on that base for a day:
+    // the schedule reads as active in the list and does nothing.
+    const gated = unwrap(buildCreate(draft({ whenKind: 'every', everyMinutes: 30, notBefore: '00:30' }), NOW))
+      .trigger as { notBeforeMs: number | null }
+    expect(gated.notBeforeMs).toBeNull()
+  })
 })
 
 describe('buildCreate — caps and targets', () => {
   it('drops the cap for a one-shot and keeps one for anything recurring', () => {
     expect(unwrap(buildCreate(draft({ whenKind: 'once' }), NOW)).maxFirings).toBeNull()
     expect(unwrap(buildCreate(draft({ whenKind: 'daily', maxFirings: 5 }), NOW)).maxFirings).toBe(5)
-    // A recurring schedule can never end up uncapped, whatever the field says.
-    expect(unwrap(buildCreate(draft({ whenKind: 'daily', maxFirings: 0 }), NOW)).maxFirings).toBe(10)
+  })
+
+  it('refuses a recurring schedule with no usable cap instead of picking one', () => {
+    // Substituting a number here meant the cap depended on which layer caught the
+    // bad value: the form's guess, or the store's. The form can ask, so it asks.
+    const error = 'A recurring schedule needs a firing cap of at least 1.'
+    expect(buildCreate(draft({ whenKind: 'daily', maxFirings: 0 }), NOW)).toEqual({ ok: false, error })
+    expect(buildCreate(draft({ whenKind: 'every', everyMinutes: 30, maxFirings: Number.NaN }), NOW)).toEqual({
+      ok: false,
+      error
+    })
+    // A one-shot has no cap to need, so the same field is ignored there.
+    expect(unwrap(buildCreate(draft({ whenKind: 'once', maxFirings: 0 }), NOW)).maxFirings).toBeNull()
   })
 
   it('carries the yolo flag and the folder into the launch session', () => {

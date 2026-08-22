@@ -13,7 +13,7 @@ import type { UseWorkspace } from '../composables/useWorkspace'
 import type { UseSubagents } from '../composables/useSubagents'
 import type { UseScheduleBadges } from '../composables/useScheduleBadges'
 import { describeNextRun } from '../schedule-format'
-import type { ConversationInfo } from '../../../shared/ipc'
+import type { ConversationInfo, ScheduledResume } from '../../../shared/ipc'
 import { shouldAutoClose } from '../auto-close'
 import {
   CONVERSATION_DND_TYPE,
@@ -362,20 +362,30 @@ let startupSeq = 0
 // A scheduled firing whose conversation has no live tab: reopen it and seed the
 // prompt the schedule carries. Main has already confirmed the agent has a real
 // transcript to resume (session-resumable), so this only has to find the record
-// and build the tab. A conversation that has since gone is dropped quietly — the
-// schedule's own record already says why it could not run.
-async function startScheduledResume(conversationId: string, prompt: string): Promise<void> {
-  const live = panes.findByConversationId(conversationId)
-  if (live) return // it came back to life between the decision and the push
+// and build the tab. Main recorded the firing as `fired` before pushing, so every
+// path that cannot get there reports back rather than returning quietly: an
+// undelivered prompt the schedule claims it ran is the failure to avoid.
+async function startScheduledResume(r: ScheduledResume): Promise<void> {
+  const dropped = (reason: string): void => window.api.scheduleResumeDropped({ title: r.title, reason })
+  // Live-only: an exited tab still on screen holds the conversationId but has no
+  // process to type into, and must not block the resume.
+  if (panes.findLiveByConversationId(r.conversationId)) {
+    dropped('the conversation reopened before the prompt arrived, so it was not delivered')
+    return
+  }
   let convs: ConversationInfo[]
   try {
     convs = await window.api.listConversations()
   } catch {
+    dropped('the conversation list could not be read')
     return
   }
-  const conv = convs.find((c) => c.id === conversationId)
-  if (!conv?.agentSessionId) return
-  panes.addTab(resumeTabSpec({ ...conv, agentSessionId: conv.agentSessionId }, prompt))
+  const conv = convs.find((c) => c.id === r.conversationId)
+  if (!conv?.agentSessionId) {
+    dropped('the conversation has no session id to resume')
+    return
+  }
+  panes.addTab(resumeTabSpec({ ...conv, agentSessionId: conv.agentSessionId }, r.prompt))
 }
 
 function startStartupSession(

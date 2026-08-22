@@ -2,6 +2,7 @@ import type { Config } from '../config/schema'
 import type { ResolvedCommand } from './resolve-command'
 import { resolveCwd } from './resolve'
 import { pickPromptModel, resolveModelArgs, type PromptModel } from '../config/model'
+import { deliveryOptionsFor } from './delivery-options'
 
 export interface Launch {
   file: string
@@ -88,7 +89,10 @@ export function buildInteractiveLaunch(
     args,
     cwd,
     stdinPrompt: deliverViaStdin ? expandedPrompt : undefined,
-    bracketedPaste: tool.bracketedPaste,
+    // Shared with the scheduled injection so the two write paths cannot disagree
+    // about framing. toolName is known-good here (the throw above), so the
+    // resolver's unknown-tool fallback is unreachable on this path.
+    bracketedPaste: deliveryOptionsFor(toolName, config).bracketedPaste,
     resolved
   }
 }

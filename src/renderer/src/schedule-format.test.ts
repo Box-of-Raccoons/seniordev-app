@@ -57,7 +57,14 @@ describe('describeNextRun', () => {
     expect(describeNextRun(schedule({ nextDueAt: now + 30_000 }), now)).toBe('in under a minute')
     expect(describeNextRun(schedule({ nextDueAt: now + 20 * MIN }), now)).toBe('in 20m')
     expect(describeNextRun(schedule({ nextDueAt: now + 4 * HOUR }), now)).toBe('in 4h')
-    expect(describeNextRun(schedule({ nextDueAt: at(5) + 24 * HOUR }), now)).toMatch(/^at \d\d:\d\d$/)
+    expect(describeNextRun(schedule({ nextDueAt: at(20) }), now)).toMatch(/^at \d\d:\d\d$/)
+  })
+
+  it('names the day once a clock time alone would be ambiguous', () => {
+    // "at 05:00" of WHICH day: an every-30m schedule gated behind a not-before
+    // can sit more than a day out, and the list read as if it ran this morning.
+    const now = at(1)
+    expect(describeNextRun(schedule({ nextDueAt: at(5) + 24 * HOUR }), now)).toMatch(/^on .+ at 05:00$/)
   })
 
   it('says due now for a slot already reached, and nothing for a disabled schedule', () => {

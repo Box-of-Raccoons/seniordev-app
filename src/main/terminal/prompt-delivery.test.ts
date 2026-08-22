@@ -84,3 +84,48 @@ describe('deliver — the launch path is unchanged', () => {
     expect(h.writes[0]).toEqual({ id: 'a', data: 'go' })
   })
 })
+
+describe('one prompt in flight per session', () => {
+  it('holds a second delivery until the first has submitted', () => {
+    // Two schedules aimed at the same conversation can come due on one tick.
+    // Unserialized their writes interleave into a single garbled prompt.
+    vi.useFakeTimers()
+    const h = harness()
+    h.delivery.deliverNow('a', 'first', false)
+    h.delivery.deliverNow('a', 'second', false)
+    expect(h.writes.map((w) => w.data)).toEqual(['first'])
+    vi.advanceTimersByTime(SUBMIT_DELAY_MS)
+    expect(h.writes.map((w) => w.data)).toEqual(['first', '\r', 'second'])
+    vi.advanceTimersByTime(SUBMIT_DELAY_MS)
+    expect(h.writes.map((w) => w.data)).toEqual(['first', '\r', 'second', '\r'])
+  })
+
+  it('drops the queue when the session is cancelled mid-delivery', () => {
+    // A killed pty must not receive the prompts still waiting their turn.
+    vi.useFakeTimers()
+    const h = harness()
+    h.delivery.deliverNow('a', 'first', false)
+    h.delivery.deliverNow('a', 'second', false)
+    h.delivery.cancel('a')
+    vi.advanceTimersByTime(SUBMIT_DELAY_MS * 5)
+    expect(h.writes.map((w) => w.data)).toEqual(['first'])
+  })
+
+  it('does not serialize across different sessions', () => {
+    vi.useFakeTimers()
+    const h = harness()
+    h.delivery.deliverNow('a', 'alpha', false)
+    h.delivery.deliverNow('b', 'beta', false)
+    expect(h.writes).toEqual([
+      { id: 'a', data: 'alpha' },
+      { id: 'b', data: 'beta' }
+    ])
+    vi.advanceTimersByTime(SUBMIT_DELAY_MS)
+    expect(h.writes).toEqual([
+      { id: 'a', data: 'alpha' },
+      { id: 'b', data: 'beta' },
+      { id: 'a', data: '\r' },
+      { id: 'b', data: '\r' }
+    ])
+  })
+})

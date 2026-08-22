@@ -7,6 +7,7 @@ import type { Schedule, ScheduleOutcome, ScheduleTrigger } from '../../shared/ip
 
 const MIN = 60_000
 const HOUR = 60 * MIN
+const DAY = 24 * HOUR
 
 // "every 30m", "daily at 05:00", "once, at 05:00". The trigger is the answer to
 // "when does this run", so it reads as a phrase rather than a field dump.
@@ -38,6 +39,11 @@ function clockTime(ms: number): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+// "Aug 22". Only used once a clock time alone would be ambiguous.
+function shortDate(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
 // When the next firing is, in the terms someone glancing at a list actually
 // wants: a countdown while it is close, a clock time once it is far enough away
 // that counting minutes stops being useful.
@@ -48,6 +54,9 @@ export function describeNextRun(schedule: Schedule, nowMs: number): string {
   if (delta < MIN) return 'in under a minute'
   if (delta < HOUR) return `in ${Math.round(delta / MIN)}m`
   if (delta < 12 * HOUR) return `in ${Math.round(delta / HOUR)}h`
+  // Past a day out, a bare clock time answers the wrong question: "at 05:00" of
+  // which day? The date only appears where it is load-bearing.
+  if (delta > DAY) return `on ${shortDate(schedule.nextDueAt)} at ${clockTime(schedule.nextDueAt)}`
   return `at ${clockTime(schedule.nextDueAt)}`
 }
 
