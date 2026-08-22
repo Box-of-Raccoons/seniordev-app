@@ -3,27 +3,19 @@ import { schedulesPath } from '../store/paths'
 import type { Schedule, ScheduleCreate, ScheduleOutcome, ScheduleTarget, ScheduleTrigger, StartupSession } from '../../shared/ipc'
 import type { ScheduleRunState } from './scheduler'
 import { nextDueAfter } from './scheduler'
+import { normaliseMaxFirings } from '../../shared/schedule'
 
 // The record itself is a wire type (shared/ipc.ts): the modal shows every field,
 // so it crosses the bridge whole. Re-exported here so main-side callers have one
 // import for the store and the shape it holds.
 export type { Schedule, ScheduleCreate, ScheduleTarget, ScheduleTrigger } from '../../shared/ipc'
+// The cap rule lives in shared/schedule.ts because the renderer's form has to
+// agree with it; re-exported for the same one-import reason as the types above.
+export { DEFAULT_MAX_FIRINGS } from '../../shared/schedule'
 
 export interface SchedulesDoc extends VersionedDoc {
   version: 1
   schedules: Schedule[]
-}
-
-// A recurring schedule with no cap is not a valid record, so the migrate and
-// create paths both force one rather than rejecting the schedule outright:
-// degrading to a bounded schedule is the safe direction, refusing to load one is
-// not. Roughly two days of a half-hourly schedule — long enough to be useful,
-// short enough that an abandoned schedule stops on its own.
-export const DEFAULT_MAX_FIRINGS = 100
-
-function normaliseMaxFirings(trigger: ScheduleTrigger, raw: unknown): number | null {
-  if (trigger.kind === 'once') return typeof raw === 'number' ? raw : null
-  return typeof raw === 'number' && raw > 0 ? raw : DEFAULT_MAX_FIRINGS
 }
 
 function parseTarget(raw: unknown): ScheduleTarget | null {

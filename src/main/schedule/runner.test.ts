@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createScheduleRunner, TICK_MS, type ScheduleExecutor } from './runner'
+import { DEFER_WINDOW_MS } from './scheduler'
 import { createSchedulesStore, type Schedule } from './schedules-store'
 import type { TabStatus } from '../../shared/ipc'
 
@@ -23,6 +24,7 @@ function harness(opts: {
   const launched: Schedule[] = []
   const resumed: Array<{ conversationId: string; prompt: string }> = []
   const notes: Array<{ outcome: string; reason: string }> = []
+  const changes: number[] = []
 
   const executor: ScheduleExecutor = {
     injectIntoTab: (ptyId, prompt) => void injected.push({ ptyId, prompt }),
@@ -41,6 +43,7 @@ function harness(opts: {
     statusOf: () => opts.status ?? 'idle',
     conversationIsLive: () => opts.conversationLive ?? true,
     notify: (_s, outcome, reason) => void notes.push({ outcome, reason }),
+    onChanged: () => void changes.push(clock),
     now: () => clock
   })
 
@@ -51,6 +54,7 @@ function harness(opts: {
     launched,
     resumed,
     notes,
+    changes,
     set clock(v: number) {
       clock = v
     },
@@ -138,6 +142,41 @@ describe('schedule runner — the fire decision', () => {
     const after = h.store.get(s.id)!
     expect(after.lastOutcome).toBe('skipped')
     expect(after.nextDueAt).toBeGreaterThan(slot)
+    h.cleanup()
+  })
+
+  it('says so when a deferral finally gives up, the one refusal that loses the run', () => {
+    // advance() turns an expired deferral into a skip internally, so a gate read
+    // from the runner's own pre-advance decision would stay silent here: the
+    // firing is gone for good and nothing would have said it.
+    const h = harness({ status: 'working' })
+    const s = convSchedule(h)
+    const slot = s.nextDueAt
+    h.clock = slot
+    h.runner.tick() // deferred: the slot is still held, so nothing to report
+    expect(h.notes).toEqual([])
+    h.clock = slot + DEFER_WINDOW_MS
+    h.runner.tick()
+    expect(h.notes).toEqual([{ outcome: 'skipped', reason: 'target stayed busy past the defer window' }])
+    h.cleanup()
+  })
+
+  it('does not rewrite or re-announce a deferral that changed nothing', () => {
+    // A busy target defers on every 15s tick for up to half an hour. After the
+    // first, each one resolves to the state already on disk.
+    const h = harness({ status: 'working' })
+    const s = convSchedule(h)
+    const slot = s.nextDueAt
+    const record = vi.spyOn(h.store, 'recordOutcome')
+    h.clock = slot
+    h.runner.tick()
+    expect(record).toHaveBeenCalledTimes(1) // the first deferral stamps deferredSinceAt
+    expect(h.changes).toHaveLength(1)
+    h.clock = slot + TICK_MS
+    h.runner.tick()
+    expect(record).toHaveBeenCalledTimes(1)
+    expect(h.changes).toHaveLength(1)
+    record.mockRestore()
     h.cleanup()
   })
 

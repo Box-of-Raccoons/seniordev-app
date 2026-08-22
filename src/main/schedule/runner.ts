@@ -1,4 +1,5 @@
 import { advance, dueNow, wasMissed } from './scheduler'
+import type { ScheduleRunState } from './scheduler'
 import type { SchedulesStore } from './schedules-store'
 import type { Schedule, ScheduleOutcome, TabStatus } from '../../shared/ipc'
 
@@ -41,7 +42,8 @@ export interface RunnerDeps {
   // stays silent or a recurring schedule becomes a notification stream.
   notify?: (schedule: Schedule, outcome: ScheduleOutcome, reason: string) => void
   // Any firing at all moved the stored list, so the UI must re-read it. Called
-  // once per tick that resolved something, never on an idle tick.
+  // once per tick that changed something, never on an idle tick and never on a
+  // repeat deferral, which resolves to the state already stored.
   onChanged?: () => void
   now?: () => number
 }
@@ -59,6 +61,22 @@ interface Resolution {
 }
 
 const FIRED: Resolution = { outcome: 'fired', reason: null }
+
+// Whether advance() produced the state the schedule already holds. Only a repeat
+// deferral can: every other outcome moves nextDueAt. A busy target defers on
+// every 15s tick for up to the whole defer window, and rewriting schedules.json
+// and waking the UI thirty times over for identical bytes buys nothing.
+function unchanged(schedule: Schedule, state: ScheduleRunState): boolean {
+  return (
+    state.enabled === schedule.enabled &&
+    state.firedCount === schedule.firedCount &&
+    state.nextDueAt === schedule.nextDueAt &&
+    state.lastFiredAt === schedule.lastFiredAt &&
+    state.lastOutcome === schedule.lastOutcome &&
+    state.lastReason === schedule.lastReason &&
+    state.deferredSinceAt === schedule.deferredSinceAt
+  )
+}
 
 export function createScheduleRunner(deps: RunnerDeps): ScheduleRunner {
   const now = deps.now ?? Date.now
@@ -110,7 +128,8 @@ export function createScheduleRunner(deps: RunnerDeps): ScheduleRunner {
     }
   }
 
-  function resolve(schedule: Schedule, at: number): void {
+  // Returns whether the stored record actually moved.
+  function resolve(schedule: Schedule, at: number): boolean {
     // A slot that passed while the app was closed is a miss. catchUp runs it once
     // regardless of how many slots went by (nextDueAfter collapses them), which is
     // what keeps a recovery from firing ten times and draining a usage limit.
@@ -120,19 +139,29 @@ export function createScheduleRunner(deps: RunnerDeps): ScheduleRunner {
         ? { outcome: 'missed' as ScheduleOutcome, reason: 'the app was not running when it came due' }
         : fire(schedule)
 
-    deps.store.recordOutcome(schedule.id, advance(schedule, outcome, reason, at))
-    if ((outcome === 'skipped' || outcome === 'failed' || outcome === 'missed') && reason) {
-      deps.notify?.(schedule, outcome, reason)
+    // advance() has the last word on the outcome: a deferral that outstayed its
+    // window comes back as `skipped`. That is the one case where a busy target
+    // loses the run for good, so the notify gate reads the resolved state rather
+    // than the decision above, which still says `deferred`.
+    const state = advance(schedule, outcome, reason, at)
+    if (unchanged(schedule, state)) return false
+
+    deps.store.recordOutcome(schedule.id, state)
+    const { lastOutcome, lastReason } = state
+    if ((lastOutcome === 'skipped' || lastOutcome === 'failed' || lastOutcome === 'missed') && lastReason) {
+      deps.notify?.(schedule, lastOutcome, lastReason)
     }
+    return true
   }
 
   return {
     tick() {
       const at = now()
       const due = dueNow(deps.store.list(), at)
-      for (const schedule of due) resolve(schedule, at)
+      let changed = false
+      for (const schedule of due) changed = resolve(schedule, at) || changed
       startupHandled = true
-      if (due.length) deps.onChanged?.()
+      if (changed) deps.onChanged?.()
     },
     start() {
       if (timer) return

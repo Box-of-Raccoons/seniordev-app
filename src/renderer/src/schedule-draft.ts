@@ -62,6 +62,15 @@ export function nextOccurrenceOf(hour: number, minute: number, nowMs: number): n
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, hour, minute, 0, 0).getTime()
 }
 
+// Today's occurrence of a local wall time, or null once it has gone. Built from
+// local date components like nextOccurrenceOf, so the named hour survives a DST
+// shift instead of sliding by an hour twice a year.
+function stillAheadToday(hour: number, minute: number, nowMs: number): number | null {
+  const d = new Date(nowMs)
+  const today = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hour, minute, 0, 0).getTime()
+  return today > nowMs ? today : null
+}
+
 export type DraftResult = { ok: true; create: ScheduleCreate } | { ok: false; error: string }
 
 export function buildCreate(draft: ScheduleDraft, nowMs: number): DraftResult {
@@ -102,7 +111,11 @@ export function buildCreate(draft: ScheduleDraft, nowMs: number): DraftResult {
     trigger = {
       kind: 'every',
       intervalMs: draft.everyMinutes * 60_000,
-      notBeforeMs: notBefore ? nextOccurrenceOf(notBefore.hour, notBefore.minute, nowMs) : null
+      // notBefore is an earliest-start, not a fire-at: a time that has already
+      // gone today is a constraint already satisfied, so it drops to null. Taking
+      // the NEXT occurrence instead would park the whole schedule on tomorrow's
+      // 5am (nextDueAfter sits on that base) while the list reads as active.
+      notBeforeMs: notBefore ? stillAheadToday(notBefore.hour, notBefore.minute, nowMs) : null
     }
   } else {
     const t = parseTimeOfDay(draft.timeOfDay)
@@ -113,10 +126,17 @@ export function buildCreate(draft: ScheduleDraft, nowMs: number): DraftResult {
         : { kind: 'once', atMs: nextOccurrenceOf(t.hour, t.minute, nowMs) }
   }
 
-  // A cap is meaningless for a one-shot and mandatory for anything recurring; the
-  // store enforces the latter too, this just keeps the form from sending nonsense.
-  const maxFirings =
-    trigger.kind === 'once' ? null : Number.isFinite(draft.maxFirings) && draft.maxFirings > 0 ? draft.maxFirings : 10
+  // A cap is meaningless for a one-shot and mandatory for anything recurring. The
+  // form refuses rather than substituting a number the user did not choose: an
+  // unbounded recurring schedule is the thing the cap exists to prevent, and the
+  // store's normaliser is for records off disk, not for a form that can ask.
+  let maxFirings: number | null = null
+  if (trigger.kind !== 'once') {
+    if (!Number.isFinite(draft.maxFirings) || draft.maxFirings <= 0) {
+      return { ok: false, error: 'A recurring schedule needs a firing cap of at least 1.' }
+    }
+    maxFirings = draft.maxFirings
+  }
 
   return {
     ok: true,
