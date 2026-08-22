@@ -4,7 +4,9 @@ import RightPanel from './RightPanel.vue'
 import { useWorkspace, type UseWorkspace } from '../composables/useWorkspace'
 import { useSubagents } from '../composables/useSubagents'
 import type { NewTab } from '../composables/usePanes'
-import type { StatusUpdateEvent } from '../../../shared/ipc'
+import type { StatusUpdateEvent, Schedule } from '../../../shared/ipc'
+import type { UseScheduleBadges } from '../composables/useScheduleBadges'
+import { ref } from 'vue'
 
 // Captured so tests can drive status updates as if from main.
 let statusCb: ((e: StatusUpdateEvent) => void) | null = null
@@ -408,5 +410,59 @@ describe('RightPanel', () => {
     expect(tv.attributes('data-cwd')).toBe('C:/x')
     const resumedTab = w.findAll('.term-tab').find((t) => t.text().includes('(resumed)'))
     expect(resumedTab).toBeTruthy()
+  })
+})
+
+// Schedule badge on a live tab (scheduled-prompts feature). The sidebar carries
+// the same affordance for conversations generally; this covers the tab strip,
+// where the word lives in the title/aria-label because the strip is tight.
+describe('RightPanel schedule badge', () => {
+  function schedule(): Schedule {
+    return {
+      id: 's1', enabled: true, title: 'nightly sweep',
+      target: { kind: 'conversation', conversationId: 'conv-1' },
+      prompt: 'go', trigger: { kind: 'daily', hour: 5, minute: 0 },
+      catchUp: false, maxFirings: 10, stopOnFailure: true,
+      firedCount: 0, nextDueAt: Date.now() + 4 * 3600_000,
+      lastFiredAt: null, lastOutcome: null, lastReason: null, deferredSinceAt: null, createdAt: 0
+    }
+  }
+  function badgesFor(found: Schedule | null): UseScheduleBadges {
+    return {
+      schedules: ref<Schedule[]>(found ? [found] : []),
+      now: ref(Date.now()),
+      start: () => {},
+      stop: () => {},
+      soonestFor: (id) => (found && id === 'conv-1' ? found : null)
+    }
+  }
+  async function mountWith(b?: UseScheduleBadges) {
+    const ws = useWorkspace()
+    const w = mount(RightPanel, {
+      props: { ws, subagents: useSubagents(), scheduleBadges: b },
+      global: { stubs }
+    })
+    ws.panes.addTab({ title: 'session', kind: 'terminal', variant: 'agent', conversationId: 'conv-1' })
+    await w.vm.$nextTick()
+    return w
+  }
+
+  it('marks a tab whose session has something queued to type into it', async () => {
+    const w = await mountWith(badgesFor(schedule()))
+    const badge = w.find('.term-tab__sched')
+    expect(badge.exists()).toBe(true)
+    // Never a bare glyph: the sentence rides on the accessible name and the title.
+    expect(badge.attributes('aria-label')).toContain('nightly sweep')
+    expect(badge.attributes('title')).toContain('next')
+  })
+
+  it('leaves an unscheduled tab unmarked', async () => {
+    const w = await mountWith(badgesFor(null))
+    expect(w.find('.term-tab__sched').exists()).toBe(false)
+  })
+
+  it('renders normally when no badges are supplied at all', async () => {
+    const w = await mountWith(undefined)
+    expect(w.find('.term-tab__sched').exists()).toBe(false)
   })
 })

@@ -413,3 +413,43 @@ describe('session persistence: S7 title backfill', () => {
     expect(conversations.get('c1')?.title).toBe('fix bug')
   })
 })
+
+describe('session persistence: ptyForConversation', () => {
+  let dir: string
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('resolves a live conversation to its pty, and forgets it when the tab exits', () => {
+    // The schedule runner chooses between writing into an open tab and resuming a
+    // closed one on this answer, so a stale entry would mean writing into a dead pty.
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    let m = 0
+    const { projects, conversations } = stores(dir, () => 1000, () => `p-${++m}`)
+    const p = createSessionPersistence({ projects, conversations, now: () => 1000, discover: async () => null })
+
+    p.onAgentSpawn({ conversationId: 'ca', tool: 'claude', cwd: '/a', title: 't', ptyId: 'pty-a', preAssignedSessionId: 'ca' })
+    p.onAgentSpawn({ conversationId: 'cb', tool: 'claude', cwd: '/b', title: 't', ptyId: 'pty-b', preAssignedSessionId: 'cb' })
+
+    expect(p.ptyForConversation('ca')).toBe('pty-a')
+    expect(p.ptyForConversation('cb')).toBe('pty-b')
+    expect(p.ptyForConversation('never-launched')).toBeUndefined()
+
+    p.onTabExit('pty-a')
+    expect(p.ptyForConversation('ca')).toBeUndefined()
+    expect(p.ptyForConversation('cb')).toBe('pty-b')
+  })
+
+  it('follows a conversation to its new pty when it is resumed in a fresh tab', () => {
+    dir = mkdtempSync(join(tmpdir(), 'persist-'))
+    let m = 0
+    const { projects, conversations } = stores(dir, () => 1000, () => `p-${++m}`)
+    const p = createSessionPersistence({ projects, conversations, now: () => 1000, discover: async () => null })
+
+    p.onAgentSpawn({ conversationId: 'ca', tool: 'claude', cwd: '/a', title: 't', ptyId: 'pty-1', preAssignedSessionId: 'ca' })
+    p.onTabExit('pty-1')
+    p.onAgentSpawn({ conversationId: 'ca', tool: 'claude', cwd: '/a', title: 't', ptyId: 'pty-2', preAssignedSessionId: 'ca' })
+
+    expect(p.ptyForConversation('ca')).toBe('pty-2')
+  })
+})

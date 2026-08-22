@@ -4,6 +4,8 @@ import StatusGlyph from './StatusGlyph.vue'
 import WorktreeTeardownDialog from './WorktreeTeardownDialog.vue'
 import NewTabMenu from './NewTabMenu.vue'
 import type { UseWorkspace } from '../composables/useWorkspace'
+import type { UseScheduleBadges } from '../composables/useScheduleBadges'
+import { describeNextRun } from '../schedule-format'
 import {
   activeProjectsByRecency,
   archivedProjects,
@@ -30,7 +32,16 @@ import type { ProjectInfo, ConversationInfo, TabStatus } from '../../../shared/i
 // conversation with no live tab is dimmed, and a non-resumable one (agentSessionId
 // null) is inert. Clicking focuses a live tab wherever it lives, or resumes a dead
 // one into the leftmost pane. Sidebar width + collapsed persist via ws.
-const props = defineProps<{ ws: UseWorkspace }>()
+const props = defineProps<{ ws: UseWorkspace; scheduleBadges?: UseScheduleBadges }>()
+
+// A conversation with something queued to type into it says so on its own row.
+// Text, not a bare colour or glyph: DESIGN.md's WCAG 2.1 AA target, and the same
+// shape as the existing "no resume" tag beside it.
+function scheduleNote(conv: ConversationInfo): string | null {
+  const s = props.scheduleBadges?.soonestFor(conv.id)
+  if (!s) return null
+  return `${s.title}, next ${describeNextRun(s, props.scheduleBadges?.now.value ?? Date.now())}`
+}
 
 const MIN_WIDTH = 180
 const MAX_WIDTH = 480
@@ -380,6 +391,7 @@ function onGripKey(e: KeyboardEvent): void {
               <span class="label">{{ conv.title || 'session' }}</span>
               <span class="tool">{{ conv.tool }}</span>
               <span v-if="isInert(conv)" class="tag">no resume</span>
+              <span v-if="scheduleNote(conv)" class="tag tag--sched" :title="scheduleNote(conv)!">scheduled</span>
             </button>
             <button
               class="conv-x"
@@ -524,6 +536,7 @@ function onGripKey(e: KeyboardEvent): void {
    control can't nest inside the button (invalid HTML), so it sits beside it. */
 .conv-row { position: relative; display: flex; align-items: stretch; }
 .conv-row .conv { flex: 1; min-width: 0; }
+.tag--sched { color: var(--teal); border-color: var(--teal); }
 .conv-x {
   position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
   background: var(--surface-2); border: 0; color: var(--ink-muted);

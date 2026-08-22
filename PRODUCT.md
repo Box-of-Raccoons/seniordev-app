@@ -72,8 +72,10 @@ the way.
 1. **Show the work, always.** Every autonomous action is visible and inspectable:
    live logs, tool one-liners, PR cards, structured recaps. Never hide what an
    agent is doing; the interface's job is legibility of machine work.
-2. **Never guess-and-run.** The human launches every run: a deep link only
-   prefills the composer, it never auto-runs. Safe, explicit defaults beat clever
+2. **Never guess-and-run.** The human authors every run. A deep link only
+   prefills the composer, never launches it; a schedule runs only what the
+   developer wrote into it, here, in this app. Nothing outside SeniorDev can
+   start a run, least of all a YOLO one. Safe, explicit defaults beat clever
    autonomy. The UI should make the safe path the obvious one.
 3. **The tool disappears into the task.** Earned familiarity over novelty:
    standard affordances, consistent component vocabulary, density where the work

@@ -22,6 +22,9 @@ export interface SpawnTerminalRequest {
   cols: number
   rows: number
   prompt?: { name?: string; text?: string }
+  // An explicit per-launch model, which WINS over the prompt's declared model.
+  // The schedule's choice is the most specific and was authored deliberately.
+  model?: string
   resume?: { sessionId: string }
   // S5 worktree isolation. When the composer's "run in a new worktree" toggle is
   // on, the worktree is created pre-flight (worktree:create) and its path arrives
@@ -78,7 +81,10 @@ export const RECENT = { list: 'recent:list', record: 'recent:record' } as const
 export const CLIPBOARD = { readText: 'clipboard:readText', writeText: 'clipboard:writeText' } as const
 // Agent CLI tools offered in the New-tab menu (claude, codex, …) — the default
 // tool plus any others whose command resolves on PATH. Returns tool names.
-export const TOOLS = { list: 'tools:list' } as const
+// `models` returns the model ids suggested per tool where a launch can choose
+// one (the schedules form), keyed by tool name. Suggestions only: a model absent
+// from the list is still accepted, so an id newer than the config stays usable.
+export const TOOLS = { list: 'tools:list', models: 'tools:models' } as const
 
 // Resolved workspace-layout settings the renderer needs (S2). Read-only scalars
 // derived from config; the renderer re-fetches on CONFIG.changed.
@@ -218,6 +224,11 @@ export interface StartupSession {
   promptName?: string
   promptText?: string
   tool?: string
+  // An explicit model for this launch, overriding what the prompt or the tool
+  // would otherwise resolve to. Absent ⇒ unchanged behaviour (prompt frontmatter,
+  // then the tool's defaultModel, then nothing). Only meaningful for a launch: a
+  // resume reconnects to an existing session and drops model args by design.
+  model?: string
   // Working directory for the session (--folder). Becomes the tab's cwdOverride,
   // so the agent spawns here instead of the home-dir fallback — which matters
   // because an agent CLI shows a "trust this folder?" gate in an untrusted dir,
@@ -230,6 +241,93 @@ export interface DeepLink { action: 'open' | 'yolo'; ticket: string; role?: stri
 // `ready` is the renderer's listener-attached signal: main queues warm links
 // until it arrives, so nothing is pushed at a window that can't hear it yet.
 export const DEEPLINK = { event: 'deeplink:event', ready: 'deeplink:ready' } as const
+
+// Scheduled prompts. A schedule is a launch the developer deferred: it delivers
+// its prompt into an existing conversation, or starts a fresh session, at a time
+// they chose. Two of the three delivery paths need a TAB, which only the renderer
+// can create — a `launch` schedule reuses STARTUP.session wholesale, and `resume`
+// below is the one push this feature adds, reopening a stored conversation with
+// its prompt seeded. Both ride the same DEEPLINK.ready gate as deep links.
+// A schedule is a launch the developer deferred. The record crosses the bridge
+// whole (the modal shows every field), so it lives here rather than in the main
+// store, the same split as Conversation / ConversationInfo.
+//
+// A `conversation` target holds a conversationId, never a tab id: tab ids are
+// per-launch, and a schedule has to survive the tab being closed and the app
+// being restarted between authoring and firing. A `launch` target holds a
+// StartupSession, the shape the app already auto-starts a session from, rather
+// than a second parallel launch format.
+export type ScheduleTarget =
+  | { kind: 'conversation'; conversationId: string }
+  | { kind: 'launch'; session: StartupSession; ticket?: string }
+
+// Deliberately not cron: three shapes cover the real cases with no parser, no
+// parse-error surface, and no UI that has to explain `0 5 * * *`. `daily` stores
+// LOCAL hour/minute so 5am stays 5am across a DST shift; `notBeforeMs` on `every`
+// is an earliest-start ("every 30 minutes, but not before 5am"), not a fire-at.
+export type ScheduleTrigger =
+  | { kind: 'once'; atMs: number }
+  | { kind: 'every'; intervalMs: number; notBeforeMs: number | null }
+  | { kind: 'daily'; hour: number; minute: number }
+
+// How a firing resolved. `deferred` is the only one that does not advance the
+// schedule: the target was busy, so the same slot is retried on the next tick.
+export type ScheduleOutcome = 'fired' | 'deferred' | 'skipped' | 'missed' | 'failed'
+
+export interface Schedule {
+  id: string
+  enabled: boolean
+  title: string
+  target: ScheduleTarget
+  prompt: string
+  trigger: ScheduleTrigger
+  // A slot that passed while the app was closed: run it once late, or record the
+  // miss and move on to the next one.
+  catchUp: boolean
+  // Never null for a recurring trigger. An uncapped recurring schedule pointed at
+  // a YOLO launch is an unbounded burn, and a confirm at creation time does not
+  // bound it — the record does.
+  maxFirings: number | null
+  stopOnFailure: boolean
+  firedCount: number
+  nextDueAt: number
+  lastFiredAt: number | null
+  lastOutcome: ScheduleOutcome | null
+  lastReason: string | null
+  deferredSinceAt: number | null
+  createdAt: number
+}
+
+export interface ScheduleCreate {
+  title?: string
+  target: ScheduleTarget
+  prompt: string
+  trigger: ScheduleTrigger
+  catchUp?: boolean
+  maxFirings?: number | null
+  stopOnFailure?: boolean
+}
+
+export interface ScheduledResume {
+  conversationId: string
+  prompt: string
+}
+// A firing that refused or failed, surfaced to the user. A routine success is
+// deliberately silent, or a recurring schedule becomes a notification stream.
+export interface ScheduleNotice {
+  title: string
+  outcome: 'skipped' | 'missed' | 'failed'
+  reason: string
+}
+export const SCHEDULES = {
+  list: 'schedules:list',
+  create: 'schedules:create',
+  setEnabled: 'schedules:setEnabled',
+  remove: 'schedules:remove',
+  changed: 'schedules:changed', // main → renderer: the list moved, re-read it
+  resume: 'schedules:resume', // main → renderer: reopen this conversation and seed it
+  notice: 'schedules:notice' // main → renderer: a firing refused or failed
+} as const
 export interface StartupOptions {
   tickets: string[]
   session?: StartupSession
@@ -322,6 +420,7 @@ export const SUBAGENTS = {
 
 export type MenuAction =
   | 'new-session'
+  | 'schedules'
   | 'app-config'
   | 'prompt-config'
   | 'about'

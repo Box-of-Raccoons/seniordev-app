@@ -29,6 +29,12 @@ export interface StatusHub {
   exit(id: string, code: number): void
   /** The tab was killed/closed; drop it. */
   dispose(id: string): void
+  /**
+   * The tab's current state, or undefined when it is not live. Read by the
+   * schedule runner, which must never write into a tab that is `needsYou`: that
+   * text would land in an approval prompt and its newline would answer it.
+   */
+  statusOf(id: string): TabStatus | undefined
 }
 
 export function createStatusHub(deps: StatusHubDeps): StatusHub {
@@ -77,6 +83,9 @@ export function createStatusHub(deps: StatusHubDeps): StatusHub {
     },
     dispose(id) {
       sessions.delete(id)
+    },
+    statusOf(id) {
+      return sessions.get(id)?.status
     }
   }
 }

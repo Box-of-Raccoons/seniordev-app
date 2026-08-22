@@ -5,12 +5,14 @@ import Sidebar from './components/Sidebar.vue'
 import SubagentPanel from './components/SubagentPanel.vue'
 import AboutModal from './components/AboutModal.vue'
 import AppConfigModal from './components/AppConfigModal.vue'
+import SchedulesModal from './components/SchedulesModal.vue'
 import PromptConfigModal from './components/PromptConfigModal.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import Splash from './components/Splash.vue'
 import { useSplash } from './composables/useSplash'
 import { useWorkspace } from './composables/useWorkspace'
 import { useSubagents } from './composables/useSubagents'
+import { useScheduleBadges } from './composables/useScheduleBadges'
 import type { MenuAction, DeepLink } from '../../shared/ipc'
 
 // A3: the shared workspace state lives here (App is the common ancestor of the
@@ -23,6 +25,9 @@ const rightPanel = ref<InstanceType<typeof RightPanel> | null>(null)
 // so the tiles survive moving the panel between the right rail and the bottom
 // strip). The panel component is a pure view over this.
 const subagents = useSubagents()
+// Which conversations have a schedule pointed at them, for the sidebar and tab
+// badges. Fetched once here rather than by each consumer.
+const scheduleBadges = useScheduleBadges()
 // The right-rail column sizing, mirroring sidebarStyle: a fixed flex-basis (a slim
 // strip when collapsed, else the persisted size). Only used when placement=right.
 const SUBAGENT_COLLAPSED_PX = 36
@@ -54,9 +59,11 @@ const sidebarStyle = computed(() => ({
 }))
 // Boot splash: shown from first paint, dismissed once startup work settles below.
 const { visible: splashVisible, ready: splashReady, hide: splashHide } = useSplash()
-const modal = ref<'about' | 'app-config' | 'prompt-config' | null>(null)
+const modal = ref<'about' | 'app-config' | 'prompt-config' | 'schedules' | null>(null)
 const confirmReset = ref(false)
 let offMenu: (() => void) | null = null
+let offScheduledResume: (() => void) | null = null
+let offScheduleNotice: (() => void) | null = null
 let offDeepLink: (() => void) | null = null
 let offStartupSession: (() => void) | null = null
 
@@ -132,6 +139,7 @@ onMounted(async () => {
   // S8: begin watching subagent activity; mirror the persisted "this app only"
   // preference into the store's live filter, and keep the known-session set fresh.
   subagents.start()
+  scheduleBadges.start()
   watch(() => ws.subagentPanel.appOnly, (v) => (subagents.appOnly.value = v), { immediate: true })
   void refreshKnownSessions()
   offSidebarChanged = window.api.onSidebarChanged(() => void refreshKnownSessions())
@@ -154,6 +162,23 @@ onMounted(async () => {
   offStartupSession = window.api.onStartupSession((w) =>
     rightPanel.value?.startStartupSession(w.session, w.ticket)
   )
+  // A scheduled resume rides the same ready-gate: main queues it until this
+  // listener exists, so a schedule that comes due during boot is not lost.
+  // Optional-called like getSidebarState below: these listeners register BEFORE
+  // deepLinkReady(), so a throw here would stop readiness ever being signalled
+  // and take deep links down with it.
+  offScheduledResume = window.api.onScheduledResume?.((r) =>
+    void rightPanel.value?.startScheduledResume(r.conversationId, r.prompt)
+  ) ?? null
+  // A firing that refused or failed says so out loud. A schedule that silently
+  // did not run is the failure mode worth spending a notification on; a routine
+  // success stays quiet.
+  offScheduleNotice = window.api.onScheduleNotice?.((n) => {
+    // Guarded: Notification is absent under jsdom and can be denied at runtime.
+    if (typeof Notification === 'function') {
+      new Notification(`Schedule ${n.outcome}: ${n.title}`, { body: n.reason })
+    }
+  }) ?? null
   // Only now can main push deep links — anything sent earlier would be lost.
   window.api.deepLinkReady()
   try {
@@ -173,9 +198,12 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  scheduleBadges.stop()
   offMenu?.()
   offDeepLink?.()
   offStartupSession?.()
+  offScheduledResume?.()
+  offScheduleNotice?.()
   offSidebarChanged?.()
   subagents.stop()
   window.removeEventListener('keydown', onPaneKeydown, true)
@@ -184,8 +212,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="shell">
-    <Sidebar :ws="ws" :style="sidebarStyle" />
-    <RightPanel ref="rightPanel" :ws="ws" :subagents="subagents" />
+    <Sidebar :ws="ws" :schedule-badges="scheduleBadges" :style="sidebarStyle" />
+    <RightPanel ref="rightPanel" :ws="ws" :subagents="subagents" :schedule-badges="scheduleBadges" />
     <SubagentPanel
       v-if="ws.subagentPanel.placement === 'right'"
       :subagents="subagents"
@@ -195,6 +223,7 @@ onBeforeUnmount(() => {
   </div>
   <AboutModal v-if="modal === 'about'" @close="modal = null" @install="requestInstall" />
   <AppConfigModal v-if="modal === 'app-config'" @close="modal = null" />
+  <SchedulesModal v-if="modal === 'schedules'" @close="modal = null" />
   <PromptConfigModal v-if="modal === 'prompt-config'" @close="modal = null" />
   <ConfirmDialog
     v-if="confirmReset"

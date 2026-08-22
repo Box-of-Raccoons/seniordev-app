@@ -9,7 +9,7 @@ import { readBufferText, normalizeForStability, stepIdle, initialIdleState, type
 
 // `active` is true only while this tab is the active tab of the focused pane —
 // the one condition under which taking keyboard focus is wanted rather than theft.
-const props = defineProps<{ id: string; conversationId?: string; conversationTitle?: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string; worktreePath?: string; branch?: string; worktreeChoice?: boolean; active?: boolean }>()
+const props = defineProps<{ id: string; conversationId?: string; conversationTitle?: string; ticketKey?: string | null; input?: string; prompt?: { name?: string; text?: string }; model?: string; tool?: string; resume?: { sessionId: string }; cwdOverride?: string; shell?: string; worktreePath?: string; branch?: string; worktreeChoice?: boolean; active?: boolean }>()
 const emit = defineEmits<{ (e: 'exited', code: number): void }>()
 const host = ref<HTMLDivElement | null>(null)
 let term: Terminal | null = null
@@ -121,6 +121,9 @@ onMounted(async () => {
           cols: term.cols,
           rows: term.rows,
           prompt: props.prompt ? { name: props.prompt.name, text: props.prompt.text } : undefined,
+          // An explicit per-launch model (a scheduled launch that named one);
+          // absent leaves today's prompt/tool resolution untouched.
+          model: props.model,
           resume: props.resume ? { sessionId: props.resume.sessionId } : undefined,
           tool: props.tool,
           // S5: recorded on the conversation (worktreePath/branch) and used to

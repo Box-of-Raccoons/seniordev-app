@@ -125,3 +125,30 @@ describe('createStatusHub — housekeeping', () => {
     expect(h.updates.map((u) => u.status)).toEqual(['working', 'idle', 'working', 'needsYou', 'failed'])
   })
 })
+
+describe('createStatusHub — statusOf', () => {
+  it('answers the current state for a live tab and undefined for an unknown one', () => {
+    const h = harness()
+    h.hub.registerPty('a', 'interactive', PROMPT)
+    expect(h.hub.statusOf('a')).toBe('working')
+    h.hub.settled('a', 'compiled ok')
+    expect(h.hub.statusOf('a')).toBe('idle')
+    expect(h.hub.statusOf('ghost')).toBeUndefined()
+  })
+
+  it('reports needsYou while a tab sits on an approval prompt', () => {
+    // The schedule runner reads this to refuse a firing: text written into an
+    // approval prompt would have its newline answer the question.
+    const h = harness()
+    h.hub.registerPty('a', 'interactive', PROMPT)
+    h.hub.settled('a', 'Do you want to proceed?')
+    expect(h.hub.statusOf('a')).toBe('needsYou')
+  })
+
+  it('forgets a disposed tab', () => {
+    const h = harness()
+    h.hub.registerPty('a', 'interactive', PROMPT)
+    h.hub.dispose('a')
+    expect(h.hub.statusOf('a')).toBeUndefined()
+  })
+})

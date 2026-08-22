@@ -21,6 +21,11 @@
 #   claude:
 #     modelArgs: [--model, "{{model}}"]   # preset default; override only if needed
 #     defaultModel: claude-sonnet-4-5     # used when a prompt omits `model:`
+#     models:                             # suggestions only, for the Schedules form
+#       - claude-fable-5
+#       - claude-opus-5
+#       - claude-sonnet-5
+#       - claude-haiku-4-5
 #   codex:
 #     modelArgs: [--model, "{{model}}"]
 #     defaultModel: gpt-5
