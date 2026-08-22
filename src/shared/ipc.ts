@@ -312,21 +312,13 @@ export interface ScheduledResume {
   conversationId: string
   prompt: string
 }
-// A firing that refused or failed, surfaced to the user. A routine success is
-// deliberately silent, or a recurring schedule becomes a notification stream.
-export interface ScheduleNotice {
-  title: string
-  outcome: 'skipped' | 'missed' | 'failed'
-  reason: string
-}
 export const SCHEDULES = {
   list: 'schedules:list',
   create: 'schedules:create',
   setEnabled: 'schedules:setEnabled',
   remove: 'schedules:remove',
   changed: 'schedules:changed', // main → renderer: the list moved, re-read it
-  resume: 'schedules:resume', // main → renderer: reopen this conversation and seed it
-  notice: 'schedules:notice' // main → renderer: a firing refused or failed
+  resume: 'schedules:resume' // main → renderer: reopen this conversation and seed it
 } as const
 export interface StartupOptions {
   tickets: string[]

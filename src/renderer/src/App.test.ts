@@ -59,7 +59,6 @@ beforeEach(() => {
     onDeepLink: vi.fn((cb) => { deepLinkCb = cb; return () => {} }),
     onStartupSession: vi.fn((cb) => { startupSessionCb = cb; return () => {} }),
     onScheduledResume: vi.fn((cb) => { scheduledResumeCb = cb; return () => {} }),
-    onScheduleNotice: vi.fn(() => () => {}),
     deepLinkReady: vi.fn(),
     getAppInfo: vi.fn().mockResolvedValue({ name: 'SeniorDev', version: '1.0.0' }),
     installUpdate: vi.fn(),

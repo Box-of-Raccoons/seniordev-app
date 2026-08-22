@@ -6,7 +6,7 @@ import type { WorktreeInfo, WorktreeCreateRequest, WorktreeCreateResult, Worktre
 import type { StartYoloRequest, YoloCaps, YoloLogEvent, YoloPrEvent, YoloExitEvent } from '../shared/ipc'
 import type { StatusUpdateEvent } from '../shared/ipc'
 import { SUBAGENTS, SCHEDULES } from '../shared/ipc'
-import type { ScheduledResume, ScheduleNotice } from '../shared/ipc'
+import type { ScheduledResume } from '../shared/ipc'
 import type { Schedule, ScheduleCreate } from '../shared/ipc'
 import type { SubagentSpawnEvent, SubagentActivityEvent, SubagentDoneEvent } from '../shared/ipc'
 import type { UpdateInfo } from '../shared/ipc'
@@ -136,11 +136,6 @@ const api = {
     const listener = (_e: IpcRendererEvent, payload: ScheduledResume): void => cb(payload)
     ipcRenderer.on(SCHEDULES.resume, listener)
     return () => ipcRenderer.off(SCHEDULES.resume, listener)
-  },
-  onScheduleNotice: (cb: (n: ScheduleNotice) => void): (() => void) => {
-    const listener = (_e: IpcRendererEvent, payload: ScheduleNotice): void => cb(payload)
-    ipcRenderer.on(SCHEDULES.notice, listener)
-    return () => ipcRenderer.off(SCHEDULES.notice, listener)
   },
   onStartupSession: (cb: (w: WarmStartup) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: WarmStartup): void => cb(payload)

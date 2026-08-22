@@ -40,6 +40,7 @@ import { createSessionActivity } from './terminal/activity'
 import { createPromptDelivery } from './terminal/prompt-delivery'
 import { createSchedulesStore, type SchedulesStore } from './schedule/schedules-store'
 import { createScheduleRunner, type ScheduleRunner } from './schedule/runner'
+import { showScheduleNotice } from './schedule/notify'
 import { isConversationResumable } from './session-resumable'
 import { createStatusHub } from './terminal/status-hub'
 import { createSessionPersistence, type SessionPersistence } from './session-persistence'
@@ -156,6 +157,7 @@ function createWindow(): void {
     mainWindow = null
     deepLinks.windowClosed()
     startupSessions.windowClosed()
+    scheduleResumes.windowClosed()
   })
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else win.loadFile(join(__dirname, '../renderer/index.html'))
@@ -274,6 +276,7 @@ if (!gotLock) {
     ipcMain.on(DEEPLINK.ready, () => {
       deepLinks.rendererReady()
       startupSessions.rendererReady()
+      scheduleResumes.rendererReady()
     })
     registerPromptsIpc(store.prompts)
     const getSender = (): Electron.WebContents | undefined =>
@@ -383,8 +386,10 @@ if (!gotLock) {
         const conv = persistence?.conversations.get(conversationId)
         return !!conv && conv.archivedAt === null
       },
+      // Main-process Notification, not a renderer push: a startup-miss notice
+      // fires on the runner's first tick, before any window exists to listen.
       notify: (schedule, outcome, reason) => {
-        getSender()?.send(SCHEDULES.notice, { title: schedule.title, outcome, reason })
+        showScheduleNotice({ title: schedule.title, outcome, reason })
       },
       onChanged: () => getSender()?.send(SCHEDULES.changed)
     })
@@ -405,7 +410,10 @@ if (!gotLock) {
     // filters to this app's sessions when "this app only" is on.
     subagents = startSubagentForwarding({ getSender })
 
-    createWindow()
+    // The runner's first tick (scheduleRunner.start(), above) can already have
+    // summoned a window via ensureWindow() for a schedule due at boot; only open
+    // one here if it didn't, or a due schedule opens two.
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })

@@ -63,7 +63,6 @@ const modal = ref<'about' | 'app-config' | 'prompt-config' | 'schedules' | null>
 const confirmReset = ref(false)
 let offMenu: (() => void) | null = null
 let offScheduledResume: (() => void) | null = null
-let offScheduleNotice: (() => void) | null = null
 let offDeepLink: (() => void) | null = null
 let offStartupSession: (() => void) | null = null
 
@@ -170,15 +169,6 @@ onMounted(async () => {
   offScheduledResume = window.api.onScheduledResume?.((r) =>
     void rightPanel.value?.startScheduledResume(r.conversationId, r.prompt)
   ) ?? null
-  // A firing that refused or failed says so out loud. A schedule that silently
-  // did not run is the failure mode worth spending a notification on; a routine
-  // success stays quiet.
-  offScheduleNotice = window.api.onScheduleNotice?.((n) => {
-    // Guarded: Notification is absent under jsdom and can be denied at runtime.
-    if (typeof Notification === 'function') {
-      new Notification(`Schedule ${n.outcome}: ${n.title}`, { body: n.reason })
-    }
-  }) ?? null
   // Only now can main push deep links — anything sent earlier would be lost.
   window.api.deepLinkReady()
   try {
@@ -203,7 +193,6 @@ onBeforeUnmount(() => {
   offDeepLink?.()
   offStartupSession?.()
   offScheduledResume?.()
-  offScheduleNotice?.()
   offSidebarChanged?.()
   subagents.stop()
   window.removeEventListener('keydown', onPaneKeydown, true)
