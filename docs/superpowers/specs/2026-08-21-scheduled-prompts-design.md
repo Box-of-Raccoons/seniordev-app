@@ -354,16 +354,20 @@ without modification.
 
 ## Risks
 
-**The feature has never run inside the Electron app.** Every layer is tested,
-including a real store on a real file driving the real runner into the real
-delivery, and delivery itself is verified against a real pty. What is not
-verified is the app booting, starting the runner, rendering the modal, and
-creating a schedule end to end. This was blocked rather than skipped: the
-maintainer's installed SeniorDev.app was running with live sessions, a second
-instance dies on the single-instance lock (`index.ts:172`), and forcing one past
-it with a separate `--user-data-dir` would still leave two processes writing the
-same `~/.config/SeniorDev` stores, with the boot-time archive job able to archive
-real projects. It needs a hand check with the app closed.
+**Partly verified in the running app.** The maintainer ran it on 2026-08-21 and
+watched a launch schedule spawn five agent sessions with a supplied model, so the
+app boots with the runner going, a `launch` target fires, the per-launch model
+reaches a real spawn, and tabs open. What that run did NOT exercise, and what is
+still unverified by anything but unit and integration tests: injection into a
+live idle conversation, the `needsYou` refusal, resuming a closed conversation,
+and a missed slot resolving on restart.
+
+A cosmetic regression did get through to that run and was found by eye rather
+than by test: the schedule badge's style was inserted against a selector that
+appears twice, which rewrote the dead-tab rule and left every tab greyed and
+struck through. The class binding was correct throughout and no test reads the
+stylesheet, so nothing but looking at the app could have caught it. Worth
+remembering when weighing what a green suite here does and does not mean.
 
 **A claude session now resumes itself.** Claude Code v2.1.236 continues a session
 automatically when a claude.ai usage limit resets, and this was observed inside a
