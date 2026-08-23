@@ -4,7 +4,9 @@ import RightPanel from './RightPanel.vue'
 import { useWorkspace, type UseWorkspace } from '../composables/useWorkspace'
 import { useSubagents } from '../composables/useSubagents'
 import type { NewTab } from '../composables/usePanes'
-import type { StatusUpdateEvent } from '../../../shared/ipc'
+import type { StatusUpdateEvent, Schedule, ScheduledResume, ConversationInfo } from '../../../shared/ipc'
+import type { UseScheduleBadges } from '../composables/useScheduleBadges'
+import { ref } from 'vue'
 
 // Captured so tests can drive status updates as if from main.
 let statusCb: ((e: StatusUpdateEvent) => void) | null = null
@@ -28,7 +30,9 @@ beforeEach(() => {
     listRecentFolders: vi.fn(async () => []),
     yoloCaps: vi.fn(async () => ({ available: true })),
     onConfigChanged: vi.fn(() => () => {}),
-    getStartup: vi.fn(async () => ({ tickets: [] }))
+    getStartup: vi.fn(async () => ({ tickets: [] })),
+    listConversations: vi.fn(async () => [] as ConversationInfo[]),
+    scheduleResumeDropped: vi.fn()
   }
 })
 
@@ -408,5 +412,131 @@ describe('RightPanel', () => {
     expect(tv.attributes('data-cwd')).toBe('C:/x')
     const resumedTab = w.findAll('.term-tab').find((t) => t.text().includes('(resumed)'))
     expect(resumedTab).toBeTruthy()
+  })
+})
+
+// Schedule badge on a live tab (scheduled-prompts feature). The sidebar carries
+// the same affordance for conversations generally; this covers the tab strip,
+// where the word lives in the title/aria-label because the strip is tight.
+describe('RightPanel schedule badge', () => {
+  function schedule(): Schedule {
+    return {
+      id: 's1', enabled: true, title: 'nightly sweep',
+      target: { kind: 'conversation', conversationId: 'conv-1' },
+      prompt: 'go', trigger: { kind: 'daily', hour: 5, minute: 0 },
+      catchUp: false, maxFirings: 10, stopOnFailure: true,
+      firedCount: 0, nextDueAt: Date.now() + 4 * 3600_000,
+      lastFiredAt: null, lastOutcome: null, lastReason: null, deferredSinceAt: null, createdAt: 0
+    }
+  }
+  function badgesFor(found: Schedule | null): UseScheduleBadges {
+    return {
+      schedules: ref<Schedule[]>(found ? [found] : []),
+      now: ref(Date.now()),
+      start: () => {},
+      stop: () => {},
+      soonestFor: (id) => (found && id === 'conv-1' ? found : null)
+    }
+  }
+  async function mountWith(b?: UseScheduleBadges) {
+    const ws = useWorkspace()
+    const w = mount(RightPanel, {
+      props: { ws, subagents: useSubagents(), scheduleBadges: b },
+      global: { stubs }
+    })
+    ws.panes.addTab({ title: 'session', kind: 'terminal', variant: 'agent', conversationId: 'conv-1' })
+    await w.vm.$nextTick()
+    return w
+  }
+
+  it('marks a tab whose session has something queued to type into it', async () => {
+    const w = await mountWith(badgesFor(schedule()))
+    const badge = w.find('.term-tab__sched')
+    expect(badge.exists()).toBe(true)
+    // Never a bare glyph: the sentence rides on the accessible name and the title.
+    expect(badge.attributes('aria-label')).toContain('nightly sweep')
+    expect(badge.attributes('title')).toContain('next')
+  })
+
+  it('leaves an unscheduled tab unmarked', async () => {
+    const w = await mountWith(badgesFor(null))
+    expect(w.find('.term-tab__sched').exists()).toBe(false)
+  })
+
+  it('renders normally when no badges are supplied at all', async () => {
+    const w = await mountWith(undefined)
+    expect(w.find('.term-tab__sched').exists()).toBe(false)
+  })
+})
+
+// A scheduled resume main pushed here. Main records the firing as `fired` before
+// pushing, so a path this component cannot complete has to report back or the
+// schedule is left claiming a prompt that was never delivered.
+describe('RightPanel scheduled resume', () => {
+  const resume: ScheduledResume = {
+    conversationId: 'conv-1',
+    prompt: 'continue',
+    scheduleId: 's1',
+    title: 'nightly sweep'
+  }
+  const conv: ConversationInfo = {
+    id: 'conv-1', projectId: 'p1', title: 'session', tool: 'claude',
+    agentSessionId: 'sid-1', resumable: true, cwd: '/x',
+    worktreePath: null, branch: null, lastActiveAt: 0, createdAt: 0, archivedAt: null
+  }
+  const dropped = (): ReturnType<typeof vi.fn> =>
+    window.api.scheduleResumeDropped as unknown as ReturnType<typeof vi.fn>
+  const listConversations = (): ReturnType<typeof vi.fn> =>
+    window.api.listConversations as unknown as ReturnType<typeof vi.fn>
+
+  async function fire(w: ReturnType<typeof mountRP>): Promise<void> {
+    await (w.vm as unknown as { startScheduledResume: (r: ScheduledResume) => Promise<void> }).startScheduledResume(resume)
+    await w.vm.$nextTick()
+  }
+
+  it('reopens the conversation past a tab whose process has exited', async () => {
+    // An exited tab keeps its conversationId and stays on screen; treating it as
+    // live swallowed the prompt entirely.
+    const w = mountRP()
+    const ws = w.props('ws') as UseWorkspace
+    const tab = ws.panes.addTab({ title: 'session', kind: 'terminal', variant: 'agent', conversationId: 'conv-1' })
+    ws.panes.markExited(tab.ptyId)
+    listConversations().mockResolvedValue([conv])
+    await fire(w)
+    expect(dropped()).not.toHaveBeenCalled()
+    expect(ws.panes.findLiveByConversationId('conv-1')).not.toBeNull()
+  })
+
+  it('reports the prompt undelivered when a live tab already holds the conversation', async () => {
+    const w = mountRP()
+    const ws = w.props('ws') as UseWorkspace
+    ws.panes.addTab({ title: 'session', kind: 'terminal', variant: 'agent', conversationId: 'conv-1' })
+    await fire(w)
+    expect(ws.panes.allTabs.value).toHaveLength(1) // no second tab opened
+    expect(dropped()).toHaveBeenCalledWith({
+      title: 'nightly sweep',
+      reason: expect.stringContaining('not delivered')
+    })
+  })
+
+  it('reports a conversation list that could not be read', async () => {
+    const w = mountRP()
+    listConversations().mockRejectedValue(new Error('ipc down'))
+    await fire(w)
+    expect(dropped()).toHaveBeenCalledWith({
+      title: 'nightly sweep',
+      reason: expect.stringContaining('could not be read')
+    })
+  })
+
+  it('reports a conversation with no session id to resume', async () => {
+    const w = mountRP()
+    listConversations().mockResolvedValue([{ ...conv, agentSessionId: null }])
+    await fire(w)
+    expect((w.props('ws') as UseWorkspace).panes.allTabs.value).toHaveLength(0)
+    expect(dropped()).toHaveBeenCalledWith({
+      title: 'nightly sweep',
+      reason: expect.stringContaining('no session id')
+    })
   })
 })

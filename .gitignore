@@ -27,3 +27,8 @@ Thumbs.db
 # Local AI-session state
 .claude/
 .superpowers/
+
+# e2e working dirs (sandboxes, driver cache, wdio logs)
+e2e/.tmp/
+e2e/.cache/
+e2e/.logs/

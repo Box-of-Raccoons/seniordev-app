@@ -11,6 +11,9 @@ import { shouldNotify, notificationText } from '../status-notify'
 import { type LiveTab } from '../composables/usePanes'
 import type { UseWorkspace } from '../composables/useWorkspace'
 import type { UseSubagents } from '../composables/useSubagents'
+import type { UseScheduleBadges } from '../composables/useScheduleBadges'
+import { describeNextRun } from '../schedule-format'
+import type { ConversationInfo, ScheduledResume } from '../../../shared/ipc'
 import { shouldAutoClose } from '../auto-close'
 import {
   CONVERSATION_DND_TYPE,
@@ -31,7 +34,17 @@ interface Prefill {
 // `ws` (useWorkspace) so the Projects sidebar — a sibling under App — reads the
 // same source of truth. RightPanel still OWNS the behaviour over that state: the
 // status/notification glue, the workspace-save watcher, and the layout view.
-const props = defineProps<{ ws: UseWorkspace; subagents: UseSubagents }>()
+const props = defineProps<{ ws: UseWorkspace; subagents: UseSubagents; scheduleBadges?: UseScheduleBadges }>()
+
+// A live tab says when something is queued to type into it. Same reasoning as the
+// sidebar row: unattended machine work is visible on the thing it will act on.
+// The tab strip is tight, so the word lives in the title and aria-label rather
+// than inline, but it is never conveyed by colour alone.
+function tabScheduleNote(conversationId: string): string | null {
+  const s = props.scheduleBadges?.soonestFor(conversationId)
+  if (!s) return null
+  return `Scheduled: ${s.title}, next ${describeNextRun(s, props.scheduleBadges?.now.value ?? Date.now())}`
+}
 const panes = props.ws.panes
 
 // S8: when the subagent panel is docked at the bottom, it mounts here as a flex
@@ -346,8 +359,37 @@ function launch(t: LiveTab, p: ComposerLaunch): void {
 }
 
 let startupSeq = 0
+// A scheduled firing whose conversation has no live tab: reopen it and seed the
+// prompt the schedule carries. Main has already confirmed the agent has a real
+// transcript to resume (session-resumable), so this only has to find the record
+// and build the tab. Main recorded the firing as `fired` before pushing, so every
+// path that cannot get there reports back rather than returning quietly: an
+// undelivered prompt the schedule claims it ran is the failure to avoid.
+async function startScheduledResume(r: ScheduledResume): Promise<void> {
+  const dropped = (reason: string): void => window.api.scheduleResumeDropped({ title: r.title, reason })
+  // Live-only: an exited tab still on screen holds the conversationId but has no
+  // process to type into, and must not block the resume.
+  if (panes.findLiveByConversationId(r.conversationId)) {
+    dropped('the conversation reopened before the prompt arrived, so it was not delivered')
+    return
+  }
+  let convs: ConversationInfo[]
+  try {
+    convs = await window.api.listConversations()
+  } catch {
+    dropped('the conversation list could not be read')
+    return
+  }
+  const conv = convs.find((c) => c.id === r.conversationId)
+  if (!conv?.agentSessionId) {
+    dropped('the conversation has no session id to resume')
+    return
+  }
+  panes.addTab(resumeTabSpec({ ...conv, agentSessionId: conv.agentSessionId }, r.prompt))
+}
+
 function startStartupSession(
-  s: { mode: 'interactive' | 'yolo'; promptName?: string; promptText?: string; tool?: string; folder?: string },
+  s: { mode: 'interactive' | 'yolo'; promptName?: string; promptText?: string; tool?: string; folder?: string; model?: string },
   ticketKey?: string
 ): void {
   const prompt = s.promptName ? { name: s.promptName } : s.promptText ? { text: s.promptText } : undefined
@@ -357,6 +399,9 @@ function startStartupSession(
     kind: s.mode === 'yolo' ? 'yolo' : 'terminal',
     prompt,
     tool: s.tool,
+    // A scheduled launch may name its own model, so a routine job need not burn
+    // the default one. Absent leaves prompt/tool resolution exactly as it was.
+    model: s.model,
     ticketKey,
     // When a role prompt is named, promptText loses the `prompt` slot above —
     // carry it as the input so it still lands in the role's {{request}}.
@@ -381,7 +426,7 @@ function moveActiveTab(dir: -1 | 1): void {
   panes.moveActiveToAdjacentPane(dir)
 }
 
-defineExpose({ newTab, openComposer, startStartupSession, closeAll, hasSessions, moveActiveTab })
+defineExpose({ newTab, openComposer, startStartupSession, startScheduledResume, closeAll, hasSessions, moveActiveTab })
 
 function resumeYolo(from: LiveTab, p: { sessionId: string; cwd: string; tool: string }): void {
   panes.addTab({
@@ -458,6 +503,13 @@ function isVisible(paneId: string, ptyId: string): boolean {
               >
                 <StatusGlyph class="term-tab__status" :status="statuses[tab.ptyId] ?? null" />
                 <button class="term-tab__label" @click="panes.focusTab(pane.id, tab.ptyId)">{{ tab.title }}</button>
+                <span
+                  v-if="tabScheduleNote(tab.conversationId)"
+                  class="term-tab__sched"
+                  role="img"
+                  :aria-label="tabScheduleNote(tab.conversationId)!"
+                  :title="tabScheduleNote(tab.conversationId)!"
+                >&#9201;</span>
                 <button class="term-tab__close" :aria-label="`Close ${tab.title}`" @click="closeTerm(tab.ptyId)">×</button>
               </div>
             </nav>
@@ -523,6 +575,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
             :ticket-key="entry.tab.ticketKey ?? null"
             :input="entry.tab.input"
             :prompt="entry.tab.prompt"
+            :model="entry.tab.model"
             :tool="entry.tab.tool"
             @exited="onTabExited(entry.tab, $event)"
             @resume="resumeYolo(entry.tab, $event)"
@@ -544,6 +597,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
             :ticket-key="entry.tab.ticketKey ?? null"
             :input="entry.tab.input"
             :prompt="entry.tab.prompt"
+            :model="entry.tab.model"
             :tool="entry.tab.tool"
             :resume="entry.tab.resume"
             :cwd-override="entry.tab.cwdOverride"
@@ -595,6 +649,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
 .term-tab--active { background: var(--surface-2); color: var(--ink); }
 .term-tab--dead .term-tab__label { color: var(--ink-muted); text-decoration: line-through; }
 .term-tab__status { display: inline-flex; align-items: center; padding-left: 9px; }
+.term-tab__sched { color: var(--teal); font-size: 11px; flex: 0 0 auto; }
 .term-tab__label {
   background: transparent; border: 0; color: inherit; font: inherit;
   padding: 5px 4px 5px 8px; cursor: pointer;

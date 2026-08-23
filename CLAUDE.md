@@ -13,7 +13,7 @@ truth and stand on their own.)
 **Design principles** (see PRODUCT.md for the full text):
 
 1. **Show the work, always** — every autonomous agent action is visible and inspectable.
-2. **Never guess-and-run** — confirm or refuse with a reason when intent is ambiguous.
+2. **Never guess-and-run** — confirm or refuse with a reason when intent is ambiguous; the human authors every run, and nothing outside the app can start one.
 3. **The tool disappears into the task** — earned familiarity, consistent vocabulary, density only where earned.
 4. **Warmth in moments, not everywhere** — the raccoon/palette warmth lives in touchpoints, not the working surface.
 5. **Respect the developer's flow** — fast transitions, keyboard-first, non-destructive by default.

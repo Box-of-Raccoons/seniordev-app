@@ -56,6 +56,15 @@ export function registerComposerIpc(deps: ComposerDeps): void {
     return cfg ? agentTools(cfg, deps.isAvailable) : []
   })
 
+  // Suggestions for a per-launch model picker, keyed by tool. Empty before a
+  // config loads, and empty per tool that lists none, which the form renders as
+  // a plain text field rather than an empty dropdown.
+  ipcMain.handle(TOOLS.models, (): Record<string, string[]> => {
+    const cfg = deps.getConfig()
+    if (!cfg) return {}
+    return Object.fromEntries(Object.entries(cfg.cliTools).map(([name, t]) => [name, t.models ?? []]))
+  })
+
   // Resolved layout scalars for the renderer's pane system. Falls back to the
   // schema default (320) when config hasn't loaded yet, so the renderer always
   // gets a usable minimum.

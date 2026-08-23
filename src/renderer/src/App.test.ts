@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import App from './App.vue'
-import type { DeepLink, MenuAction, WarmStartup } from '../../shared/ipc'
+import type { DeepLink, MenuAction, WarmStartup, ScheduledResume } from '../../shared/ipc'
 
 // Unmount every mounted App after each test. App adds a window-level keydown
 // listener (capture phase) for the pane-move shortcut; without auto-unmount those
@@ -13,6 +13,8 @@ let deepLinkCb: (l: DeepLink) => void
 let startupSessionCb: (w: WarmStartup) => void
 
 const rightStartStartup = vi.fn()
+const rightStartScheduledResume = vi.fn()
+let scheduledResumeCb: (r: ScheduledResume) => void
 const rightCloseAll = vi.fn()
 const rightNewTab = vi.fn()
 const rightOpenComposer = vi.fn()
@@ -26,6 +28,7 @@ const stubs = {
     template: '<div class="right" />',
     methods: {
       startStartupSession: rightStartStartup,
+      startScheduledResume: rightStartScheduledResume,
       closeAll: rightCloseAll,
       newTab: rightNewTab,
       openComposer: rightOpenComposer,
@@ -36,6 +39,7 @@ const stubs = {
   Sidebar: { name: 'Sidebar', props: ['ws'], template: '<div class="sidebar-stub" />' },
   AboutModal: { name: 'AboutModal', template: '<div class="about-stub" />' },
   AppConfigModal: { name: 'AppConfigModal', template: '<div class="appcfg-stub" />' },
+  SchedulesModal: { name: 'SchedulesModal', template: '<div class="schedules-stub" />' },
   PromptConfigModal: { name: 'PromptConfigModal', template: '<div class="promptcfg-stub" />' },
   ConfirmDialog: {
     name: 'ConfirmDialog',
@@ -54,6 +58,7 @@ beforeEach(() => {
     onMenuAction: vi.fn((cb) => { menuCb = cb; return () => {} }),
     onDeepLink: vi.fn((cb) => { deepLinkCb = cb; return () => {} }),
     onStartupSession: vi.fn((cb) => { startupSessionCb = cb; return () => {} }),
+    onScheduledResume: vi.fn((cb) => { scheduledResumeCb = cb; return () => {} }),
     deepLinkReady: vi.fn(),
     getAppInfo: vi.fn().mockResolvedValue({ name: 'SeniorDev', version: '1.0.0' }),
     installUpdate: vi.fn(),
@@ -251,6 +256,39 @@ describe('App deep link flow', () => {
     mountApp()
     await flushPromises()
     expect(rightOpenComposer).toHaveBeenCalledWith({ input: 'SD-6' })
+  })
+})
+
+describe('App scheduled firing flow', () => {
+  it('registers the scheduled-resume listener before signalling readiness', async () => {
+    // Both warm channels are gated on deepLinkReady(); a schedule that comes due
+    // during boot is queued in main until this listener exists, so registering it
+    // late would drop the firing entirely.
+    mountApp()
+    await flushPromises()
+    const listenOrder = (window.api.onScheduledResume as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    const readyOrder = (window.api.deepLinkReady as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    expect(listenOrder).toBeLessThan(readyOrder)
+  })
+
+  it('routes a scheduled resume to RightPanel with its seeded prompt', async () => {
+    mountApp()
+    await flushPromises()
+    rightStartScheduledResume.mockClear()
+    const resume: ScheduledResume = { conversationId: 'c1', prompt: 'continue', scheduleId: 's1', title: 'nightly' }
+    scheduledResumeCb(resume)
+    await flushPromises()
+    // The whole payload rides through: RightPanel names the schedule back to main
+    // when it cannot open the tab.
+    expect(rightStartScheduledResume).toHaveBeenCalledWith(resume)
+  })
+
+  it('opens the schedules modal from the menu', async () => {
+    const w = mountApp()
+    await flushPromises()
+    menuCb('schedules')
+    await flushPromises()
+    expect(w.findComponent({ name: 'SchedulesModal' }).exists()).toBe(true)
   })
 })
 

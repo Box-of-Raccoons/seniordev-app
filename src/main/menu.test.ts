@@ -53,3 +53,18 @@ describe('menuTemplate', () => {
     expect(sent).toContain('about')
   })
 })
+
+describe('menuTemplate — schedules', () => {
+  it('offers Schedules without displacing the existing Config items', () => {
+    // The existing Config assertions index positionally, so this entry goes last:
+    // adding a menu item must not renumber the ones already there.
+    const sent: MenuAction[] = []
+    const cfg = menuTemplate((a) => sent.push(a)).find((m) => m.label === 'Config')
+      ?.submenu as Electron.MenuItemConstructorOptions[]
+    const item = cfg.find((m) => m.label === 'Schedules…')
+    expect(item).toBeDefined()
+    expect(cfg.indexOf(item!)).toBe(cfg.length - 1)
+    item!.click?.(undefined as never, undefined, undefined as never)
+    expect(sent).toEqual(['schedules'])
+  })
+})

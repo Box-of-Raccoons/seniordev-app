@@ -19,6 +19,9 @@ export interface LiveTab {
   // header; the folder itself rides in prefill.folder.
   lockedProject?: string
   prompt?: { name?: string; text?: string }
+  // An explicit model for this launch (a scheduled launch that named one).
+  // Absent ⇒ the prompt's or the tool's model resolves as before.
+  model?: string
   input?: string
   ticketKey?: string
   shell?: string
@@ -73,6 +76,10 @@ export interface UsePanes {
   // conversation with a live tab → focus it wherever it lives). At most one live
   // tab holds a given conversationId, so the first match is the answer.
   findByConversationId: (conversationId: string) => { ptyId: string; paneId: string } | null
+  // The same lookup restricted to a tab whose process is still running. A tab
+  // stays on screen after its agent exits, and an exited tab is not a session a
+  // scheduled prompt can be delivered into.
+  findLiveByConversationId: (conversationId: string) => { ptyId: string; paneId: string } | null
   isActiveInFocusedPane: (ptyId: string) => boolean
 }
 
@@ -284,6 +291,14 @@ export function usePanes(): UsePanes {
     return null
   }
 
+  function findLiveByConversationId(conversationId: string): { ptyId: string; paneId: string } | null {
+    for (const pane of panes) {
+      const tab = pane.tabs.find((t) => t.conversationId === conversationId && !t.exited)
+      if (tab) return { ptyId: tab.ptyId, paneId: pane.id }
+    }
+    return null
+  }
+
   return {
     panes,
     focusedPaneId,
@@ -302,6 +317,7 @@ export function usePanes(): UsePanes {
     markExited,
     find,
     findByConversationId,
+    findLiveByConversationId,
     isActiveInFocusedPane
   }
 }
