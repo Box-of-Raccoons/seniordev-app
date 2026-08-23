@@ -1,4 +1,5 @@
 import { basename, dirname, join } from 'node:path'
+import { execSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { seedHome } from './fixtures'
 import { ensureChromedriver } from './chromedriver'
@@ -32,6 +33,16 @@ export const config: WebdriverIO.Config = {
     const binary = await ensureChromedriver()
     for (const cap of capabilities as WebdriverIO.Capabilities[]) {
       cap['wdio:chromedriverOptions'] = { binary } as never
+    }
+  },
+  // Crashed or timed-out runs can strand app instances (macOS keeps a windowless
+  // app alive); sweep anything still running our test entry. The match is the
+  // entry script's path, so a real installed SeniorDev can never be hit.
+  onComplete() {
+    try {
+      execSync("pkill -f 'e2e/entry.mjs'")
+    } catch {
+      // pkill exits 1 when there was nothing to kill - the good case
     }
   },
   // Seed the scenario sandbox before the app launches. The scenario is the spec
