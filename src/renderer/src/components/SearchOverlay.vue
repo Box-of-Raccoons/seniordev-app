@@ -22,10 +22,21 @@ const searching = ref(false)
 const error = ref<string | null>(null)
 const input = ref<HTMLInputElement | null>(null)
 
+// Whatever had focus before the overlay opened, so it can be given back. A
+// keyboard-first tool that drops focus to <body> on close leaves the next Tab
+// starting from nowhere.
+let returnFocusTo: HTMLElement | null = null
+const palette = ref<HTMLElement | null>(null)
+
 watch(
   () => props.open,
   async (open) => {
-    if (!open) return
+    if (!open) {
+      returnFocusTo?.focus()
+      returnFocusTo = null
+      return
+    }
+    returnFocusTo = document.activeElement instanceof HTMLElement ? document.activeElement : null
     // A fresh query each time it opens; stale results from ten minutes ago
     // would read as answers to what was just typed.
     query.value = ''
@@ -33,8 +44,33 @@ watch(
     error.value = null
     await nextTick()
     input.value?.focus()
-  }
+  },
+  // immediate, so an overlay mounted already-open still receives focus. Without
+  // it the watcher fires only on a CHANGE, and a mount-open path would leave
+  // focus outside the dialog with no way in but the mouse.
+  { immediate: true }
 )
+
+// Tab containment. The overlay is modal in behaviour, so Tab must not walk out
+// of it into the app behind the scrim.
+function onTab(e: KeyboardEvent): void {
+  const root = palette.value
+  if (!root) return
+  const focusable = Array.from(
+    root.querySelectorAll<HTMLElement>('button, input, [href], select, textarea, [tabindex]:not([tabindex="-1"])')
+  ).filter((el) => !el.hasAttribute('disabled'))
+  if (focusable.length === 0) return
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  const active = document.activeElement
+  if (e.shiftKey && (active === first || !root.contains(active))) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && active === last) {
+    e.preventDefault()
+    first.focus()
+  }
+}
 
 async function run(): Promise<void> {
   const q = query.value.trim()
@@ -61,7 +97,15 @@ function parts(excerpt: string, offset: number, len: number): [string, string, s
 
 <template>
   <div v-if="props.open" class="scrim" @click.self="emit('close')">
-    <div class="palette" role="dialog" aria-label="Search sessions" @keydown.esc="emit('close')">
+    <div
+      ref="palette"
+      class="palette"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search sessions"
+      @keydown.esc="emit('close')"
+      @keydown.tab="onTab"
+    >
       <form class="row" @submit.prevent="run">
         <input
           ref="input"
@@ -206,5 +250,8 @@ function parts(excerpt: string, offset: number, len: number): [string, string, s
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-mark { background: color-mix(in oklch, var(--amber) 30%, transparent); color: var(--ink); }
+/* Worn Tan, not amber. DESIGN.md reserves amber for attention STATE; tan is the
+   sanctioned colour for secondary emphasis, which is exactly what a search
+   highlight is. */
+mark { background: color-mix(in oklch, var(--tan) 30%, transparent); color: var(--ink); }
 </style>

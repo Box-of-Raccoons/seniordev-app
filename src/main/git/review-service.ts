@@ -12,6 +12,17 @@ import { parseNumstat, parseUnifiedDiff, type DiffFile, type NumstatEntry } from
 // dropped rather than letting the list look complete when it is not.
 export const UNTRACKED_CAP = 100
 
+// Every git call here is prefixed with this. With git's default
+// `core.quotepath=true`, a non-ASCII filename comes back C-quoted and
+// octal-escaped ("utf8\303\261.txt"), which we would then hand straight back to
+// `git diff -- <path>` as a literal — matching nothing, so a file with real
+// changes silently showed an empty diff. Turning quoting off makes the paths we
+// parse the same bytes as the paths we pass back.
+const QUOTEPATH_OFF = ['-c', 'core.quotepath=off']
+function git(runner: GitRunner, cwd: string, args: string[]): ReturnType<GitRunner> {
+  return runner(cwd, [...QUOTEPATH_OFF, ...args])
+}
+
 export interface ReviewTarget {
   conversationId: string
   title: string
@@ -86,7 +97,7 @@ function firstLine(s: string): string {
 }
 
 function isRepo(runner: GitRunner, cwd: string): string | null {
-  const r = runner(cwd, ['rev-parse', '--is-inside-work-tree'])
+  const r = git(runner, cwd, ['rev-parse', '--is-inside-work-tree'])
   return r.code === 0 ? null : firstLine(r.stderr)
 }
 
@@ -94,7 +105,7 @@ function isRepo(runner: GitRunner, cwd: string): string | null {
 // launch (an agent may have switched). "HEAD" is what --abbrev-ref prints when
 // detached, and reporting that verbatim would read as a branch named HEAD.
 function currentBranch(runner: GitRunner, cwd: string, fallback: string | null): string | null {
-  const r = runner(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])
+  const r = git(runner, cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])
   if (r.code !== 0) return fallback
   const name = r.stdout.trim()
   if (!name) return fallback
@@ -102,7 +113,7 @@ function currentBranch(runner: GitRunner, cwd: string, fallback: string | null):
 }
 
 function untrackedPaths(runner: GitRunner, cwd: string): { paths: string[]; truncated: number } {
-  const r = runner(cwd, ['ls-files', '--others', '--exclude-standard'])
+  const r = git(runner, cwd, ['ls-files', '--others', '--exclude-standard'])
   if (r.code !== 0) return { paths: [], truncated: 0 }
   const all = r.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
   return { paths: all.slice(0, UNTRACKED_CAP), truncated: Math.max(0, all.length - UNTRACKED_CAP) }
@@ -130,7 +141,7 @@ export function reviewSummary(runner: GitRunner, target: ReviewTarget): ReviewSu
   // Tracked: staged and unstaged together, which is the whole of what the agent
   // changed but has not committed. Comparing against HEAD (not --cached) is what
   // makes a staged-but-uncommitted edit visible.
-  const tracked = runner(target.cwd, ['diff', 'HEAD', '--numstat'])
+  const tracked = git(runner, target.cwd, ['diff', 'HEAD', '--numstat'])
   const entries: ReviewEntry[] = tracked.code === 0
     ? parseNumstat(tracked.stdout).map((e) => ({ ...e, untracked: false }))
     : []
@@ -139,7 +150,7 @@ export function reviewSummary(runner: GitRunner, target: ReviewTarget): ReviewSu
   for (const path of paths) {
     // --no-index exits 1 when the two sides differ, which is the normal case
     // here; only a missing stdout means it genuinely failed.
-    const r = runner(target.cwd, ['diff', '--no-index', '--numstat', '/dev/null', path])
+    const r = git(runner, target.cwd, ['diff', '--no-index', '--numstat', '/dev/null', path])
     const parsed = parseNumstat(r.stdout)
     if (parsed.length > 0) {
       entries.push({ ...parsed[0], path, untracked: true })
@@ -170,7 +181,7 @@ export function reviewDiff(runner: GitRunner, cwd: string, path: string | null):
   if (notRepo) return { files: [], error: notRepo }
 
   const args = path ? ['diff', 'HEAD', '--', path] : ['diff', 'HEAD', '--']
-  const r = runner(cwd, args)
+  const r = git(runner, cwd, args)
   if (r.code !== 0 && !r.stdout) return { files: [], error: firstLine(r.stderr) }
 
   const files = parseUnifiedDiff(r.stdout)
@@ -179,6 +190,6 @@ export function reviewDiff(runner: GitRunner, cwd: string, path: string | null):
   // A tracked path always produces a diff against HEAD. An empty result for a
   // named path means it is untracked, so HEAD has no side to compare and the
   // whole file is the change.
-  const untracked = runner(cwd, ['diff', '--no-index', '--', '/dev/null', path])
+  const untracked = git(runner, cwd, ['diff', '--no-index', '--', '/dev/null', path])
   return { files: parseUnifiedDiff(untracked.stdout), error: null }
 }

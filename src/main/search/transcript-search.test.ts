@@ -13,31 +13,59 @@ const agentLine = (text: string): string =>
 
 describe('excerptAround', () => {
   it('collapses whitespace to one line', () => {
-    expect(excerptAround('a\n\n  b\tc', 0).excerpt).toBe('a b c')
+    expect(excerptAround('a\n\n  b\tc', 'a').excerpt).toBe('a b c')
   })
 
   it('returns a short turn whole', () => {
-    expect(excerptAround('short one', 6).excerpt).toBe('short one')
+    expect(excerptAround('short one', 'one').excerpt).toBe('short one')
   })
 
   it('WINDOWS around the match so a late hit is still visible', () => {
     const text = 'x'.repeat(500) + 'NEEDLE' + 'y'.repeat(500)
-    const { excerpt } = excerptAround(text, 500)
+    const { excerpt } = excerptAround(text, 'NEEDLE')
     expect(excerpt).toContain('NEEDLE')
     expect(excerpt.length).toBeLessThanOrEqual(EXCERPT_MAX + 2)
   })
 
   it('marks a windowed excerpt with ellipses on the trimmed sides', () => {
     const text = 'x'.repeat(500) + 'NEEDLE' + 'y'.repeat(500)
-    const { excerpt } = excerptAround(text, 500)
+    const { excerpt } = excerptAround(text, 'NEEDLE')
     expect(excerpt.startsWith('…')).toBe(true)
     expect(excerpt.endsWith('…')).toBe(true)
   })
 
   it('reports an offset that actually points at the match', () => {
     const text = 'x'.repeat(500) + 'NEEDLE' + 'y'.repeat(500)
-    const { excerpt, offset } = excerptAround(text, 500)
+    const { excerpt, offset } = excerptAround(text, 'NEEDLE')
     expect(excerpt.slice(offset, offset + 6)).toBe('NEEDLE')
+  })
+
+  // THE REGRESSION. The previous version took a raw-text index and the earlier
+  // fixture ('x'.repeat(500)+'NEEDLE') had no collapsible whitespace, so raw
+  // and flattened indices happened to agree and the bug passed unnoticed. Any
+  // collapsing whitespace before the match shifted the highlight right.
+  it('points at the match even when whitespace before it COLLAPSED', () => {
+    const { excerpt, offset } = excerptAround('fix\n\n   the   sync comparator now', 'comparator')
+    expect(excerpt).toBe('fix the sync comparator now')
+    expect(excerpt.slice(offset, offset + 10)).toBe('comparator')
+  })
+
+  it('points at the match when whitespace collapsed inside a WINDOWED excerpt too', () => {
+    const text = 'a\n\nb   c '.repeat(60) + 'NEEDLE tail'
+    const { excerpt, offset } = excerptAround(text, 'NEEDLE')
+    expect(excerpt.slice(offset, offset + 6)).toBe('NEEDLE')
+  })
+
+  it('is case-insensitive when locating the match', () => {
+    const { excerpt, offset } = excerptAround('the Sync Comparator', 'sync comparator')
+    expect(excerpt.slice(offset, offset + 15)).toBe('Sync Comparator')
+  })
+
+  it('still returns a readable excerpt when the query only spanned a newline', () => {
+    // "sync\ncomparator" matches the raw text but not the flattened one.
+    const { excerpt, offset } = excerptAround('sync\ncomparator', 'sync\ncomparator')
+    expect(excerpt).toBe('sync comparator')
+    expect(offset).toBe(0)
   })
 })
 

@@ -72,7 +72,7 @@ describe('review over a real git working tree', () => {
   })
 
   it('names the branch git actually reports', async () => {
-    const [tree] = await listReview()
+    const tree = (await listReview()).find((t) => t.cwd.endsWith('/repo'))!
     // Whatever `git init` defaults to here; the point is that a real name came
     // back rather than the null the conversation record was seeded with.
     expect(typeof tree.branch).toBe('string')
@@ -80,7 +80,7 @@ describe('review over a real git working tree', () => {
   })
 
   it('parses the real unified diff for the tracked edit', async () => {
-    const [tree] = await listReview()
+    const tree = (await listReview()).find((t) => t.cwd.endsWith('/repo'))!
     const diff = await reviewDiff(tree.cwd, 'tracked.txt')
     expect(diff.error).toBeNull()
     expect(diff.files).toHaveLength(1)
@@ -92,7 +92,7 @@ describe('review over a real git working tree', () => {
   })
 
   it('reads an untracked file through --no-index, since HEAD has no side for it', async () => {
-    const [tree] = await listReview()
+    const tree = (await listReview()).find((t) => t.cwd.endsWith('/repo'))!
     const diff = await reviewDiff(tree.cwd, 'untracked.txt')
     expect(diff.error).toBeNull()
     expect(diff.files).toHaveLength(1)

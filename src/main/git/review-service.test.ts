@@ -8,13 +8,27 @@ const fail = (stderr: string, code = 128): GitResult => ({ code, stdout: '', std
 // Fake git keyed on the joined argv, so a test states exactly which git question
 // it is answering. Anything unstubbed comes back as a clean empty success, which
 // keeps each test to the calls it actually cares about.
-function fakeGit(map: Record<string, GitResult>): GitRunner & { calls: string[][] } {
+//
+// Leading `-c key=value` config pairs are stripped before keying and recording:
+// every review call carries `-c core.quotepath=off`, and that is a property of
+// how we invoke git, not part of the question being asked. One test below
+// asserts the flag is present; the rest should not have to know about it.
+function stripConfigFlags(args: string[]): string[] {
+  const out = [...args]
+  while (out[0] === '-c') out.splice(0, 2)
+  return out
+}
+function fakeGit(map: Record<string, GitResult>): GitRunner & { calls: string[][]; rawCalls: string[][] } {
   const calls: string[][] = []
+  const rawCalls: string[][] = []
   const runner = ((_cwd: string, args: string[]): GitResult => {
-    calls.push(args)
-    return map[args.join(' ')] ?? ok('')
-  }) as GitRunner & { calls: string[][] }
+    rawCalls.push(args)
+    const question = stripConfigFlags(args)
+    calls.push(question)
+    return map[question.join(' ')] ?? ok('')
+  }) as GitRunner & { calls: string[][]; rawCalls: string[][] }
   runner.calls = calls
+  runner.rawCalls = rawCalls
   return runner
 }
 
@@ -216,5 +230,36 @@ describe('reviewDiff', () => {
     const r = reviewDiff(git, '/repo', null)
     expect(r.error).toMatch(/bad object/i)
     expect(r.files).toEqual([])
+  })
+})
+
+// Path handling that broke on real repos.
+describe('review-service — path handling', () => {
+  it('turns off git path quoting on EVERY call', () => {
+    // With the default core.quotepath=true, a non-ASCII filename comes back
+    // C-quoted ("utf8\303\261.txt"); handing that back to `git diff -- <path>`
+    // matches nothing, so a file with real changes showed an empty diff.
+    const git = fakeGit({ 'rev-parse --is-inside-work-tree': ok('true\n') })
+    reviewSummary(git, TARGET)
+    expect(git.rawCalls.length).toBeGreaterThan(0)
+    for (const args of git.rawCalls) {
+      expect(args.slice(0, 2)).toEqual(['-c', 'core.quotepath=off'])
+    }
+  })
+
+  it('turns it off for the diff call too', () => {
+    const git = fakeGit({ 'rev-parse --is-inside-work-tree': ok('true\n') })
+    reviewDiff(git, '/repo', 'src/a.ts')
+    for (const args of git.rawCalls) {
+      expect(args.slice(0, 2)).toEqual(['-c', 'core.quotepath=off'])
+    }
+  })
+
+  it('keeps a non-ASCII filename intact end to end', () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'diff HEAD --numstat': ok('1\t0\tutf8ñ.txt\n')
+    })
+    expect(reviewSummary(git, TARGET).entries[0].path).toBe('utf8ñ.txt')
   })
 })

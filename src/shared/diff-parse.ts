@@ -59,9 +59,15 @@ function pathsFromGitHeader(rest: string): { oldPath: string; newPath: string } 
 
 // Strip git's a/ or b/ prefix from a ---/+++ path line. /dev/null stays as-is so
 // the caller can read it as an add or delete signal.
+//
+// A TAB terminates the path. Unified diff allows `+++ b/path\t<timestamp>`, and
+// git emits the tab for paths containing spaces even with no timestamp after
+// it. Keeping it put a trailing tab inside DiffFile.path, which then failed to
+// match the same file's numstat-derived entry.
 function stripPrefix(p: string): string {
-  if (p === '/dev/null') return p
-  return p.startsWith('a/') || p.startsWith('b/') ? p.slice(2) : p
+  const untabbed = p.split('\t')[0]
+  if (untabbed === '/dev/null') return untabbed
+  return untabbed.startsWith('a/') || untabbed.startsWith('b/') ? untabbed.slice(2) : untabbed
 }
 
 function emptyFile(): DiffFile {

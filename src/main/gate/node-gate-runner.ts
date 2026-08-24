@@ -34,7 +34,38 @@ export const nodeGateRunner: GateCommandRunner = (command, cwd, timeoutMs): Prom
     // "make check && ./verify.sh") rather than a pre-split argv. This executes a
     // string from the user's own config file in their own repo, which is the
     // same trust level as the CLI tools the app already launches.
-    const child = spawn(command, { cwd, shell: true, windowsHide: true })
+    //
+    // detached on POSIX makes the child a process-group leader. Without it, a
+    // timeout kill reaches only the `sh -c` wrapper and the actual test runner
+    // survives as an orphan, still holding whatever port or test database it
+    // had. The next gate on that repo then fails on resources nothing owns.
+    const child = spawn(command, {
+      cwd,
+      shell: true,
+      windowsHide: true,
+      detached: process.platform !== 'win32'
+    })
+
+    // Kill the whole tree, not just the shell.
+    const killTree = (): void => {
+      const pid = child.pid
+      if (!pid) return
+      if (process.platform === 'win32') {
+        // Windows has no process groups to signal; taskkill /T walks the tree.
+        try {
+          spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true })
+        } catch {
+          child.kill()
+        }
+        return
+      }
+      try {
+        process.kill(-pid, 'SIGKILL')
+      } catch {
+        // The group may already be gone, or the child never became a leader.
+        child.kill('SIGKILL')
+      }
+    }
 
     const finish = (code: number | null, timedOut: boolean): void => {
       if (settled) return
@@ -52,7 +83,7 @@ export const nodeGateRunner: GateCommandRunner = (command, cwd, timeoutMs): Prom
     const timer = setTimeout(() => {
       // SIGKILL rather than SIGTERM: a wedged test runner is exactly the thing
       // that ignores a polite signal, and the timeout has already been generous.
-      child.kill('SIGKILL')
+      killTree()
       finish(null, true)
     }, timeoutMs)
 
