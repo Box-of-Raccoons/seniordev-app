@@ -18,7 +18,7 @@ const ok = (stdout: string): GitResult => ({ code: 0, stdout, stderr: '' })
 // carries `-c core.quotepath=off`, which is how we invoke git rather than part
 // of the question being asked (see review-service.ts for why it is there).
 function fakeRunner(replies: Record<string, GitResult>): GitRunner {
-  return (_cwd: string, args: string[]): GitResult => {
+  return async (_cwd: string, args: string[]): Promise<GitResult> => {
     const question = [...args]
     while (question[0] === '-c') question.splice(0, 2)
     return replies[question.join(' ')] ?? ok('')

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { readFileAtAsync } from '../transcripts'
+import { readFileAtAsync, buildCodexIndex } from '../transcripts'
 import {
   searchConversations,
   MAX_SESSIONS_SCANNED,
@@ -158,6 +158,46 @@ describe('searchConversations', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  it('walks the codex tree ONCE per scan, not once per conversation', async () => {
+    // Locating a codex rollout means a recursive directory walk. Doing it
+    // inside the loop meant up to 300 synchronous walks per search, each a
+    // freeze of the main thread. The index is built once and reused.
+    const dir = mkdtempSync(join(tmpdir(), 'seniordev-search-index-'))
+    const nested = join(dir, '2026', '08')
+    mkdirSync(nested, { recursive: true })
+    for (let i = 0; i < 5; i++) {
+      writeFileSync(
+        join(nested, `rollout-2026-08-01-sid-${i}.jsonl`),
+        JSON.stringify({ payload: { type: 'user_message', message: `needle ${i}` } })
+      )
+    }
+    const builds = vi.fn(() => buildCodexIndex(dir))
+    try {
+      const convs = Array.from({ length: 5 }, (_, i) =>
+        conv({ id: `c${i}`, tool: 'codex', agentSessionId: `sid-${i}`, lastActiveAt: i })
+      )
+      const out = await searchConversations(convs, 'needle', {
+        deps: { codexSessionsDir: dir },
+        buildIndex: builds
+      })
+      // All five located and matched through the shared index...
+      expect(out.hits).toHaveLength(5)
+      // ...off exactly one walk of the tree.
+      expect(builds).toHaveBeenCalledTimes(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not walk the codex tree at all for a claude-only scan', async () => {
+    const builds = vi.fn(() => new Map<string, string>())
+    await searchConversations([conv({ tool: 'claude' })], 'needle', {
+      deps: { claudeProjectsDir: join(tmpdir(), 'seniordev-nonexistent-projects') },
+      buildIndex: builds
+    })
+    expect(builds).not.toHaveBeenCalled()
   })
 
   it('still accepts a synchronous reader', async () => {

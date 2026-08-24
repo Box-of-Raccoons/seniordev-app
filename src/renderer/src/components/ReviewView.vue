@@ -114,6 +114,13 @@ onMounted(refresh)
             <span class="rv-path">{{ e.path }}</span>
             <span v-if="e.untracked" class="rv-new" title="untracked">new</span>
             <span v-if="e.binary" class="rv-bin">binary</span>
+            <!-- Never "+0" for a file whose lines simply were not counted: a
+                 reviewer reads +0 as trivial, and this one may not be. -->
+            <span
+              v-else-if="e.uncounted"
+              class="rv-bin"
+              title="Too large or unreadable, so its lines were not counted"
+            >not counted</span>
             <span v-else class="rv-stat">
               <span class="add">+{{ e.insertions }}</span>
               <span class="del">-{{ e.deletions }}</span>

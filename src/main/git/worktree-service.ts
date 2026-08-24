@@ -12,9 +12,9 @@ function cleanGitError(stderr: string): string {
 
 // Is `folder` inside a git work tree? Drives the composer's checkbox enable state.
 // A non-zero exit (not a repo, git missing) is a clean `false`, never an error.
-export function gitRepoInfo(runner: GitRunner, folder: string): { isRepo: boolean } {
+export async function gitRepoInfo(runner: GitRunner, folder: string): Promise<{ isRepo: boolean }> {
   try {
-    const r = runner(folder, ['rev-parse', '--is-inside-work-tree'])
+    const r = await runner(folder, ['rev-parse', '--is-inside-work-tree'])
     return { isRepo: r.code === 0 && r.stdout.trim() === 'true' }
   } catch {
     return { isRepo: false }
@@ -31,15 +31,15 @@ export type CreateWorktreeResult =
 // already exists — makes `git worktree add` exit non-zero; we map that to a clear
 // message and return ok:false. We NEVER reuse an existing branch/path silently,
 // so a failure can never spawn the agent in the wrong cwd.
-export function createWorktree(
+export async function createWorktree(
   runner: GitRunner,
   opts: { configDir: string; folder: string; repoKey: string; branch: string }
-): CreateWorktreeResult {
+): Promise<CreateWorktreeResult> {
   const branch = sanitizeBranchRef(opts.branch)
   const worktreePath = worktreePathFor(opts.configDir, opts.repoKey, branch)
   let r: { code: number; stderr: string }
   try {
-    r = runner(opts.folder, ['worktree', 'add', '-b', branch, worktreePath, 'HEAD'])
+    r = await runner(opts.folder, ['worktree', 'add', '-b', branch, worktreePath, 'HEAD'])
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
@@ -58,13 +58,13 @@ export type RemoveWorktreeResult = { ok: true } | { ok: false; error: string }
 // declining the flag is what stops us destroying an uncommitted diff. A refusal is
 // surfaced, never swallowed and never overridden. Accumulating a stale worktree is
 // preferable to losing work.
-export function removeWorktree(
+export async function removeWorktree(
   runner: GitRunner,
   opts: { folder: string; worktreePath: string }
-): RemoveWorktreeResult {
+): Promise<RemoveWorktreeResult> {
   let r: { code: number; stderr: string }
   try {
-    r = runner(opts.folder, ['worktree', 'remove', opts.worktreePath])
+    r = await runner(opts.folder, ['worktree', 'remove', opts.worktreePath])
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }

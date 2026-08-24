@@ -34,21 +34,41 @@ export function locateClaudeTranscript(sessionId: string, projectsDir = claudePr
   return null
 }
 
-// codex nests rollouts by date and embeds the id in the filename.
-export function locateCodexTranscript(sessionId: string, sessionsDir = codexSessionsDir()): string | null {
+// codex nests rollouts by date and embeds the id in the filename, so finding one
+// means walking the tree. That walk is the expensive part, and it does not
+// depend on which session is being looked up — so a caller doing many lookups
+// should walk ONCE and reuse it. `CodexIndex` is that reuse.
+export type CodexIndex = Map<string, string>
+
+// Walk the codex sessions tree once, indexing every rollout by its lowercased
+// filename. Building this for a single lookup costs the same as the old
+// per-lookup walk; building it once for 300 lookups is the whole point.
+export function buildCodexIndex(sessionsDir = codexSessionsDir()): CodexIndex {
+  const index: CodexIndex = new Map()
   let entries: string[]
   try {
     entries = readdirSync(sessionsDir, { recursive: true }) as string[]
   } catch {
-    return null
+    return index
   }
-  const idLc = sessionId.toLowerCase()
   for (const rel of entries) {
     const base = (rel.split(/[\\/]/).pop() ?? '').toLowerCase()
-    if (!base.endsWith('.jsonl') || !base.includes(idLc)) continue
-    return join(sessionsDir, rel)
+    if (!base.endsWith('.jsonl')) continue
+    index.set(base, join(sessionsDir, rel))
   }
+  return index
+}
+
+export function lookupCodexInIndex(sessionId: string, index: CodexIndex): string | null {
+  const idLc = sessionId.toLowerCase()
+  // The id is embedded in the filename rather than being the whole of it, so
+  // this is a substring match over the indexed names, not a direct key hit.
+  for (const [base, full] of index) if (base.includes(idLc)) return full
   return null
+}
+
+export function locateCodexTranscript(sessionId: string, sessionsDir = codexSessionsDir()): string | null {
+  return lookupCodexInIndex(sessionId, buildCodexIndex(sessionsDir))
 }
 
 // The transcript file for a conversation, or null. Separated from reading so a
@@ -107,9 +127,20 @@ export async function readFileAtAsync(path: string): Promise<string | null> {
 
 export async function readTranscriptAsync(
   conv: { tool: string; agentSessionId: string | null },
-  deps?: { claudeProjectsDir?: string; codexSessionsDir?: string }
+  deps?: { claudeProjectsDir?: string; codexSessionsDir?: string; codexIndex?: CodexIndex }
 ): Promise<string | null> {
-  const p = locateTranscript(conv, deps)
+  if (!conv.agentSessionId) return null
+  let p: string | null = null
+  if (conv.tool === 'claude') {
+    p = locateClaudeTranscript(conv.agentSessionId, deps?.claudeProjectsDir)
+  } else if (conv.tool === 'codex') {
+    // Reuse a prebuilt index when the caller has one. Without it, a scan of 300
+    // conversations did 300 full recursive directory walks, each one a
+    // synchronous freeze of the main thread.
+    p = deps?.codexIndex
+      ? lookupCodexInIndex(conv.agentSessionId, deps.codexIndex)
+      : locateCodexTranscript(conv.agentSessionId, deps?.codexSessionsDir)
+  }
   return p ? readFileAtAsync(p) : null
 }
 
