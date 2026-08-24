@@ -398,7 +398,7 @@ neither half is much use without the other.
   menu-bar app is not opening a window. The per-session cost meter here is a
   different feature that answers a question the global meter cannot.
 
-## Open questions — answered during implementation
+## Open questions, answered during implementation
 
 1. **Does main's settled-buffer scan distinguish "waiting at a prompt" from
    "finished"? YES, already.** `terminal/status-hub.ts` scans a settled buffer
@@ -416,7 +416,7 @@ neither half is much use without the other.
    made the second unanswerable.
 4. **Where does the gate command live for a folder not in `repos:`?**
    `defaultGate` at the top level of config. Resolution is repo `gate`, then
-   `defaultGate`, then nothing — and "nothing" is the default, so configuring a
+   `defaultGate`, then nothing. "Nothing" is the default, so configuring a
    gate is the entire opt-in.
 
 ## Open questions still outstanding (Slice 3b)
