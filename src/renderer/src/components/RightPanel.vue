@@ -7,6 +7,7 @@ import EmptyState from './EmptyState.vue'
 import StatusGlyph from './StatusGlyph.vue'
 import SubagentPanel from './SubagentPanel.vue'
 import ReviewView from './ReviewView.vue'
+import { useGates, gateGlyph, gateLabel } from '../composables/useGates'
 import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
 import { shouldNotify, notificationText } from '../status-notify'
 import { type LiveTab } from '../composables/usePanes'
@@ -47,6 +48,11 @@ function tabScheduleNote(conversationId: string): string | null {
   return `Scheduled: ${s.title}, next ${describeNextRun(s, props.scheduleBadges?.now.value ?? Date.now())}`
 }
 const panes = props.ws.panes
+
+// Supervision slice 2: per-tab gate results, pushed from main when a session
+// settles and its project has a gate configured.
+const gates = useGates()
+onBeforeUnmount(() => gates.dispose())
 
 // S8: when the subagent panel is docked at the bottom, it mounts here as a flex
 // child below the panes row. Height mirrors the persisted size (a slim bar when
@@ -453,6 +459,7 @@ function resumeYolo(from: LiveTab, p: { sessionId: string; cwd: string; tool: st
 function closeTerm(id: string): void {
   panes.closeTab(id)
   delete statuses[id]
+  gates.forget(id)
 }
 
 // A tab's pty exited. D3 / spec 7.2: cleanly-exited agent (terminal) or shell tabs
@@ -515,6 +522,16 @@ function isVisible(paneId: string, ptyId: string): boolean {
               >
                 <StatusGlyph class="term-tab__status" :status="statuses[tab.ptyId] ?? null" />
                 <button class="term-tab__label" @click="panes.focusTab(pane.id, tab.ptyId)">{{ tab.title }}</button>
+                <!-- Supervision slice 2. Separate from StatusGlyph on purpose:
+                     that one is the session's state, this one is the code's. -->
+                <span
+                  v-if="gates.forTab(tab.ptyId)"
+                  class="term-tab__gate"
+                  :class="`gate--${gates.forTab(tab.ptyId)!.state}`"
+                  role="img"
+                  :aria-label="gateLabel(gates.forTab(tab.ptyId)!)"
+                  :title="gateLabel(gates.forTab(tab.ptyId)!)"
+                >{{ gateGlyph(gates.forTab(tab.ptyId)!.state) }}</span>
                 <span
                   v-if="tabScheduleNote(tab.conversationId)"
                   class="term-tab__sched"
@@ -663,6 +680,16 @@ function isVisible(paneId: string, ptyId: string): boolean {
 .term-tab--dead .term-tab__label { color: var(--ink-muted); text-decoration: line-through; }
 .term-tab__status { display: inline-flex; align-items: center; padding-left: 9px; }
 .term-tab__sched { color: var(--teal); font-size: 11px; flex: 0 0 auto; }
+/* Gate outcome. The glyph carries the state; colour reinforces it. */
+.term-tab__gate {
+  font-family: var(--font-mono, Consolas, monospace);
+  font-size: 11px; font-weight: 700; flex: 0 0 auto; padding-left: 4px;
+}
+.gate--running { color: var(--ink-muted); }
+.gate--pass { color: var(--green); }
+.gate--fail { color: var(--rust); }
+/* Amber, not rust: the gate broke, which is not the same as the code failing. */
+.gate--error { color: var(--amber); }
 .term-tab__label {
   background: transparent; border: 0; color: inherit; font: inherit;
   padding: 5px 4px 5px 8px; cursor: pointer;

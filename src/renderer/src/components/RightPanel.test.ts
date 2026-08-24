@@ -4,15 +4,20 @@ import RightPanel from './RightPanel.vue'
 import { useWorkspace, type UseWorkspace } from '../composables/useWorkspace'
 import { useSubagents } from '../composables/useSubagents'
 import type { NewTab } from '../composables/usePanes'
-import type { StatusUpdateEvent, Schedule, ScheduledResume, ConversationInfo } from '../../../shared/ipc'
+import type { StatusUpdateEvent, Schedule, ScheduledResume, ConversationInfo, GateRunningEvent, GateResultEvent } from '../../../shared/ipc'
 import type { UseScheduleBadges } from '../composables/useScheduleBadges'
 import { ref } from 'vue'
 
 // Captured so tests can drive status updates as if from main.
 let statusCb: ((e: StatusUpdateEvent) => void) | null = null
+// Same, for the slice-2 gate pushes.
+let gateRunningCb: ((e: GateRunningEvent) => void) | null = null
+let gateResultCb: ((e: GateResultEvent) => void) | null = null
 
 beforeEach(() => {
   statusCb = null
+  gateRunningCb = null
+  gateResultCb = null
   ;(window as unknown as { api: unknown }).api = {
     spawnTerminal: vi.fn(async () => ({ ok: true })),
     spawnShell: vi.fn(async () => ({ ok: true })),
@@ -32,7 +37,13 @@ beforeEach(() => {
     onConfigChanged: vi.fn(() => () => {}),
     getStartup: vi.fn(async () => ({ tickets: [] })),
     listConversations: vi.fn(async () => [] as ConversationInfo[]),
-    scheduleResumeDropped: vi.fn()
+    scheduleResumeDropped: vi.fn(),
+    // Supervision slice 2: RightPanel subscribes to gate pushes at setup, so the
+    // stub must carry them or every mount throws.
+    onGateRunning: vi.fn((cb: (e: GateRunningEvent) => void) => { gateRunningCb = cb; return () => {} }),
+    onGateResult: vi.fn((cb: (e: GateResultEvent) => void) => { gateResultCb = cb; return () => {} }),
+    gateOutput: vi.fn(async () => null),
+    runGate: vi.fn(async () => undefined)
   }
 })
 
@@ -538,5 +549,74 @@ describe('RightPanel scheduled resume', () => {
       title: 'nightly sweep',
       reason: expect.stringContaining('no session id')
     })
+  })
+})
+
+// Supervision slice 2. The gate badge is deliberately SEPARATE from StatusGlyph:
+// the status is the session's state, the gate is the code's, and a tab can be
+// needsYou with a passing gate or idle with a failing one.
+describe('RightPanel — gate badge', () => {
+  async function seedLaunchedTab(w: ReturnType<typeof mountRP>): Promise<string> {
+    await seedAgent(w)
+    await w.find('.go-int').trigger('click')
+    await w.vm.$nextTick()
+    return (w.props('ws') as UseWorkspace).panes.allTabs.value[0].tab.ptyId
+  }
+
+  it('shows no badge until a gate reports', async () => {
+    const w = mountRP()
+    await seedLaunchedTab(w)
+    expect(w.find('.term-tab__gate').exists()).toBe(false)
+  })
+
+  it('marks the tab while its gate runs', async () => {
+    const w = mountRP()
+    const ptyId = await seedLaunchedTab(w)
+    gateRunningCb!({ ptyId, command: 'pnpm test' })
+    await w.vm.$nextTick()
+    const badge = w.find('.term-tab__gate')
+    expect(badge.exists()).toBe(true)
+    expect(badge.attributes('aria-label')).toMatch(/gate running/i)
+  })
+
+  it('shows a pass with a glyph and a spelled-out label, never colour alone', async () => {
+    const w = mountRP()
+    const ptyId = await seedLaunchedTab(w)
+    gateResultCb!({ ptyId, outcome: 'pass', summary: 'Tests  3 passed (3)', durationMs: 1200, command: 'pnpm test' })
+    await w.vm.$nextTick()
+    const badge = w.find('.term-tab__gate')
+    expect(badge.text()).toBe('✓')
+    expect(badge.classes()).toContain('gate--pass')
+    expect(badge.attributes('aria-label')).toMatch(/gate passed/i)
+  })
+
+  it('shows a fail distinctly from a pass', async () => {
+    const w = mountRP()
+    const ptyId = await seedLaunchedTab(w)
+    gateResultCb!({ ptyId, outcome: 'fail', summary: '1 failed', durationMs: 900, command: 'pnpm test' })
+    await w.vm.$nextTick()
+    const badge = w.find('.term-tab__gate')
+    expect(badge.text()).toBe('✗')
+    expect(badge.attributes('aria-label')).toMatch(/gate failed/i)
+  })
+
+  it('says a broken gate could not run, rather than calling the code failed', async () => {
+    const w = mountRP()
+    const ptyId = await seedLaunchedTab(w)
+    gateResultCb!({ ptyId, outcome: 'error', summary: 'command not found', durationMs: 0, command: 'pnpm test' })
+    await w.vm.$nextTick()
+    const label = w.find('.term-tab__gate').attributes('aria-label')!
+    expect(label).toMatch(/could not run/i)
+    expect(label).not.toMatch(/\bfailed\b/i)
+  })
+
+  it('leaves no badge behind when the tab is closed', async () => {
+    const w = mountRP()
+    const ptyId = await seedLaunchedTab(w)
+    gateResultCb!({ ptyId, outcome: 'pass', summary: 'ok', durationMs: 10, command: 'pnpm test' })
+    await w.vm.$nextTick()
+    await w.find('.term-tab__close').trigger('click')
+    await w.vm.$nextTick()
+    expect(w.find('.term-tab__gate').exists()).toBe(false)
   })
 })
