@@ -80,7 +80,14 @@ export const ConfigSchema = z.object({
   defaultGate: z.string().default(''),
   // A gate that hangs must not hang forever. Killed at this point and reported
   // as an error, which is distinct from a failing suite.
-  gateTimeoutMs: z.number().int().positive().default(300_000)
+  gateTimeoutMs: z.number().int().positive().default(300_000),
+  // Supervision slice 3a: USD per MILLION tokens, merged over the bundled
+  // table. Model prices change and new models ship, so this exists to correct a
+  // stale bundled rate or price a model the app has never heard of. A model
+  // with no rate anywhere reports tokens and no cost, rather than a guess.
+  modelRates: z
+    .record(z.object({ input: z.number().nonnegative(), output: z.number().nonnegative() }))
+    .default({})
 })
 
 export type Config = z.infer<typeof ConfigSchema>

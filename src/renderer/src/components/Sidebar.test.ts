@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import Sidebar from './Sidebar.vue'
 import { useWorkspace, type UseWorkspace } from '../composables/useWorkspace'
-import type { ProjectInfo, ConversationInfo, Schedule } from '../../../shared/ipc'
+import type { ProjectInfo, ConversationInfo, Schedule, ConversationCostInfo } from '../../../shared/ipc'
 import type { UseScheduleBadges } from '../composables/useScheduleBadges'
 import { ref } from 'vue'
 
@@ -20,6 +20,9 @@ function conv(over: Partial<ConversationInfo>): ConversationInfo {
 }
 
 let changedCb: (() => void) | null = null
+// Supervision slice 3a. Module-level so a test can set costs without threading a
+// fifth positional arg through every existing setApi call site.
+let stubCosts: ConversationCostInfo[] = []
 function setApi(
   projects: ProjectInfo[],
   conversations: ConversationInfo[],
@@ -45,6 +48,8 @@ function setApi(
   ;(window as unknown as { api: unknown }).api = {
     listProjects: vi.fn(async () => projects),
     listConversations: vi.fn(async () => conversations),
+    // Supervision slice 3a: the sidebar fetches notional costs on refresh.
+    listCosts: vi.fn(async () => stubCosts),
     onSidebarChanged: vi.fn((cb: () => void) => { changedCb = cb; return () => {} }),
     listShells: vi.fn(async () => ({ shells: ['pwsh', 'bash'], default: 'pwsh' })),
     listTools: vi.fn(async () => ['claude', 'codex']),
@@ -89,6 +94,7 @@ async function mountSidebar(ws: UseWorkspace) {
 
 beforeEach(() => {
   changedCb = null
+  stubCosts = []
 })
 
 describe('Sidebar', () => {
@@ -435,5 +441,67 @@ describe('Sidebar schedule badge', () => {
     const w = await mountWithBadges(undefined)
     expect(w.text()).toContain('GG-14 login fix')
     expect(w.find('.tag--sched').exists()).toBe(false)
+  })
+})
+
+// Supervision slice 3a. A quiet figure on the row, never a metric tile, and
+// never presented as a bill — work here runs on a subscription.
+describe('Sidebar — notional cost', () => {
+  const costInfo = (over: Partial<ConversationCostInfo> = {}): ConversationCostInfo => ({
+    conversationId: 'c1',
+    mainTokens: 1_000_000,
+    mainCost: 5,
+    sidechainTokens: 0,
+    sidechainCost: 0,
+    unpricedModels: [],
+    messages: 12,
+    models: ['claude-opus-5'],
+    ...over
+  })
+
+  async function mountWithCost(costs: ConversationCostInfo[]) {
+    stubCosts = costs
+    setApi([project({ id: 'p1' })], [conv({ id: 'c1', projectId: 'p1' })])
+    const w = mount(Sidebar, { props: { ws: useWorkspace() as UseWorkspace } })
+    await flushPromises()
+    return w
+  }
+
+  it('shows no figure for a session with no recorded usage', async () => {
+    const w = await mountWithCost([])
+    expect(w.find('.cost').exists()).toBe(false)
+  })
+
+  it('shows tokens and cost on the row', async () => {
+    const w = await mountWithCost([costInfo()])
+    expect(w.find('.cost').text()).toBe('1.0M · $5.00')
+  })
+
+  it('says in the tooltip that the figure is NOT a bill', async () => {
+    const w = await mountWithCost([costInfo()])
+    expect(w.find('.cost').attributes('title')).toMatch(/not a bill/i)
+  })
+
+  it('breaks out subagent spend in the tooltip', async () => {
+    const w = await mountWithCost([costInfo({ sidechainTokens: 2_000_000, sidechainCost: 3 })])
+    expect(w.find('.cost').attributes('title')).toMatch(/subagents: 2\.0M tokens/)
+  })
+
+  it('falls back to tokens alone when a model has no known price', async () => {
+    const w = await mountWithCost([costInfo({ mainCost: null, unpricedModels: ['brand-new'] })])
+    expect(w.find('.cost').text()).toBe('1.0M')
+    expect(w.find('.cost').attributes('title')).toMatch(/no known price for brand-new/)
+  })
+
+  it('survives a cost fetch that fails, without blanking the sidebar', async () => {
+    setApi([project({ id: 'p1' })], [conv({ id: 'c1', projectId: 'p1' })])
+    ;(window as unknown as { api: { listCosts: unknown } }).api.listCosts = vi.fn(async () => {
+      throw new Error('transcript read exploded')
+    })
+    const w = mount(Sidebar, { props: { ws: useWorkspace() as UseWorkspace } })
+    await flushPromises()
+    // The project list is the load-bearing content; pricing must not take it down.
+    expect(w.findAll('.conv').length).toBe(1)
+    expect(w.find('.cost').exists()).toBe(false)
   })
 })
