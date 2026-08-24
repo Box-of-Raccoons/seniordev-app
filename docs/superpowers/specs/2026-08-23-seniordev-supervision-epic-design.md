@@ -20,7 +20,7 @@ executes anything.
 |---|---|---|
 | Diff review | git working tree / worktrees | No |
 | Gate runner | the project's own test command | **Yes** |
-| Cost meter | agent transcripts (`usage` records) | No |
+| Cost meter | agent transcripts (`usage` records) **plus** a polled OAuth usage endpoint | No |
 | Transcript search | the same transcripts | No |
 | Blocked-session inbox | in-memory session status | No |
 | Log tailer | a file the user names | No |
@@ -28,6 +28,10 @@ executes anything.
 That shapes the architecture. Most of this epic is a read-only observation layer
 in main that watches sources the app already knows how to locate, plus pure
 parsing modules in the renderer, plus one feature that spawns a child process.
+
+Two exceptions to "already on disk," both in the cost meter: it polls a network
+endpoint for subscription window state, and it reads an OAuth credential to do
+so. Slice 3b covers both, and neither is a property this app has today.
 
 Two facts confirmed while writing this, both load-bearing:
 
@@ -154,9 +158,18 @@ spawn half is a thin wrapper.
 
 ## Slice 3: Per-session cost meter
 
-**The gap.** claude-usage-watcher tells you the global number. What you cannot
-see anywhere is that tab 3 burned twenty times what tab 1 did. Attribution is
-the whole feature.
+**The gap.** claude-usage-watcher polls an account-level gauge: total usage, with
+no per-session breakdown. What you cannot see anywhere is that tab 3 burned
+twenty times what tab 1 did. Attribution is the whole feature, and no existing
+tool provides it.
+
+There are **two different currencies** here, and they answer different questions.
+Notional dollars compare sessions against each other. Subscription window share
+answers "how much of my week did this run eat," which on a Max plan is the
+question that actually bites. They come from different sources and have very
+different confidence levels, so the slice builds them separately.
+
+### 3a: Notional cost, from transcripts
 
 **Data.** Confirmed present in both formats (see above). Three details that
 matter and are easy to get wrong:
@@ -181,13 +194,77 @@ subscription, so the dollar figure is not a bill. It is the API-equivalent cost,
 which is useful for comparing sessions against each other and useless as an
 accounting figure. If the UI implies otherwise it is lying.
 
-**Surface.** Deliberately small, because DESIGN.md bans hero-metric tiles. A
-figure on the session's sidebar row and on the session record. No tile, no
-gauge, no chart.
-
 **Architecture.** A pure pricing function (usage record plus model to cost) and
 a transcript usage reader that reuses the file-location code
 `session-title.ts` already depends on. Both testable on fixtures with no disk.
+
+### 3b: Subscription window share, from gauge deltas
+
+**The question.** How much of the 5-hour and weekly limits did this session
+consume. On a Max subscription this matters more than notional dollars, because
+the limit is the thing that actually stops you working.
+
+**The API gives a gauge, not a ledger.** `GET
+https://api.anthropic.com/api/oauth/usage` (the endpoint claude-usage-watcher
+polls) returns four windows: `five_hour`, `seven_day`, `seven_day_opus`,
+`seven_day_sonnet`. Each carries only a `utilization` percentage and a
+`resets_at`. No token counts, no request identity, no session attribution. It
+reports how full the bucket is and never who filled it.
+
+**So attribution has to be derived: sample the gauge at session boundaries.**
+Record utilization when a session launches and again when it settles. For a
+session that ran alone, the delta is that session's real cost, expressed in the
+currency that matters, with no pricing table and no assumed formula.
+
+**Four things break the naive version, and the design has to respect all four:**
+
+1. **Overlapping sessions cannot be cleanly split.** Four agents running at once
+   produce one delta. Dividing it by token share assumes the limit tracks tokens
+   proportionally, which is unverified.
+2. **Other clients share the bucket.** claude.ai in a browser, the desktop app,
+   another machine, and any `claude -p` subprocess all consume the same window.
+   Their usage would be blamed on whatever session happened to be open.
+3. **The weighting is unpublished.** `seven_day_opus` and `seven_day_sonnet`
+   existing as separate windows proves models do not count equally. A session's
+   share cannot be computed from raw token counts without weights nobody
+   publishes.
+4. **Sampling is discrete; the window moves continuously.** Bursts between polls
+   land on the wrong session.
+
+**The honest rule: attribute confidently for solo sessions, and mark overlap as
+overlap.** A window during which only one session ran gets a real number. A
+window with concurrent sessions gets a combined figure labeled as shared. Never
+invent a split to avoid showing an ambiguous one.
+
+**v2, worth designing toward but not building yet: fit the weights empirically.**
+Every clean solo session yields a pair, tokens-by-model from the transcript
+against the utilization delta from the gauge. Enough pairs and the per-model
+weights can be fitted from real data, at which point overlapping sessions can be
+attributed by a measured formula instead of a guessed one. Measure, do not
+design.
+
+**Two things this changes about the app, neither of which should happen
+quietly:**
+
+- **It reads a credential.** The OAuth token comes from the login Keychain
+  (service `Claude Code-credentials`) or `~/.claude/.credentials.json`, the same
+  sources claude-usage-watcher uses. PRODUCT.md currently makes a point of the
+  app holding no credentials. Reading a token another app already stores is not
+  the same as storing a new secret, but it is a change to a stated property and
+  belongs in PRODUCT.md rather than only in code.
+- **It depends on an undocumented endpoint.** claude-usage-watcher pins a
+  `claude-code/2.1.170` User-Agent specifically to stay out of an aggressive
+  rate-limit bucket, which is a fair measure of how supported this is. The
+  feature must degrade to showing nothing when the endpoint changes, never to
+  showing a stale or wrong number.
+
+### Surface (both halves)
+
+Deliberately small, because DESIGN.md bans hero-metric tiles. A figure on the
+session's sidebar row and on the session record. No tile, no gauge, no chart.
+The window share reads as a percentage-point delta ("2.4% of the weekly"), not
+as a second dollar figure, so the two currencies never get confused for each
+other.
 
 ## Slice 4: Blocked-session inbox
 
@@ -315,3 +392,9 @@ neither half is much use without the other.
 2. Does the diff overview read worktrees on demand or watch them?
 3. Does transcript search cover agent output or only user turns?
 4. Where does the gate command live for a folder that is not in `repos:`?
+5. Does 3b poll the usage endpoint independently, or read what
+   claude-usage-watcher already polls? Two apps hitting a rate-limit-sensitive
+   endpoint is wasteful, but the watcher exposes no IPC surface today, so
+   independent polling is the simpler v1.
+6. How coarse can the 3b poll be before attribution degrades? A session that
+   starts and finishes between two polls has no delta to claim.
