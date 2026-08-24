@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { claudeProjectsDir } from './session-resumable'
 import { codexSessionsDir } from './codex/session-discovery'
@@ -90,6 +91,26 @@ export function readFileAt(path: string): string | null {
   } catch {
     return null
   }
+}
+
+// The async read. Main is single-threaded and hosts the ptys, so a scan that
+// reads hundreds of transcripts synchronously stops terminal output for every
+// running agent for the duration. Awaiting each read hands control back to the
+// event loop between files, which is what keeps those terminals alive.
+export async function readFileAtAsync(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+export async function readTranscriptAsync(
+  conv: { tool: string; agentSessionId: string | null },
+  deps?: { claudeProjectsDir?: string; codexSessionsDir?: string }
+): Promise<string | null> {
+  const p = locateTranscript(conv, deps)
+  return p ? readFileAtAsync(p) : null
 }
 
 export function readTranscript(

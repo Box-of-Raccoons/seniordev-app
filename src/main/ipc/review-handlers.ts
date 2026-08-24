@@ -1,7 +1,8 @@
 import { ipcMain } from 'electron'
 import { REVIEW, type ReviewTreeInfo, type ReviewDiffInfo } from '../../shared/ipc'
 import type { GitRunner } from '../git/git-runner'
-import { reviewSummary, reviewDiff, groupTargetsByTree, type ReviewTarget } from '../git/review-service'
+import { reviewSummary, reviewDiff, groupTargetsByTree, type ReviewTarget, type FileReader } from '../git/review-service'
+import { nodeFileReader } from '../git/node-file-reader'
 import type { SessionPersistence } from '../session-persistence'
 
 // Supervision epic, slice 1. Read-only: every handler here runs `git diff` or
@@ -28,6 +29,9 @@ export function targetsFromConversations(
 export function registerReviewIpc(deps: {
   gitRunner: GitRunner
   persistence: SessionPersistence
+  // Injectable so a test can supply untracked file contents without touching
+  // disk; defaults to the real reader.
+  readFile?: FileReader
 }): void {
   // Every tree with pending changes. Trees that are clean are dropped, so the
   // overview lists only what actually needs reviewing; a tree git could not read
@@ -37,13 +41,17 @@ export function registerReviewIpc(deps: {
     const out: ReviewTreeInfo[] = []
     for (const g of groups) {
       const rep = g.sessions[0]
-      const s = reviewSummary(deps.gitRunner, {
-        conversationId: rep.conversationId,
-        title: rep.title,
-        cwd: g.cwd,
-        branch: g.branch,
-        tool: rep.tool
-      })
+      const s = reviewSummary(
+        deps.gitRunner,
+        {
+          conversationId: rep.conversationId,
+          title: rep.title,
+          cwd: g.cwd,
+          branch: g.branch,
+          tool: rep.tool
+        },
+        deps.readFile ?? nodeFileReader
+      )
       if (!s.error && s.files === 0) continue
       out.push({
         cwd: g.cwd,
