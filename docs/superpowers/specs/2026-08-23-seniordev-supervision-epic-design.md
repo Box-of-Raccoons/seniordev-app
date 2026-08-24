@@ -198,7 +198,37 @@ accounting figure. If the UI implies otherwise it is lying.
 a transcript usage reader that reuses the file-location code
 `session-title.ts` already depends on. Both testable on fixtures with no disk.
 
-### 3b: Subscription window share, from gauge deltas
+### 3b: Subscription window share, from gauge deltas (DROPPED)
+
+**Not built. Dropped 2026-08-24.** The design below still stands on its own
+terms; what killed it is that its load-bearing assumption was never verified and
+could not be verified from here.
+
+Two things stopped it:
+
+1. **The credential is unreachable in development.** The OAuth token lives only
+   in the login Keychain (`Claude Code-credentials`); `~/.claude/.credentials.json`
+   does not exist on this machine, so the documented file fallback is not
+   available. Reading a secret out of the Keychain is denied by the permission
+   classifier, correctly, because that is indistinguishable from exfiltration.
+   Note this blocked DEVELOPMENT, not the product: SeniorDev reading the
+   Keychain at runtime is an ordinary macOS permission prompt, which is how
+   claude-usage-watcher already works.
+2. **The assumption underneath it is unproven.** Everything here depends on
+   utilization moving promptly and finely enough that a single session produces
+   a legible delta. If the gauge ticks in whole percent, or updates on a slow
+   cadence, a typical session's delta is zero and the feature is noise. That was
+   flagged as the claim most likely to be wrong, and it stayed unprobed.
+
+Slice 3a already ships a working per-session figure that answers a related
+question, which is what makes dropping this cheap.
+
+**Reopen condition.** claude-usage-watcher shows the same two numbers. Watch its
+widget across one substantial agent session: if the 5-hour figure moves by
+something legible, the assumption holds and this is worth building. If it barely
+budges, the slice is dead on its merits rather than merely blocked.
+
+The original design follows, unchanged, so a reopen does not start from nothing.
 
 **The question.** How much of the 5-hour and weekly limits did this session
 consume. On a Max subscription this matters more than notional dollars, because
@@ -419,25 +449,29 @@ neither half is much use without the other.
    `defaultGate`, then nothing. "Nothing" is the default, so configuring a
    gate is the entire opt-in.
 
-## Open questions still outstanding (Slice 3b)
+## Questions that died with Slice 3b
+
+These were 3b's open questions. They are recorded rather than deleted, because
+they are the first things to answer if the slice is ever reopened.
 
 5. Does 3b poll the usage endpoint independently, or read what
    claude-usage-watcher already polls? Two apps hitting a rate-limit-sensitive
    endpoint is wasteful, but the watcher exposes no IPC surface today, so
    independent polling is the simpler v1.
-6. How coarse can the 3b poll be before attribution degrades? A session that
-   starts and finishes between two polls has no delta to claim. **This was the
-   assumption flagged as most likely to be wrong, and it is still unprobed.**
+6. How coarse can the poll be before attribution degrades? A session that starts
+   and finishes between two polls has no delta to claim. **This was the
+   assumption flagged as most likely to be wrong, it was never probed, and it is
+   the reason the slice was dropped rather than deferred.** Answer this one first.
 
 ## What implementation changed about this doc
 
 - **Slice 6 (log tailer) is DROPPED.** See its section: the gate runner
   absorbed the one argument that made it more than a Terminal tab.
-- **Slice 3b (subscription window share) is BLOCKED, not deferred.** Reading
-  Claude Code's OAuth token from the login Keychain is denied by this
-  environment's permission classifier, so neither the probe in question 6 nor
-  the feature itself can proceed without an explicit allowance. Everything about
-  the design in 3b still stands; only the credential access is blocked.
+- **Slice 3b (subscription window share) is DROPPED.** See its section. Short
+  version: the token is Keychain-only here and unreadable in development, and
+  the assumption the whole design rests on was never probed. 3a already answers
+  a related question, which made dropping cheap. The reopen condition is written
+  down.
 - **Per-message model pricing was necessary on real data, not just in theory.**
   A real transcript on this machine used `claude-fable-5` and `claude-opus-5`
   within one session. The same session had 465K of 1-hour cache-write tokens and
