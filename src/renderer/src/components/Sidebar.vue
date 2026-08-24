@@ -23,7 +23,8 @@ import {
   CONVERSATION_DND_TYPE,
   type CapLevel
 } from '../composables/sidebar-logic'
-import type { ProjectInfo, ConversationInfo, TabStatus } from '../../../shared/ipc'
+import type { ProjectInfo, ConversationInfo, TabStatus, ConversationCostInfo } from '../../../shared/ipc'
+import { costLabel, costTitle } from '../cost-format'
 
 // S4 Projects sidebar (spec section 8). A sibling of RightPanel under App, reading
 // the shared `ws` (A3): projects sorted by recency, each expanding to its capped
@@ -64,6 +65,20 @@ async function refresh(): Promise<void> {
   } catch {
     // A read failure must never blank the sidebar mid-session; keep the last data.
   }
+  // Supervision slice 3a. Fetched separately and failing independently: pricing
+  // reads every agent transcript, and a slow or broken read there must not take
+  // the project list down with it.
+  try {
+    const list = await window.api.listCosts()
+    costs.value = Object.fromEntries(list.map((c) => [c.conversationId, c]))
+  } catch {
+    // Leave the previous figures rather than blanking them.
+  }
+}
+
+const costs = ref<Record<string, ConversationCostInfo>>({})
+function costFor(conversationId: string): ConversationCostInfo | null {
+  return costs.value[conversationId] ?? null
 }
 // The default shell for an instant Terminal launch, and the detected agent tools
 // (for the New Session submenu). Resolved once on mount (S6).
@@ -392,6 +407,12 @@ function onGripKey(e: KeyboardEvent): void {
               <span class="tool">{{ conv.tool }}</span>
               <span v-if="isInert(conv)" class="tag">no resume</span>
               <span v-if="scheduleNote(conv)" class="tag tag--sched" :title="scheduleNote(conv)!">scheduled</span>
+              <!-- Supervision slice 3a. A figure on the row, not a tile:
+                   DESIGN.md bans hero-metric tiles, and the number's job is
+                   comparing sessions, not being a dashboard. -->
+              <span v-if="costFor(conv.id)" class="cost" :title="costTitle(costFor(conv.id)!)">
+                {{ costLabel(costFor(conv.id)!) }}
+              </span>
             </button>
             <button
               class="conv-x"
@@ -569,6 +590,8 @@ function onGripKey(e: KeyboardEvent): void {
    hint so the two are distinguishable at a glance. */
 .conv .tool { font-family: var(--font-mono, Consolas, monospace); font-size: 10px; color: var(--ink-muted); opacity: 0.75; flex: 0 0 auto; }
 .conv .tag { font-family: var(--font-mono, Consolas, monospace); font-size: 10.5px; color: var(--ink-muted); flex: 0 0 auto; }
+/* Notional cost. A quiet figure on the row - never a tile, never coloured as state. */
+.conv .cost { font-family: var(--font-mono, Consolas, monospace); font-size: 10.5px; color: var(--ink-muted); flex: 0 0 auto; opacity: 0.8; }
 
 .showmore {
   margin: 2px 0 2px 26px; padding: 3px 6px; background: transparent; border: 0;

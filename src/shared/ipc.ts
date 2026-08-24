@@ -219,6 +219,25 @@ export interface WorktreeTeardownResult {
 }
 export const WORKTREE = { info: 'worktree:info', create: 'worktree:create', teardown: 'worktree:teardown' } as const
 
+// Supervision epic, slice 3a: what a session cost, read from its own agent
+// transcript. NOTIONAL — work here runs on a subscription, so this is the
+// API-equivalent price of the same tokens. Useful for comparing sessions
+// against each other, meaningless as a bill, and the UI must say so.
+export interface ConversationCostInfo {
+  conversationId: string
+  mainTokens: number
+  // null when a model in the session has no known rate; tokens stay valid.
+  mainCost: number | null
+  // Subagent spend, kept separate — for an orchestrator workflow this is the
+  // number worth acting on.
+  sidechainTokens: number
+  sidechainCost: number | null
+  unpricedModels: string[]
+  messages: number
+  models: string[]
+}
+export const COST = { list: 'cost:list' } as const
+
 // Supervision epic, slice 2: the project's own gate, run when a session falls
 // quiet. Orthogonal to TabStatus on purpose — the status describes the SESSION,
 // the gate describes the CODE, and folding one into the other would mean a
