@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { reviewSummary, reviewDiff, groupTargetsByTree, UNTRACKED_CAP, type ReviewTarget } from './review-service'
+import {
+  reviewSummary,
+  reviewDiff,
+  groupTargetsByTree,
+  countUntracked,
+  UNTRACKED_CAP,
+  type ReviewTarget
+} from './review-service'
 import type { GitRunner, GitResult } from './git-runner'
 
 const ok = (stdout: string): GitResult => ({ code: 0, stdout, stderr: '' })
@@ -66,14 +73,61 @@ describe('reviewSummary', () => {
     const git = fakeGit({
       'rev-parse --is-inside-work-tree': ok('true\n'),
       'diff HEAD --numstat': ok('1\t0\tsrc/a.ts\n'),
-      'ls-files --others --exclude-standard': ok('src/new.ts\n'),
-      // git exits 1 from --no-index when the files differ; that is success here.
-      'diff --no-index --numstat /dev/null src/new.ts': { code: 1, stdout: '5\t0\tsrc/new.ts\n', stderr: '' }
+      'ls-files --others --exclude-standard': ok('src/new.ts\n')
     })
-    const s = reviewSummary(git, TARGET)
+    // Untracked contents come from the injected reader now, not from a spawn.
+    const s = reviewSummary(git, TARGET, () => 'a\nb\nc\nd\ne\n')
     expect(s.files).toBe(2)
     expect(s.insertions).toBe(6)
     expect(s.entries.find((e) => e.path === 'src/new.ts')?.untracked).toBe(true)
+  })
+
+  it('NEVER spawns git per untracked file', () => {
+    // The whole point of the change: 100 untracked files used to mean 100
+    // process spawns on the main thread, measured at 284ms.
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok('a.txt\nb.txt\nc.txt\n')
+    })
+    reviewSummary(git, TARGET, () => 'x\n')
+    expect(git.calls.some((args) => args.includes('--no-index'))).toBe(false)
+  })
+
+  it('lists an unreadable untracked file with no counts rather than dropping it', () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok('gone.txt\n')
+    })
+    // null means vanished mid-scan or unreadable. It is still uncommitted work.
+    const s = reviewSummary(git, TARGET, () => null)
+    expect(s.entries).toHaveLength(1)
+    expect(s.entries[0]).toMatchObject({ path: 'gone.txt', insertions: 0, untracked: true })
+  })
+
+  it('marks a binary untracked file as binary instead of counting lines', () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok('logo.png\n')
+    })
+    const s = reviewSummary(git, TARGET, () => 'PNG\u0000 data')
+    expect(s.entries[0].binary).toBe(true)
+    expect(s.entries[0].insertions).toBe(0)
+  })
+
+  it('reads each untracked file from the tree it belongs to', () => {
+    const seen: { cwd: string; path: string }[] = []
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok('a.txt\nb.txt\n')
+    })
+    reviewSummary(git, { ...TARGET, cwd: '/wt/feature' }, (cwd, path) => {
+      seen.push({ cwd, path })
+      return 'x\n'
+    })
+    expect(seen).toEqual([
+      { cwd: '/wt/feature', path: 'a.txt' },
+      { cwd: '/wt/feature', path: 'b.txt' }
+    ])
   })
 
   it('marks tracked entries as not untracked', () => {
@@ -134,6 +188,41 @@ describe('reviewSummary', () => {
     expect(s.conversationId).toBe('c1')
     expect(s.title).toBe('Fix the thing')
     expect(s.cwd).toBe('/repo')
+  })
+})
+
+// An untracked file is entirely added lines, so counting them is the whole job.
+// The numbers have to match what `git diff --no-index --numstat` reported, or
+// the review's totals shift the day this replaced it.
+describe('countUntracked', () => {
+  it('counts a trailing newline as terminating the last line, as git does', () => {
+    expect(countUntracked('a\nb\n')).toEqual({ lines: 2, binary: false })
+  })
+
+  it('counts a final line with no trailing newline', () => {
+    expect(countUntracked('a\nb')).toEqual({ lines: 2, binary: false })
+  })
+
+  it('counts a single line', () => {
+    expect(countUntracked('only\n')).toEqual({ lines: 1, binary: false })
+    expect(countUntracked('only')).toEqual({ lines: 1, binary: false })
+  })
+
+  it('reports an empty file as zero lines, not one', () => {
+    expect(countUntracked('')).toEqual({ lines: 0, binary: false })
+  })
+
+  it('counts blank lines, since git does', () => {
+    expect(countUntracked('a\n\n\nb\n')).toEqual({ lines: 4, binary: false })
+  })
+
+  it('flags a null byte as binary and stops counting', () => {
+    const withNul = 'PNG\u0000 data\nmore\n'
+    expect(countUntracked(withNul)).toEqual({ lines: 0, binary: true })
+  })
+
+  it('does not mistake ordinary text for binary', () => {
+    expect(countUntracked('const x = 1\n').binary).toBe(false)
   })
 })
 

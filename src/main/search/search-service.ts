@@ -1,4 +1,4 @@
-import { readTranscript } from '../transcripts'
+import { readTranscriptAsync } from '../transcripts'
 import { searchTranscript, type TranscriptMatch } from './transcript-search'
 
 // Supervision slice 5. Walks every known conversation's transcript and searches
@@ -43,18 +43,22 @@ export interface SearchOutcome {
   hitsTruncated: boolean
 }
 
-export function searchConversations(
+// Async because the reads are async, and the reads are async on purpose: main
+// is single-threaded and hosts the ptys, so reading hundreds of transcripts
+// synchronously would stop terminal output for every running agent until the
+// scan finished. Awaiting each file yields to the event loop between them.
+export async function searchConversations(
   conversations: SearchableConversation[],
   query: string,
   opts?: {
     deps?: { claudeProjectsDir?: string; codexSessionsDir?: string }
-    read?: (conv: { tool: string; agentSessionId: string | null }) => string | null
+    read?: (conv: { tool: string; agentSessionId: string | null }) => Promise<string | null> | string | null
   }
-): SearchOutcome {
+): Promise<SearchOutcome> {
   const empty: SearchOutcome = { hits: [], sessionsScanned: 0, sessionsSkipped: 0, hitsTruncated: false }
   if (!query.trim()) return empty
 
-  const read = opts?.read ?? ((c): string | null => readTranscript(c, opts?.deps))
+  const read = opts?.read ?? ((c): Promise<string | null> => readTranscriptAsync(c, opts?.deps))
 
   // Newest first: the session you are trying to remember is far more often a
   // recent one, so the scan cap bites on the least likely candidates.
@@ -76,7 +80,7 @@ export function searchConversations(
       break
     }
     scanned++
-    const text = read(conv)
+    const text = await read(conv)
     if (!text) continue
     const matches = searchTranscript(conv.tool, text, query, MAX_MATCHES_PER_SESSION)
     if (matches.length === 0) continue

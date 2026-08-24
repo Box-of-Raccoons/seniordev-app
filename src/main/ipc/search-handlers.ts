@@ -7,11 +7,11 @@ import type { SessionPersistence } from '../session-persistence'
 // runs in main because that is where the file access lives; it is bounded by
 // the service's caps, and the result reports what those caps dropped.
 export function registerSearchIpc(deps: { persistence: SessionPersistence }): void {
-  ipcMain.handle(SEARCH.run, (_e, query: string): SearchResultInfo => {
+  ipcMain.handle(SEARCH.run, async (_e, query: string): Promise<SearchResultInfo> => {
     // Archived conversations are deliberately NOT filtered out here — the whole
     // point is finding a session that is no longer open.
     const conversations = deps.persistence.conversations.list()
-    const out = searchConversations(conversations, query ?? '')
+    const out = await searchConversations(conversations, query ?? '')
     return {
       hits: out.hits.map((h) => ({
         conversationId: h.conversationId,
