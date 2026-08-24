@@ -59,12 +59,21 @@ function claudeTally(usage: Record<string, unknown>): TokenTally {
 
 export function parseClaudeUsage(content: string): TranscriptUsage {
   const out = emptyUsage()
+  // claude writes ONE JSONL LINE PER CONTENT BLOCK of the same API message —
+  // thinking, text, and each tool_use land on separate lines that all repeat the
+  // SAME `message.id` and the SAME complete `usage` object. Summing the lines
+  // therefore counts one response two to three times over; measured at 2.08x on
+  // a real transcript here (614 usage-bearing lines, 358 distinct message ids).
+  // Deduplicating by message id is what makes the figure the session's actual
+  // usage rather than a multiple of it.
+  const seen = new Set<string>()
   for (const line of content.split('\n')) {
     if (!line.trim()) continue
     let o: {
       type?: string
       isSidechain?: boolean
-      message?: { model?: string; usage?: Record<string, unknown> }
+      requestId?: string
+      message?: { id?: string; model?: string; usage?: Record<string, unknown> }
     }
     try {
       o = JSON.parse(line)
@@ -74,6 +83,16 @@ export function parseClaudeUsage(content: string): TranscriptUsage {
     if (o?.type !== 'assistant') continue
     const usage = o.message?.usage
     if (!usage) continue
+
+    // Prefer the message id; fall back to requestId. A record carrying neither
+    // is counted, because dropping it would understate — and an unidentifiable
+    // record is far rarer than a repeated one.
+    const key = o.message?.id ?? o.requestId ?? null
+    if (key) {
+      if (seen.has(key)) continue
+      seen.add(key)
+    }
+
     out.assistantMessages++
     const model = typeof o.message?.model === 'string' ? o.message.model : ''
     accumulate(o.isSidechain ? out.sidechain : out.main, model, claudeTally(usage))
@@ -98,9 +117,14 @@ export function parseCodexUsage(content: string): TranscriptUsage {
     } catch {
       continue
     }
-    // The usage and the model can each sit at the top level or inside a payload.
+    // WHERE IT ACTUALLY LIVES: `payload.info.total_token_usage`, on
+    // `type: "token_count"` events. Checked against every rollout on this
+    // machine: 0 files carry it at the top level or at `payload.total_token_usage`,
+    // 7 of 7 carry it under `payload.info`. The other two paths are kept only as
+    // tolerant fallbacks in case the shape moves again.
     const payload = (o.payload as Record<string, unknown> | undefined) ?? o
-    const usage = (payload.total_token_usage ?? o.total_token_usage) as
+    const info = payload.info as Record<string, unknown> | undefined
+    const usage = (info?.total_token_usage ?? payload.total_token_usage ?? o.total_token_usage) as
       | Record<string, unknown>
       | undefined
     if (usage) {
@@ -112,16 +136,22 @@ export function parseCodexUsage(content: string): TranscriptUsage {
   }
 
   if (!latest) return emptyUsage()
+  // Two overlaps in codex's shape, both verified by arithmetic on a real
+  // rollout (input 84905 + output 534 == total_tokens 85439):
+  //   - `output_tokens` ALREADY INCLUDES `reasoning_output_tokens`, so adding
+  //     reasoning counts those tokens twice.
+  //   - `cached_input_tokens` is a SUBSET of `input_tokens`, not a sibling, so
+  //     billing both prices the cached portion at full rate AND at cache rate.
+  // Subtracting the cached part leaves the genuinely-fresh input.
+  const cachedIn = num(latest.cached_input_tokens)
   return {
     main: [
       {
         model,
         tally: {
-          inputTokens: num(latest.input_tokens),
-          // Reasoning tokens are billed as output; dropping them would
-          // understate a thinking-heavy session.
-          outputTokens: num(latest.output_tokens) + num(latest.reasoning_output_tokens),
-          cacheReadTokens: num(latest.cached_input_tokens),
+          inputTokens: Math.max(0, num(latest.input_tokens) - cachedIn),
+          outputTokens: num(latest.output_tokens),
+          cacheReadTokens: cachedIn,
           cacheWrite5mTokens: num(latest.cache_write_input_tokens),
           cacheWrite1hTokens: 0
         }

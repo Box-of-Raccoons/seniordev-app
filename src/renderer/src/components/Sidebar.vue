@@ -632,7 +632,9 @@ function onGripKey(e: KeyboardEvent): void {
 .inbox-why { font-family: var(--font-mono, Consolas, monospace); font-size: 10.5px; color: var(--ink-muted); flex: 0 0 auto; }
 
 /* Notional cost. A quiet figure on the row - never a tile, never coloured as state. */
-.conv .cost { font-family: var(--font-mono, Consolas, monospace); font-size: 10.5px; color: var(--ink-muted); flex: 0 0 auto; opacity: 0.8; }
+/* No opacity: ink-muted already clears 4.5:1 on all three planes, and dimming
+   it further drops this under the AA floor on an open (surface-2) row. */
+.conv .cost { font-family: var(--font-mono, Consolas, monospace); font-size: 10.5px; color: var(--ink-muted); flex: 0 0 auto; }
 
 .showmore {
   margin: 2px 0 2px 26px; padding: 3px 6px; background: transparent; border: 0;

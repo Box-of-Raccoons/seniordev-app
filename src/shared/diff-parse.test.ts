@@ -216,3 +216,70 @@ describe('totalChanges', () => {
     expect(totalChanges([])).toEqual({ files: 0, insertions: 0, deletions: 0 })
   })
 })
+
+// Real-git output shapes the first pass missed.
+describe('parseUnifiedDiff, real-git edge cases', () => {
+  it('drops the TAB terminator after a path containing spaces', () => {
+    // Unified diff allows `+++ b/path\t<timestamp>`, and the tab appears for
+    // space-containing paths even with nothing after it. Keeping it left a
+    // trailing tab inside `path`, which then failed to match the same file's
+    // numstat-derived entry.
+    const [file] = parseUnifiedDiff(`diff --git a/my dir/a b.ts b/my dir/a b.ts
+--- a/my dir/a b.ts\t
++++ b/my dir/a b.ts\t
+@@ -1,1 +1,1 @@
+-x
++y
+`)
+    expect(file.path).toBe('my dir/a b.ts')
+    expect(file.path.endsWith('\t')).toBe(false)
+  })
+
+  it('handles a hunk header with no counts', () => {
+    // `@@ -5 +5 @@` is valid: a single-line hunk omits the count.
+    const [file] = parseUnifiedDiff(`diff --git a/x.ts b/x.ts
+--- a/x.ts
++++ b/x.ts
+@@ -5 +5 @@
+-a
++b
+`)
+    expect(file.hunks[0].lines[0].oldLine).toBe(5)
+    expect(file.hunks[0].lines[1].newLine).toBe(5)
+  })
+
+  it('parses CRLF input, which is what a Windows checkout produces', () => {
+    const crlf = [
+      'diff --git a/x.ts b/x.ts',
+      '--- a/x.ts',
+      '+++ b/x.ts',
+      '@@ -1,1 +1,1 @@',
+      '-a',
+      '+b',
+      ''
+    ].join('\r\n')
+    const [file] = parseUnifiedDiff(crlf)
+    expect(file.path).toBe('x.ts')
+    expect(file.insertions).toBe(1)
+    expect(file.hunks[0].lines[1].text).toBe('b')
+  })
+})
+
+describe('parseNumstat, real-git edge cases', () => {
+  it('resolves the BRACED rename form', () => {
+    // `dir/{old => new}/file` is the compact rename notation. Only the plain
+    // `old => new` form had a test, so this whole branch was unexercised.
+    expect(parseNumstat('2\t2\tsrc/{old => new}/x.ts\n')[0].path).toBe('src/new/x.ts')
+  })
+
+  it('resolves a braced rename at the path root', () => {
+    expect(parseNumstat('1\t1\t{a => b}/x.ts\n')[0].path).toBe('b/x.ts')
+  })
+
+  it('parses CRLF numstat output', () => {
+    expect(parseNumstat('3\t1\tsrc/a.ts\r\n0\t7\tsrc/b.ts\r\n')).toEqual([
+      { path: 'src/a.ts', insertions: 3, deletions: 1, binary: false },
+      { path: 'src/b.ts', insertions: 0, deletions: 7, binary: false }
+    ])
+  })
+})

@@ -40,25 +40,53 @@ describe('resolveRates', () => {
 let root: string
 const WITH_USAGE = 'dddddddd-4444-4444-8444-dddddddddddd'
 
+const SIDECHAIN = 'eeeeeeee-5555-4555-8555-eeeeeeeeeeee'
+const UNPRICED = 'ffffffff-6666-4666-8666-ffffffffffff'
+
+const line = (model: string, usage: Record<string, unknown>, sidechain = false, id = 'm1'): string =>
+  JSON.stringify({ type: 'assistant', isSidechain: sidechain, message: { id, model, usage } })
+
 beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), 'seniordev-cost-ipc-'))
-  mkdirSync(join(root, 'p'), { recursive: true })
+  mkdirSync(join(root, 'p-root', 'proj'), { recursive: true })
+  mkdirSync(join(root, 'codex'), { recursive: true })
+
+  // Main session on Opus 5 plus a subagent turn on Haiku, so the split is
+  // observable in the wire shape rather than assumed.
   writeFileSync(
-    join(root, 'p', `${WITH_USAGE}.jsonl`),
-    JSON.stringify({
-      type: 'assistant',
-      message: { model: 'claude-opus-5', usage: { input_tokens: 1_000_000, output_tokens: 0 } }
-    })
+    join(root, 'p-root', 'proj', `${WITH_USAGE}.jsonl`),
+    [
+      line('claude-opus-5', { input_tokens: 1_000_000, output_tokens: 0 }, false, 'm1'),
+      line('claude-haiku-4-5', { input_tokens: 1_000_000, output_tokens: 0 }, true, 'm2')
+    ].join('\n')
+  )
+  writeFileSync(
+    join(root, 'p-root', 'proj', `${SIDECHAIN}.jsonl`),
+    line('claude-opus-5', { output_tokens: 200 }, false, 'm3')
+  )
+  writeFileSync(
+    join(root, 'p-root', 'proj', `${UNPRICED}.jsonl`),
+    [
+      line('claude-opus-5', { output_tokens: 1000 }, false, 'm4'),
+      line('brand-new-model', { output_tokens: 1000 }, false, 'm5')
+    ].join('\n')
   )
 })
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
 type Conv = { id: string; tool: string; agentSessionId: string | null }
 
+// The fixture tree is wired in via the directory seam, so the handler's real
+// work (locate, read, parse, price, map) is exercised rather than skipped.
 function setup(conversations: Conv[], modelRates?: Record<string, { input: number; output: number }>): void {
   const persistence = { conversations: { list: () => conversations } } as unknown as SessionPersistence
   const source = { config: modelRates ? { modelRates } : {} } as unknown as ConfigSource
-  registerCostIpc({ persistence, source })
+  registerCostIpc({
+    persistence,
+    source,
+    claudeProjectsDir: join(root, 'p-root'),
+    codexSessionsDir: join(root, 'codex')
+  })
 }
 
 describe(COST.list, () => {
@@ -72,46 +100,89 @@ describe(COST.list, () => {
     expect(await handlers.get(COST.list)!()).toEqual([])
   })
 
-  it('never throws when the whole transcript tree is absent', () => {
-    setup([{ id: 'c1', tool: 'claude', agentSessionId: WITH_USAGE }])
-    // HOME here is the real one, which may or may not have transcripts; either
-    // way the call must return a value rather than blow up main. The handler is
-    // synchronous, so this asserts on the return, not on a promise.
+  it('never throws when the transcript tree does not exist', () => {
+    const persistence = {
+      conversations: { list: () => [{ id: 'c1', tool: 'claude', agentSessionId: WITH_USAGE }] }
+    } as unknown as SessionPersistence
+    registerCostIpc({
+      persistence,
+      source: { config: {} } as unknown as ConfigSource,
+      // A directory that genuinely is not there, rather than the real HOME,
+      // which on this machine does have transcripts and proves nothing.
+      claudeProjectsDir: join(root, 'definitely-absent'),
+      codexSessionsDir: join(root, 'also-absent')
+    })
     expect(() => handlers.get(COST.list)!()).not.toThrow()
-    expect(handlers.get(COST.list)!()).toBeInstanceOf(Array)
+    expect(handlers.get(COST.list)!()).toEqual([])
   })
 })
 
-describe('cost wire shape', () => {
-  it('carries tokens, cost, messages and models per conversation', () => {
-    // Shape assertion against the interface rather than the filesystem, so this
-    // stays meaningful regardless of what transcripts exist on the test machine.
-    const info: ConversationCostInfo = {
-      conversationId: 'c1',
-      mainTokens: 10,
-      mainCost: 0.5,
-      sidechainTokens: 4,
-      sidechainCost: 0.1,
-      unpricedModels: [],
-      messages: 2,
-      models: ['claude-opus-5']
-    }
-    expect(info.mainCost).not.toBeNull()
-    expect(info.sidechainTokens).toBe(4)
+// The handler's real work: locate, read, parse, price, and map onto the wire
+// shape. Previously the fixture tree was never wired in, so the handler could
+// have returned [] unconditionally and the suite would have stayed green.
+describe(`${COST.list} happy path`, () => {
+  const list = (): ConversationCostInfo[] => handlers.get(COST.list)!() as ConversationCostInfo[]
+
+  it('prices a real transcript and returns it', () => {
+    setup([{ id: 'c1', tool: 'claude', agentSessionId: WITH_USAGE }])
+    const [info] = list()
+    expect(info.conversationId).toBe('c1')
+    // 1M input on Opus 5 at $5/MTok.
+    expect(info.mainCost).toBeCloseTo(5, 6)
+    expect(info.mainTokens).toBe(1_000_000)
   })
 
-  it('allows a null cost alongside real tokens', () => {
-    const info: ConversationCostInfo = {
-      conversationId: 'c1',
-      mainTokens: 999,
-      mainCost: null,
-      sidechainTokens: 0,
-      sidechainCost: 0,
-      unpricedModels: ['brand-new'],
-      messages: 1,
-      models: ['brand-new']
-    }
+  it('carries subagent spend SEPARATELY, not folded into the main figure', () => {
+    setup([{ id: 'c1', tool: 'claude', agentSessionId: WITH_USAGE }])
+    const [info] = list()
+    // The sidechain ran haiku at $1/MTok; folding it in would have read as $6.
+    expect(info.sidechainCost).toBeCloseTo(1, 6)
+    expect(info.sidechainTokens).toBe(1_000_000)
+  })
+
+  it('lists the models and counts the messages', () => {
+    setup([{ id: 'c1', tool: 'claude', agentSessionId: WITH_USAGE }])
+    const [info] = list()
+    expect(info.models.sort()).toEqual(['claude-haiku-4-5', 'claude-opus-5'])
+    expect(info.messages).toBe(2)
+  })
+
+  it('returns the priced entry while omitting a zero-token one in the SAME call', () => {
+    setup([
+      { id: 'empty', tool: 'claude', agentSessionId: null },
+      { id: 'real', tool: 'claude', agentSessionId: WITH_USAGE }
+    ])
+    expect(list().map((i) => i.conversationId)).toEqual(['real'])
+  })
+
+  it('reports a null cost with the unpriced model named, tokens intact', () => {
+    setup([{ id: 'c1', tool: 'claude', agentSessionId: UNPRICED }])
+    const [info] = list()
     expect(info.mainCost).toBeNull()
-    expect(info.mainTokens).toBe(999)
+    expect(info.unpricedModels).toContain('brand-new-model')
+    expect(info.mainTokens).toBe(2000)
+  })
+
+  it('honours a config rate override', () => {
+    setup([{ id: 'c1', tool: 'claude', agentSessionId: SIDECHAIN }], {
+      'claude-opus-5': { input: 1, output: 1000 }
+    })
+    // 200 output tokens at $1000/MTok.
+    expect(list()[0].mainCost).toBeCloseTo(0.2, 6)
+  })
+
+  it('re-prices when the config rates change, rather than serving a stale cached figure', () => {
+    setup([{ id: 'c1', tool: 'claude', agentSessionId: SIDECHAIN }])
+    const first = list()[0].mainCost!
+    handlers.clear()
+    setup([{ id: 'c1', tool: 'claude', agentSessionId: SIDECHAIN }], {
+      'claude-opus-5': { input: 1, output: 1000 }
+    })
+    expect(list()[0].mainCost).not.toBeCloseTo(first, 6)
+  })
+
+  it('returns the same answer on a repeated call (the cache does not corrupt it)', () => {
+    setup([{ id: 'c1', tool: 'claude', agentSessionId: WITH_USAGE }])
+    expect(list()).toEqual(list())
   })
 })

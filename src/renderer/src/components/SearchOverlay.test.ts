@@ -151,3 +151,64 @@ describe('SearchOverlay', () => {
     expect(w.findAll('.primary')).toHaveLength(1)
   })
 })
+
+// The overlay is modal in behaviour, so it needs modal focus semantics: a
+// keyboard-first tool that drops focus to <body> on close leaves the next Tab
+// starting from nowhere.
+describe('SearchOverlay — modal focus semantics', () => {
+  it('declares itself modal to assistive tech', async () => {
+    const { w } = await open()
+    expect(w.find('[role="dialog"]').attributes('aria-modal')).toBe('true')
+  })
+
+  it('moves focus into the input on open', async () => {
+    const { w } = await open()
+    expect(document.activeElement).toBe(w.find('.q').element)
+  })
+
+  it('RETURNS focus to whatever had it when the overlay closes', async () => {
+    stubApi(result())
+    const before = document.createElement('button')
+    document.body.appendChild(before)
+    before.focus()
+    expect(document.activeElement).toBe(before)
+
+    const w = mount(SearchOverlay, { props: { open: false }, attachTo: document.body })
+    await w.setProps({ open: true })
+    await flushPromises()
+    expect(document.activeElement).not.toBe(before)
+
+    await w.setProps({ open: false })
+    await flushPromises()
+    expect(document.activeElement).toBe(before)
+    before.remove()
+  })
+
+  // A query is typed first because the Search button is disabled while the
+  // query is empty, and a disabled control is not a tab stop — with an empty
+  // query the input is the ONLY focusable element and correctly traps to itself.
+  it('wraps Tab from the last control back to the first, rather than out of the dialog', async () => {
+    const { w } = await open()
+    await w.find('.q').setValue('anything')
+    const last = w.find('.primary').element as HTMLElement
+    last.focus()
+    await w.find('.palette').trigger('keydown', { key: 'Tab' })
+    expect(document.activeElement).toBe(w.find('.q').element)
+  })
+
+  it('wraps Shift+Tab from the first control back to the last', async () => {
+    const { w } = await open()
+    await w.find('.q').setValue('anything')
+    ;(w.find('.q').element as HTMLElement).focus()
+    await w.find('.palette').trigger('keydown', { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(w.find('.primary').element)
+  })
+
+  it('traps to the single control when the search button is disabled', async () => {
+    const { w } = await open()
+    ;(w.find('.q').element as HTMLElement).focus()
+    await w.find('.palette').trigger('keydown', { key: 'Tab' })
+    // Nowhere else to go, so focus stays put rather than escaping the dialog.
+    expect(document.activeElement).toBe(w.find('.q').element)
+  })
+})

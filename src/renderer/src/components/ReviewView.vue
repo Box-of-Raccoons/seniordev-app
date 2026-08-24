@@ -130,7 +130,7 @@ onMounted(refresh)
       <div v-else-if="diff" class="rv-diff">
         <article v-for="f in diff.files" :key="f.path" class="rv-fdiff">
           <h3 class="rv-fhead">
-            <span class="rv-mark" :class="f.status" :aria-label="statusLabel(f.status)">{{ statusMark(f.status) }}</span>
+            <span class="rv-mark" :class="f.status" role="img" :aria-label="statusLabel(f.status)">{{ statusMark(f.status) }}</span>
             <span v-if="f.oldPath">{{ f.oldPath }} → </span>{{ f.path }}
           </h3>
           <p v-if="f.binary" class="rv-note">Binary file, not shown.</p>
@@ -296,12 +296,14 @@ button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
   line-height: 1.4;
   white-space: pre;
 }
+/* No opacity here. ink-muted already clears 4.5:1 on its plane; dimming it
+   further pushes 13px body text under the AA floor, and worse on the tinted
+   add/delete rows. Muting is what the token is for. */
 .rv-num {
   flex: 0 0 auto;
   text-align: right;
   padding-right: 8px;
   color: var(--ink-muted);
-  opacity: 0.65;
   user-select: none;
 }
 .rv-sign { flex: 0 0 auto; width: 2ch; user-select: none; }

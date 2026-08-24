@@ -194,3 +194,79 @@ describe('gate service', () => {
     expect(svc.outputFor('p1')).toBeNull()
   })
 })
+
+// Lifecycle and failure-isolation cases the first pass missed.
+describe('gate service — queue resilience', () => {
+  it('RUNS AGAIN when the same tab settles a second time after completing', async () => {
+    // Mutation this kills: dropping `queued.delete(ptyId)` at the top of
+    // execute. The first run works and every later settle is silently swallowed.
+    const runner = vi.fn(PASSING)
+    const { svc, results } = setup({ runner })
+    svc.track('p1', '/repo')
+    await svc.onStatus({ id: 'p1', status: 'idle' })
+    await svc.onStatus({ id: 'p1', status: 'idle' })
+    expect((runner as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2)
+    expect(results).toHaveLength(2)
+  })
+
+  it('reports nothing for a tab closed WHILE its gate was running', async () => {
+    const { svc, results } = setup({
+      runner: async () => {
+        await new Promise((r) => setTimeout(r, 5))
+        return { code: 0, stdout: 'ok', stderr: '', durationMs: 5 }
+      }
+    })
+    svc.track('p1', '/repo')
+    const run = svc.onStatus({ id: 'p1', status: 'idle' })
+    svc.untrack('p1')
+    await run
+    expect(results).toEqual([])
+  })
+
+  it('SURVIVES a reporting sink that throws, and keeps running later gates', async () => {
+    // The real case: onResult reaches Electron's webContents, which throws
+    // "Object has been destroyed" if the window closed mid-run. Without a catch
+    // on the chain, that rejection poisons it and NO tab ever gates again.
+    const results: GateResultEvent[] = []
+    let first = true
+    const svc = createGateService({
+      getConfig: () => cfg({ defaultGate: 'pnpm test' }),
+      runner: PASSING,
+      onResult: (e) => {
+        if (first) {
+          first = false
+          throw new Error('Object has been destroyed')
+        }
+        results.push(e)
+      },
+      onRunning: () => {}
+    })
+    svc.track('p1', '/repo')
+    svc.track('p2', '/repo2')
+    await svc.onStatus({ id: 'p1', status: 'idle' }).catch(() => {})
+    await svc.onStatus({ id: 'p2', status: 'idle' })
+    // The second tab's gate still ran and still reported.
+    expect(results.map((r) => r.ptyId)).toEqual(['p2'])
+  })
+
+  it('survives a throwing onRunning sink too', async () => {
+    const results: GateResultEvent[] = []
+    let first = true
+    const svc = createGateService({
+      getConfig: () => cfg({ defaultGate: 'pnpm test' }),
+      runner: PASSING,
+      onResult: (e) => results.push(e),
+      onRunning: () => {
+        if (first) {
+          first = false
+          throw new Error('window gone')
+        }
+      }
+    })
+    svc.track('p1', '/repo')
+    svc.track('p2', '/repo2')
+    await svc.onStatus({ id: 'p1', status: 'idle' }).catch(() => {})
+    await svc.onStatus({ id: 'p2', status: 'idle' })
+    expect(results.map((r) => r.ptyId)).toEqual(['p2'])
+  })
+})

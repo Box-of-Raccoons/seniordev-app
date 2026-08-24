@@ -47,7 +47,13 @@ export function createGateService(deps: GateServiceDeps): GateService {
     // not two.
     if (queued.has(ptyId)) return chain
     queued.add(ptyId)
-    chain = chain.then(() => execute(ptyId))
+    // The .catch is load-bearing, not decoration. `execute` reports through
+    // sinks that reach Electron's webContents, which THROWS if the window was
+    // destroyed mid-run. Without this, one such rejection poisons `chain`
+    // permanently: every later `.then` is skipped, so no tab's gate ever runs
+    // again and the skipped entries stay in `queued` forever, making even a
+    // manual runNow a no-op. Swallowing here keeps the queue alive.
+    chain = chain.then(() => execute(ptyId)).catch(() => {})
     return chain
   }
 

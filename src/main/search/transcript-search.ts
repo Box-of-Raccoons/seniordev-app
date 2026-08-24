@@ -26,10 +26,19 @@ export const EXCERPT_MAX = 160
 
 // Collapse a turn to a single line and window it around the match, so the hit
 // is always visible rather than truncated away at character 160 of a long turn.
-export function excerptAround(text: string, at: number, max = EXCERPT_MAX): { excerpt: string; offset: number } {
+//
+// Takes the QUERY, not an index into the raw text. Collapsing whitespace moves
+// every index after it, so an index computed against the raw turn points at the
+// wrong character in the flattened excerpt — "fix\n\n  the sync comparator"
+// highlighted six characters to the right of the match. Re-finding in the
+// flattened text makes that class of bug impossible rather than merely fixed.
+export function excerptAround(text: string, query: string, max = EXCERPT_MAX): { excerpt: string; offset: number } {
   const flat = text.replace(/\s+/g, ' ').trim()
-  // The flattening moves the index; re-find rather than trusting the raw offset.
-  if (flat.length <= max) return { excerpt: flat, offset: Math.min(at, flat.length) }
+  const at = flat.toLowerCase().indexOf(query.toLowerCase())
+  // A query that survives in the raw text but not the flattened one (it spanned
+  // a newline) still gets a readable excerpt; it just is not highlighted.
+  if (at === -1) return { excerpt: flat.slice(0, max), offset: 0 }
+  if (flat.length <= max) return { excerpt: flat, offset: at }
   const start = Math.max(0, Math.min(at - Math.floor(max / 3), flat.length - max))
   const head = start > 0 ? '…' : ''
   const tail = start + max < flat.length ? '…' : ''
@@ -80,7 +89,7 @@ export function searchClaudeTranscript(content: string, query: string, limit = 2
     if (o.type === 'user' && text.trimStart().startsWith('<')) continue
     const at = indexOfQuery(text, query)
     if (at === -1) continue
-    const { excerpt, offset } = excerptAround(text, at)
+    const { excerpt, offset } = excerptAround(text, query)
     out.push({ role: o.type === 'user' ? 'user' : 'agent', excerpt, offset, turn })
   }
   return out
@@ -110,7 +119,7 @@ export function searchCodexTranscript(content: string, query: string, limit = 20
     if (isUser && text.trimStart().startsWith('<')) continue
     const at = indexOfQuery(text, query)
     if (at === -1) continue
-    const { excerpt, offset } = excerptAround(text, at)
+    const { excerpt, offset } = excerptAround(text, query)
     out.push({ role: isUser ? 'user' : 'agent', excerpt, offset, turn })
   }
   return out
