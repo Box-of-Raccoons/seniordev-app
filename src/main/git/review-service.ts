@@ -47,6 +47,39 @@ export interface ReviewDiffResult {
   error: string | null
 }
 
+export interface ReviewGroup {
+  cwd: string
+  branch: string | null
+  // Every session that ran in this tree, newest target first. More than one is
+  // normal: resuming a conversation, or two tabs on the same folder.
+  sessions: { conversationId: string; title: string; tool: string }[]
+}
+
+// Uncommitted changes belong to a WORKING TREE, not to a session. Two tabs open
+// on the same folder share one diff, so listing them separately would show the
+// same work twice and imply each session owned it. Group first, diff once.
+// A session that ran in its own worktree keeps its own group by construction,
+// because its cwd is the worktree path.
+export function groupTargetsByTree(targets: ReviewTarget[]): ReviewGroup[] {
+  const byCwd = new Map<string, ReviewGroup>()
+  for (const t of targets) {
+    if (!t.cwd) continue
+    const existing = byCwd.get(t.cwd)
+    if (existing) {
+      existing.sessions.push({ conversationId: t.conversationId, title: t.title, tool: t.tool })
+      // Keep the first non-null branch seen; git is asked for the live one anyway.
+      if (!existing.branch) existing.branch = t.branch
+      continue
+    }
+    byCwd.set(t.cwd, {
+      cwd: t.cwd,
+      branch: t.branch,
+      sessions: [{ conversationId: t.conversationId, title: t.title, tool: t.tool }]
+    })
+  }
+  return [...byCwd.values()]
+}
+
 // One line of git's stderr, for a message that fits on a status line.
 function firstLine(s: string): string {
   return s.split('\n').find((l) => l.trim())?.trim() ?? 'git failed'

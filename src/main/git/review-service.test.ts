@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reviewSummary, reviewDiff, UNTRACKED_CAP, type ReviewTarget } from './review-service'
+import { reviewSummary, reviewDiff, groupTargetsByTree, UNTRACKED_CAP, type ReviewTarget } from './review-service'
 import type { GitRunner, GitResult } from './git-runner'
 
 const ok = (stdout: string): GitResult => ({ code: 0, stdout, stderr: '' })
@@ -120,6 +120,41 @@ describe('reviewSummary', () => {
     expect(s.conversationId).toBe('c1')
     expect(s.title).toBe('Fix the thing')
     expect(s.cwd).toBe('/repo')
+  })
+})
+
+describe('groupTargetsByTree', () => {
+  const t = (id: string, cwd: string, branch: string | null = null): ReviewTarget => ({
+    conversationId: id,
+    title: `t-${id}`,
+    cwd,
+    branch,
+    tool: 'claude'
+  })
+
+  it('collapses two sessions on one folder into a single tree', () => {
+    const groups = groupTargetsByTree([t('a', '/repo'), t('b', '/repo')])
+    expect(groups).toHaveLength(1)
+    expect(groups[0].sessions.map((s) => s.conversationId)).toEqual(['a', 'b'])
+  })
+
+  it('keeps a worktree session separate, because its cwd differs', () => {
+    const groups = groupTargetsByTree([t('a', '/repo'), t('b', '/worktrees/repo-feature')])
+    expect(groups.map((g) => g.cwd)).toEqual(['/repo', '/worktrees/repo-feature'])
+  })
+
+  it('takes the first non-null branch across a tree', () => {
+    const groups = groupTargetsByTree([t('a', '/repo', null), t('b', '/repo', 'feature/x')])
+    expect(groups[0].branch).toBe('feature/x')
+  })
+
+  it('drops targets with no folder rather than grouping them under empty string', () => {
+    expect(groupTargetsByTree([t('a', '')])).toEqual([])
+  })
+
+  it('preserves first-seen order', () => {
+    const groups = groupTargetsByTree([t('a', '/z'), t('b', '/a'), t('c', '/z')])
+    expect(groups.map((g) => g.cwd)).toEqual(['/z', '/a'])
   })
 })
 

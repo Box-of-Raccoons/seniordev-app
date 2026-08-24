@@ -71,6 +71,10 @@ function onMenu(action: MenuAction): void {
     requestNewSession()
     return
   }
+  if (action === 'review') {
+    rightPanel.value?.openReview()
+    return
+  }
   if (action === 'move-tab-left' || action === 'move-tab-right') {
     rightPanel.value?.moveActiveTab(action === 'move-tab-left' ? -1 : 1)
     return
@@ -90,7 +94,13 @@ function requestNewSession(): void {
 // declining is free, since the update installs on the next ordinary quit anyway.
 const confirmInstall = ref(false)
 const liveSessions = computed(
-  () => ws.panes.allTabs.value.filter((e) => e.tab.kind !== 'composer' && !e.tab.exited).length
+  // Only tabs with a real pty behind them: a composer has not launched yet, and
+  // a review tab never spawns one. Counting either would overstate what an
+  // update restart actually kills, which is the number this confirm exists to show.
+  () =>
+    ws.panes.allTabs.value.filter(
+      (e) => e.tab.kind !== 'composer' && e.tab.kind !== 'review' && !e.tab.exited
+    ).length
 )
 const installMessage = computed(() => {
   const n = liveSessions.value

@@ -2,7 +2,9 @@
 // app's whole config-dir surface: config.yaml with only the fake tool, plus the
 // stores that stage the scenario. Records are written in the stores' persisted
 // doc shapes (see src/main/store/*, src/main/schedule/schedules-store.ts).
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -103,6 +105,32 @@ function writeConversation(cfgDir: string, home: string, agentSessionId: string 
   )
 }
 
+// A REAL git repo for the review scenario: one commit, then a tracked edit and an
+// untracked file left behind, which is exactly the state an agent leaves. The
+// unit tests drive review-service with a fake GitRunner, so this is the only
+// place the actual `git` integration is exercised.
+export const REVIEW_TRACKED = 'tracked.txt'
+export const REVIEW_UNTRACKED = 'untracked.txt'
+
+function seedGitRepo(dir: string): void {
+  mkdirSync(dir, { recursive: true })
+  const git = (...args: string[]): void => {
+    execFileSync('git', ['-C', dir, ...args], { stdio: 'ignore' })
+  }
+  git('init', '-q')
+  // Identity and hooks are set locally so the run never depends on, or touches,
+  // the machine's global git config.
+  git('config', 'user.email', 'e2e@example.invalid')
+  git('config', 'user.name', 'e2e')
+  git('config', 'commit.gpgsign', 'false')
+  writeFileSync(join(dir, REVIEW_TRACKED), 'one\ntwo\n')
+  git('add', REVIEW_TRACKED)
+  git('commit', '-q', '-m', 'seed')
+  // The uncommitted work under review: one changed line, one new file.
+  writeFileSync(join(dir, REVIEW_TRACKED), 'one\nCHANGED\n')
+  writeFileSync(join(dir, REVIEW_UNTRACKED), 'brand new\n')
+}
+
 // scenario is the spec file's basename without extension, e.g. 'boot-launch'.
 export function seedHome(scenario: string): string {
   const home = join(e2eDir, '.tmp', scenario)
@@ -145,6 +173,36 @@ export function seedHome(scenario: string): string {
         schedules: [baseSchedule({ target: { kind: 'conversation', conversationId: CONV_ID } })]
       })
     )
+  } else if (scenario === 'review') {
+    const repo = join(home, 'repo')
+    seedGitRepo(repo)
+    writeConversation(cfgDir, home, AGENT_SESSION_ID)
+    // Point the seeded conversation at the git repo rather than at HOME, which
+    // is not a repo. No schedules: this scenario only reads.
+    const file = join(cfgDir, 'conversations.json')
+    const doc = JSON.parse(readFileSync(file, 'utf8')) as {
+      conversations: Record<string, unknown>[]
+    }
+    doc.conversations[0].cwd = repo
+    // A second session pointing at a folder that is NOT a repo. This is the
+    // reachable version of the failure case: the review list must report it as
+    // unreadable rather than omitting it, which would read as "nothing changed".
+    //
+    // It has to live OUTSIDE the sandbox: e2e/.tmp/ sits inside the seniordev-app
+    // checkout, so a folder there is genuinely inside a work tree and git answers
+    // for the whole repo. (Worth knowing about the feature too: a session whose
+    // cwd is a subdirectory of a repo reviews that entire repo, which is git's
+    // behaviour and the right one, but it is not obvious.)
+    const notRepo = join(tmpdir(), 'seniordev-e2e-not-a-repo')
+    rmSync(notRepo, { recursive: true, force: true })
+    mkdirSync(notRepo, { recursive: true })
+    doc.conversations.push({
+      ...doc.conversations[0],
+      id: 'e2e-conversation-2',
+      title: 'e2e non-repo conversation',
+      cwd: notRepo
+    })
+    writeFileSync(file, JSON.stringify(doc))
   } else {
     throw new Error(`unknown e2e scenario: ${scenario}`)
   }

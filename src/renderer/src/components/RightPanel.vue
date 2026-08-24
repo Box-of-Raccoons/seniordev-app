@@ -6,6 +6,7 @@ import Composer from './Composer.vue'
 import EmptyState from './EmptyState.vue'
 import StatusGlyph from './StatusGlyph.vue'
 import SubagentPanel from './SubagentPanel.vue'
+import ReviewView from './ReviewView.vue'
 import raccoonAsleepUrl from '../assets/raccoon-asleep.png'
 import { shouldNotify, notificationText } from '../status-notify'
 import { type LiveTab } from '../composables/usePanes'
@@ -426,7 +427,18 @@ function moveActiveTab(dir: -1 | 1): void {
   panes.moveActiveToAdjacentPane(dir)
 }
 
-defineExpose({ newTab, openComposer, startStartupSession, startScheduledResume, closeAll, hasSessions, moveActiveTab })
+// Supervision slice 1. One review tab is enough — it reads global git state, so
+// a second would be the same view twice. An existing one is focused instead.
+function openReview(): void {
+  const existing = panes.allTabs.value.find((e) => e.tab.kind === 'review')
+  if (existing) {
+    panes.focusTab(existing.paneId, existing.tab.ptyId)
+    return
+  }
+  panes.addTab({ title: 'Review', kind: 'review' })
+}
+
+defineExpose({ newTab, openComposer, openReview, startStartupSession, startScheduledResume, closeAll, hasSessions, moveActiveTab })
 
 function resumeYolo(from: LiveTab, p: { sessionId: string; cwd: string; tool: string }): void {
   panes.addTab({
@@ -580,6 +592,7 @@ function isVisible(paneId: string, ptyId: string): boolean {
             @exited="onTabExited(entry.tab, $event)"
             @resume="resumeYolo(entry.tab, $event)"
           />
+          <ReviewView v-else-if="entry.tab.kind === 'review'" />
           <TerminalView
             v-else-if="entry.tab.kind === 'shell'"
             :id="entry.tab.ptyId"

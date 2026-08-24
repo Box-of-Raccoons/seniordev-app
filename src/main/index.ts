@@ -35,6 +35,7 @@ import { DEEPLINK, STARTUP, STATUS, WORKSPACE, SIDEBAR, SCHEDULES, type Workspac
 import { registerSidebarIpc } from './ipc/sidebar-handlers'
 import { registerScheduleIpc } from './ipc/schedule-handlers'
 import { registerWorktreeIpc } from './ipc/worktree-handlers'
+import { registerReviewIpc } from './ipc/review-handlers'
 import { nodeGitRunner } from './git/node-git-runner'
 import { createSessionActivity } from './terminal/activity'
 import { createPromptDelivery } from './terminal/prompt-delivery'
@@ -325,6 +326,7 @@ if (!gotLock) {
     // S5: worktree info/create/teardown. All git shelling goes through nodeGitRunner
     // (the only child_process-for-git module); configDir is where worktrees live.
     registerWorktreeIpc({ gitRunner: nodeGitRunner, source: store, persistence, configDir: defaultConfigDir(), getSender })
+    registerReviewIpc({ gitRunner: nodeGitRunner, persistence })
     // S3 archive (spec 4.5): archive projects idle past archiveAfterDays, exempting
     // any with a live tab. Runs now and once daily; reversible; 0 days disables.
     const runArchive = (): void => {
