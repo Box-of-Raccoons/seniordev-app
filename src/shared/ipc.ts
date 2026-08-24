@@ -219,6 +219,33 @@ export interface WorktreeTeardownResult {
 }
 export const WORKTREE = { info: 'worktree:info', create: 'worktree:create', teardown: 'worktree:teardown' } as const
 
+// Supervision epic, slice 5: search across every session's transcript,
+// including closed and archived ones — "which session did I fix that in" is
+// almost always about a session that is no longer open.
+export interface SearchMatchInfo {
+  role: 'user' | 'agent'
+  excerpt: string
+  offset: number
+  turn: number
+}
+export interface SearchHitInfo {
+  conversationId: string
+  title: string
+  tool: string
+  projectId: string
+  cwd: string
+  agentSessionId: string | null
+  matches: SearchMatchInfo[]
+}
+export interface SearchResultInfo {
+  hits: SearchHitInfo[]
+  sessionsScanned: number
+  // Non-zero means the scan cap was hit and the results are incomplete.
+  sessionsSkipped: number
+  hitsTruncated: boolean
+}
+export const SEARCH = { run: 'search:run' } as const
+
 // Supervision epic, slice 3a: what a session cost, read from its own agent
 // transcript. NOTIONAL — work here runs on a subscription, so this is the
 // API-equivalent price of the same tokens. Useful for comparing sessions
@@ -519,6 +546,7 @@ export const SUBAGENTS = {
 export type MenuAction =
   | 'new-session'
   | 'review'
+  | 'search'
   | 'schedules'
   | 'app-config'
   | 'prompt-config'

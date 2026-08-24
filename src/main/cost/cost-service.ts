@@ -1,7 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { claudeProjectsDir } from '../session-resumable'
-import { codexSessionsDir } from '../codex/session-discovery'
+import { readClaudeTranscript, readCodexTranscript } from '../transcripts'
 import { parseClaudeUsage, parseCodexUsage, totalTally, emptyUsage, type TranscriptUsage } from './transcript-usage'
 import { costFor, totalTokens, DEFAULT_RATES, type ModelRate, type TokenTally } from './pricing'
 
@@ -47,57 +44,17 @@ function priceEntries(
   return { tokens, cost: unpriced.length > 0 ? null : cost, unpricedModels: unpriced }
 }
 
-// Locate and read a claude transcript. Scans project subdirs for <id>.jsonl
-// rather than deriving the hash from cwd, matching claudeHasTranscript — the
-// path-encoding scheme is claude's, not ours, and could differ for odd cwds.
-function readClaudeTranscript(sessionId: string, projectsDir: string): string | null {
-  let dirs: string[]
-  try {
-    dirs = readdirSync(projectsDir)
-  } catch {
-    return null
-  }
-  for (const d of dirs) {
-    try {
-      return readFileSync(join(projectsDir, d, `${sessionId}.jsonl`), 'utf8')
-    } catch {
-      // Not in this project dir; keep scanning.
-    }
-  }
-  return null
-}
-
-function readCodexTranscript(sessionId: string, sessionsDir: string): string | null {
-  let entries: string[]
-  try {
-    entries = readdirSync(sessionsDir, { recursive: true }) as string[]
-  } catch {
-    return null
-  }
-  const idLc = sessionId.toLowerCase()
-  for (const rel of entries) {
-    const base = (rel.split(/[\\/]/).pop() ?? '').toLowerCase()
-    if (!base.endsWith('.jsonl') || !base.includes(idLc)) continue
-    try {
-      return readFileSync(join(sessionsDir, rel), 'utf8')
-    } catch {
-      return null
-    }
-  }
-  return null
-}
-
 export function usageForConversation(
   conv: { tool: string; agentSessionId: string | null },
   deps?: { claudeProjectsDir?: string; codexSessionsDir?: string }
 ): TranscriptUsage {
   if (!conv.agentSessionId) return emptyUsage()
   if (conv.tool === 'claude') {
-    const text = readClaudeTranscript(conv.agentSessionId, deps?.claudeProjectsDir ?? claudeProjectsDir())
+    const text = readClaudeTranscript(conv.agentSessionId, deps?.claudeProjectsDir)
     return text ? parseClaudeUsage(text) : emptyUsage()
   }
   if (conv.tool === 'codex') {
-    const text = readCodexTranscript(conv.agentSessionId, deps?.codexSessionsDir ?? codexSessionsDir())
+    const text = readCodexTranscript(conv.agentSessionId, deps?.codexSessionsDir)
     return text ? parseCodexUsage(text) : emptyUsage()
   }
   // A tool whose transcript format we do not know: report nothing rather than

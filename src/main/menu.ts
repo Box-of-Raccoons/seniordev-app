@@ -20,6 +20,9 @@ export function menuTemplate(send: (action: MenuAction) => void, dev = false): M
         // matched first, so a plain R here would silently steal reload in dev.
         // Ctrl+D was the other mnemonic and is worse — it is EOF in a shell tab.
         { label: 'Review Changes', accelerator: 'CmdOrCtrl+Shift+R', click: () => send('review') },
+        // Search spans every session, including closed and archived ones, so it
+        // belongs here rather than anywhere scoped to one project.
+        { label: 'Search Sessions…', accelerator: 'CmdOrCtrl+Shift+F', click: () => send('search') },
         { type: 'separator' },
         // Without an Edit role-menu below, clipboard accelerators die on macOS.
         { role: 'quit', label: 'Exit' }

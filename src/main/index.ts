@@ -38,6 +38,7 @@ import { registerWorktreeIpc } from './ipc/worktree-handlers'
 import { registerReviewIpc } from './ipc/review-handlers'
 import { registerGateIpc } from './ipc/gate-handlers'
 import { registerCostIpc } from './ipc/cost-handlers'
+import { registerSearchIpc } from './ipc/search-handlers'
 import { createGateService } from './gate/gate-service'
 import { nodeGateRunner } from './gate/node-gate-runner'
 import { nodeGitRunner } from './git/node-git-runner'
@@ -348,6 +349,7 @@ if (!gotLock) {
     registerReviewIpc({ gitRunner: nodeGitRunner, persistence })
     registerGateIpc({ gates })
     registerCostIpc({ persistence, source: store })
+    registerSearchIpc({ persistence })
     // S3 archive (spec 4.5): archive projects idle past archiveAfterDays, exempting
     // any with a live tab. Runs now and once daily; reversible; 0 days disables.
     const runArchive = (): void => {

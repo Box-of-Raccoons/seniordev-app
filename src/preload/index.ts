@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, PROJECTS, CONVERSATIONS, SIDEBAR, WORKTREE, REVIEW, GATE, COST, UPDATE, type ReviewTreeInfo, type ReviewDiffInfo, type GateRunningEvent, type GateResultEvent, type ConversationCostInfo, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, PROJECTS, CONVERSATIONS, SIDEBAR, WORKTREE, REVIEW, GATE, COST, SEARCH, UPDATE, type ReviewTreeInfo, type ReviewDiffInfo, type GateRunningEvent, type GateResultEvent, type ConversationCostInfo, type SearchResultInfo, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent, WorkspaceLayout } from '../shared/ipc'
 import type { ProjectInfo, ConversationInfo, SidebarState } from '../shared/ipc'
 import type { WorktreeInfo, WorktreeCreateRequest, WorktreeCreateResult, WorktreeTeardownRequest, WorktreeTeardownResult } from '../shared/ipc'
@@ -71,6 +71,8 @@ const api = {
   runGate: (ptyId: string): Promise<void> => ipcRenderer.invoke(GATE.run, ptyId),
   // Supervision slice 3a: notional per-session cost, read from agent transcripts.
   listCosts: (): Promise<ConversationCostInfo[]> => ipcRenderer.invoke(COST.list),
+  // Supervision slice 5: search every session's transcript, closed ones included.
+  searchTranscripts: (query: string): Promise<SearchResultInfo> => ipcRenderer.invoke(SEARCH.run, query),
   writeTerminal: (id: string, data: string): void => ipcRenderer.send(TERM.write, id, data),
   resizeTerminal: (id: string, cols: number, rows: number): void => ipcRenderer.send(TERM.resize, id, cols, rows),
   killTerminal: (id: string): void => ipcRenderer.send(TERM.kill, id),
