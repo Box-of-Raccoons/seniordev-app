@@ -327,6 +327,20 @@ building once the gate runner exists to trigger them.
 Keep this slice, sequence it last, and revisit it after Slice 2 ships. If the
 answer then is still "I would just open a terminal," delete it from the epic.
 
+### Revisited after Slice 2 shipped: DROPPED
+
+The gate runner absorbed the strongest argument for a tailer. "Open the log
+automatically when the gate fails" was the case that made a tailer more than a
+Terminal tab, and the gate now captures its own output and surfaces it on
+demand, so the interesting log is already in the app without one.
+
+What is left is tailing an arbitrary file next to an agent, which a raw Terminal
+tab and `tail -f` already do. Per-project path memory is the only remaining
+delta, and that is not worth a slice.
+
+Dropped from the epic. Reopen it only if a concrete case appears that a Terminal
+tab genuinely cannot serve.
+
 ---
 
 ## Ordering
@@ -384,17 +398,51 @@ neither half is much use without the other.
   menu-bar app is not opening a window. The per-session cost meter here is a
   different feature that answers a question the global meter cannot.
 
-## Open questions for the implementation plans
+## Open questions — answered during implementation
 
-1. Does main's settled-buffer scan already distinguish "waiting at a prompt"
-   from "finished"? (Slice 4 depends on the answer; Slice 2's trigger quality
-   improves with it.)
-2. Does the diff overview read worktrees on demand or watch them?
-3. Does transcript search cover agent output or only user turns?
-4. Where does the gate command live for a folder that is not in `repos:`?
+1. **Does main's settled-buffer scan distinguish "waiting at a prompt" from
+   "finished"? YES, already.** `terminal/status-hub.ts` scans a settled buffer
+   against the tool's approval patterns and reports `needsYou` on a match,
+   `idle` otherwise. Slice 4 therefore only had to aggregate, not build the
+   distinction, and Slice 2 got a precise trigger for free: the gate runs on
+   `idle` and never on `needsYou`, where the tree is mid-edit.
+2. **Does the diff overview read worktrees on demand or watch them? ON DEMAND.**
+   No staleness, nothing to invalidate. Fast enough in practice; revisit only if
+   a real tree count makes it slow.
+3. **Does transcript search cover agent output or only user turns? BOTH, with
+   the role on every hit.** "Which session did I ask about X" and "which session
+   hit that error" are different questions. Searching both answers each; the
+   role label keeps them distinguishable. User-turns-only would have silently
+   made the second unanswerable.
+4. **Where does the gate command live for a folder not in `repos:`?**
+   `defaultGate` at the top level of config. Resolution is repo `gate`, then
+   `defaultGate`, then nothing — and "nothing" is the default, so configuring a
+   gate is the entire opt-in.
+
+## Open questions still outstanding (Slice 3b)
+
 5. Does 3b poll the usage endpoint independently, or read what
    claude-usage-watcher already polls? Two apps hitting a rate-limit-sensitive
    endpoint is wasteful, but the watcher exposes no IPC surface today, so
    independent polling is the simpler v1.
 6. How coarse can the 3b poll be before attribution degrades? A session that
-   starts and finishes between two polls has no delta to claim.
+   starts and finishes between two polls has no delta to claim. **This was the
+   assumption flagged as most likely to be wrong, and it is still unprobed.**
+
+## What implementation changed about this doc
+
+- **Slice 6 (log tailer) is DROPPED.** See its section: the gate runner
+  absorbed the one argument that made it more than a Terminal tab.
+- **Slice 3b (subscription window share) is BLOCKED, not deferred.** Reading
+  Claude Code's OAuth token from the login Keychain is denied by this
+  environment's permission classifier, so neither the probe in question 6 nor
+  the feature itself can proceed without an explicit allowance. Everything about
+  the design in 3b still stands; only the credential access is blocked.
+- **Per-message model pricing was necessary on real data, not just in theory.**
+  A real transcript on this machine used `claude-fable-5` and `claude-opus-5`
+  within one session. The same session had 465K of 1-hour cache-write tokens and
+  zero 5-minute, so collapsing the two cache tiers would have mispriced it
+  substantially. Both design decisions were load-bearing rather than defensive.
+- **Transcript locating is shared.** `src/main/transcripts.ts` now serves both
+  the cost meter and search, rather than each carrying its own copy of another
+  program's file-layout assumptions.
