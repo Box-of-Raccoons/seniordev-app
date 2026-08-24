@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, PROJECTS, CONVERSATIONS, SIDEBAR, WORKTREE, UPDATE, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, PROJECTS, CONVERSATIONS, SIDEBAR, WORKTREE, REVIEW, UPDATE, type ReviewTreeInfo, type ReviewDiffInfo, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent, WorkspaceLayout } from '../shared/ipc'
 import type { ProjectInfo, ConversationInfo, SidebarState } from '../shared/ipc'
 import type { WorktreeInfo, WorktreeCreateRequest, WorktreeCreateResult, WorktreeTeardownRequest, WorktreeTeardownResult } from '../shared/ipc'
@@ -51,6 +51,10 @@ const api = {
   worktreeInfo: (folder: string): Promise<WorktreeInfo> => ipcRenderer.invoke(WORKTREE.info, folder),
   createWorktree: (req: WorktreeCreateRequest): Promise<WorktreeCreateResult> => ipcRenderer.invoke(WORKTREE.create, req),
   teardownConversation: (req: WorktreeTeardownRequest): Promise<WorktreeTeardownResult> => ipcRenderer.invoke(WORKTREE.teardown, req),
+  // Supervision slice 1: read-only review of uncommitted work, keyed by working
+  // tree. Neither call mutates anything.
+  listReview: (): Promise<ReviewTreeInfo[]> => ipcRenderer.invoke(REVIEW.list),
+  reviewDiff: (cwd: string, path: string | null): Promise<ReviewDiffInfo> => ipcRenderer.invoke(REVIEW.diff, cwd, path),
   writeTerminal: (id: string, data: string): void => ipcRenderer.send(TERM.write, id, data),
   resizeTerminal: (id: string, cols: number, rows: number): void => ipcRenderer.send(TERM.resize, id, cols, rows),
   killTerminal: (id: string): void => ipcRenderer.send(TERM.kill, id),

@@ -14,6 +14,12 @@ export function menuTemplate(send: (action: MenuAction) => void, dev = false): M
       label: 'File',
       submenu: [
         { label: 'New Session', accelerator: 'CmdOrCtrl+N', click: () => send('new-session') },
+        // Review spans every session, not one project, so it lives here rather
+        // than in the sidebar's per-project launcher. Shift+R, not plain
+        // CmdOrCtrl+R: the dev View menu's `reload` role owns that, and File is
+        // matched first, so a plain R here would silently steal reload in dev.
+        // Ctrl+D was the other mnemonic and is worse — it is EOF in a shell tab.
+        { label: 'Review Changes', accelerator: 'CmdOrCtrl+Shift+R', click: () => send('review') },
         { type: 'separator' },
         // Without an Edit role-menu below, clipboard accelerators die on macOS.
         { role: 'quit', label: 'Exit' }

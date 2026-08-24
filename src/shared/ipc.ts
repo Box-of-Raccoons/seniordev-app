@@ -219,6 +219,56 @@ export interface WorktreeTeardownResult {
 }
 export const WORKTREE = { info: 'worktree:info', create: 'worktree:create', teardown: 'worktree:teardown' } as const
 
+// Supervision epic, slice 1: read-only review of what sessions actually changed.
+// Both calls are `git diff` under the hood; nothing here stages or commits.
+export const REVIEW = { list: 'review:list', diff: 'review:diff' } as const
+
+export interface ReviewEntryInfo {
+  path: string
+  insertions: number
+  deletions: number
+  binary: boolean
+  // Untracked files have no HEAD side; their counts are whole-file.
+  untracked: boolean
+}
+
+export interface ReviewSessionInfo {
+  conversationId: string
+  title: string
+  tool: string
+}
+
+// One working tree with pending changes. Keyed by tree, not by session, because
+// uncommitted work belongs to a folder: two tabs on one folder share this diff.
+export interface ReviewTreeInfo {
+  cwd: string
+  branch: string | null
+  sessions: ReviewSessionInfo[]
+  files: number
+  insertions: number
+  deletions: number
+  entries: ReviewEntryInfo[]
+  // How many untracked files were dropped past the scan cap; 0 when complete.
+  untrackedTruncated: number
+  // Set when git could not answer at all (folder deleted, not a repo). The UI
+  // shows this instead of an empty review that would read as "nothing changed".
+  error: string | null
+}
+
+export interface ReviewDiffInfo {
+  // Parsed unified diff; shape mirrors shared/diff-parse DiffFile.
+  files: {
+    path: string
+    oldPath: string | null
+    status: 'added' | 'deleted' | 'modified' | 'renamed'
+    binary: boolean
+    insertions: number
+    deletions: number
+    hunks: { header: string; lines: { kind: 'add' | 'del' | 'context'; text: string; oldLine: number | null; newLine: number | null }[] }[]
+  }[]
+  error: string | null
+}
+
 export interface StartupSession {
   mode: 'interactive' | 'yolo'
   promptName?: string
@@ -424,6 +474,7 @@ export const SUBAGENTS = {
 
 export type MenuAction =
   | 'new-session'
+  | 'review'
   | 'schedules'
   | 'app-config'
   | 'prompt-config'

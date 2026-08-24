@@ -4,7 +4,9 @@ import { computed, reactive, ref, type ComputedRef } from 'vue'
 // terminal IPC call and is the S1 status key — kept identical to the old flat
 // `Term.id` scheme so neither IPC nor status wiring changes. `conversationId` is
 // minted now but nothing reads it until S3 (spec section 3 ordering constraint).
-export type TabKind = 'composer' | 'terminal' | 'yolo' | 'shell'
+// 'review' (supervision slice 1) is a read-only tab with no pty behind it: it
+// renders git state, so it never spawns, never exits, and carries no status.
+export type TabKind = 'composer' | 'terminal' | 'yolo' | 'shell' | 'review'
 
 export interface LiveTab {
   ptyId: string
