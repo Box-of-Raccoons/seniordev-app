@@ -35,7 +35,7 @@ export type FileReadResult =
 // Reads one untracked file. Injected rather than imported so the counting stays
 // pure and testable; the real implementation lives in node-file-reader.ts, the
 // only module here that touches fs.
-export type FileReader = (cwd: string, relPath: string) => FileReadResult
+export type FileReader = (cwd: string, relPath: string) => Promise<FileReadResult>
 
 // What an untracked file contributes to the review. An untracked file is
 // ENTIRELY added lines, so its whole contribution is its line count. That used
@@ -134,34 +134,34 @@ function firstLine(s: string): string {
   return s.split('\n').find((l) => l.trim())?.trim() ?? 'git failed'
 }
 
-function isRepo(runner: GitRunner, cwd: string): string | null {
-  const r = git(runner, cwd, ['rev-parse', '--is-inside-work-tree'])
+async function isRepo(runner: GitRunner, cwd: string): Promise<string | null> {
+  const r = await git(runner, cwd, ['rev-parse', '--is-inside-work-tree'])
   return r.code === 0 ? null : firstLine(r.stderr)
 }
 
 // The branch as git sees it now, which can differ from the branch recorded at
 // launch (an agent may have switched). "HEAD" is what --abbrev-ref prints when
 // detached, and reporting that verbatim would read as a branch named HEAD.
-function currentBranch(runner: GitRunner, cwd: string, fallback: string | null): string | null {
-  const r = git(runner, cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])
+async function currentBranch(runner: GitRunner, cwd: string, fallback: string | null): Promise<string | null> {
+  const r = await git(runner, cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])
   if (r.code !== 0) return fallback
   const name = r.stdout.trim()
   if (!name) return fallback
   return name === 'HEAD' ? 'detached' : name
 }
 
-function untrackedPaths(runner: GitRunner, cwd: string): { paths: string[]; truncated: number } {
-  const r = git(runner, cwd, ['ls-files', '--others', '--exclude-standard'])
+async function untrackedPaths(runner: GitRunner, cwd: string): Promise<{ paths: string[]; truncated: number }> {
+  const r = await git(runner, cwd, ['ls-files', '--others', '--exclude-standard'])
   if (r.code !== 0) return { paths: [], truncated: 0 }
   const all = r.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
   return { paths: all.slice(0, UNTRACKED_CAP), truncated: Math.max(0, all.length - UNTRACKED_CAP) }
 }
 
-export function reviewSummary(
+export async function reviewSummary(
   runner: GitRunner,
   target: ReviewTarget,
-  readFile: FileReader = () => ({ kind: 'unreadable' })
-): ReviewSummary {
+  readFile: FileReader = async () => ({ kind: 'unreadable' })
+): Promise<ReviewSummary> {
   const base: ReviewSummary = {
     conversationId: target.conversationId,
     title: target.title,
@@ -175,26 +175,26 @@ export function reviewSummary(
     error: null
   }
 
-  const notRepo = isRepo(runner, target.cwd)
+  const notRepo = await isRepo(runner, target.cwd)
   if (notRepo) return { ...base, error: notRepo }
 
-  base.branch = currentBranch(runner, target.cwd, target.branch)
+  base.branch = await currentBranch(runner, target.cwd, target.branch)
 
   // Tracked: staged and unstaged together, which is the whole of what the agent
   // changed but has not committed. Comparing against HEAD (not --cached) is what
   // makes a staged-but-uncommitted edit visible.
-  const tracked = git(runner, target.cwd, ['diff', 'HEAD', '--numstat'])
+  const tracked = await git(runner, target.cwd, ['diff', 'HEAD', '--numstat'])
   const entries: ReviewEntry[] = tracked.code === 0
     ? parseNumstat(tracked.stdout).map((e) => ({ ...e, untracked: false }))
     : []
 
-  const { paths, truncated } = untrackedPaths(runner, target.cwd)
+  const { paths, truncated } = await untrackedPaths(runner, target.cwd)
   for (const path of paths) {
     // Counted in-process rather than by spawning `git diff --no-index` per
     // file. An untracked file is entirely added lines, so a read and a newline
     // count give the same answer 284x faster and without blocking main on up
     // to 100 process spawns per tree.
-    const read = readFile(target.cwd, path)
+    const read = await readFile(target.cwd, path)
     if (read.kind !== 'text') {
       // Too large, vanished mid-scan, or unreadable. Listed either way, because
       // it is still uncommitted work, but FLAGGED as uncounted so the UI does
@@ -223,12 +223,12 @@ export function reviewSummary(
   }
 }
 
-export function reviewDiff(runner: GitRunner, cwd: string, path: string | null): ReviewDiffResult {
-  const notRepo = isRepo(runner, cwd)
+export async function reviewDiff(runner: GitRunner, cwd: string, path: string | null): Promise<ReviewDiffResult> {
+  const notRepo = await isRepo(runner, cwd)
   if (notRepo) return { files: [], error: notRepo }
 
   const args = path ? ['diff', 'HEAD', '--', path] : ['diff', 'HEAD', '--']
-  const r = git(runner, cwd, args)
+  const r = await git(runner, cwd, args)
   if (r.code !== 0 && !r.stdout) return { files: [], error: firstLine(r.stderr) }
 
   const files = parseUnifiedDiff(r.stdout)
@@ -237,6 +237,6 @@ export function reviewDiff(runner: GitRunner, cwd: string, path: string | null):
   // A tracked path always produces a diff against HEAD. An empty result for a
   // named path means it is untracked, so HEAD has no side to compare and the
   // whole file is the change.
-  const untracked = git(runner, cwd, ['diff', '--no-index', '--', '/dev/null', path])
+  const untracked = await git(runner, cwd, ['diff', '--no-index', '--', '/dev/null', path])
   return { files: parseUnifiedDiff(untracked.stdout), error: null }
 }

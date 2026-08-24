@@ -32,18 +32,18 @@ beforeAll(() => {
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
 describe('nodeFileReader', () => {
-  it('reads an ordinary file', () => {
-    expect(nodeFileReader(tree, 'plain.txt')).toEqual({ kind: 'text', content: 'a\nb\n' })
+  it('reads an ordinary file', async () => {
+    expect(await nodeFileReader(tree, 'plain.txt')).toEqual({ kind: 'text', content: 'a\nb\n' })
   })
 
-  it('reads an empty file as empty text, not as unreadable', () => {
-    expect(nodeFileReader(tree, 'empty.txt')).toEqual({ kind: 'text', content: '' })
+  it('reads an empty file as empty text, not as unreadable', async () => {
+    expect(await nodeFileReader(tree, 'empty.txt')).toEqual({ kind: 'text', content: '' })
   })
 
-  it('NEVER follows a symlink out of the tree', () => {
+  it('NEVER follows a symlink out of the tree', async () => {
     // The containment check is lexical, so the link passes it; only lstat stops
     // the read from opening whatever it points at.
-    const r = nodeFileReader(tree, 'escape.txt')
+    const r = await nodeFileReader(tree, 'escape.txt')
     expect(r.kind).toBe('text')
     if (r.kind === 'text') {
       expect(r.content).not.toContain('LEAKED-CONTENTS')
@@ -54,42 +54,42 @@ describe('nodeFileReader', () => {
     }
   })
 
-  it('handles a dangling symlink without throwing', () => {
-    const r = nodeFileReader(tree, 'dangling.txt')
+  it('handles a dangling symlink without throwing', async () => {
+    const r = await nodeFileReader(tree, 'dangling.txt')
     expect(r.kind).toBe('text')
   })
 
-  it('rejects a path that climbs out of the tree', () => {
-    expect(nodeFileReader(tree, '../outside/secret.txt')).toEqual({ kind: 'unreadable' })
+  it('rejects a path that climbs out of the tree', async () => {
+    expect(await nodeFileReader(tree, '../outside/secret.txt')).toEqual({ kind: 'unreadable' })
   })
 
-  it('rejects an absolute path outside the tree', () => {
-    expect(nodeFileReader(tree, join(outside, 'secret.txt'))).toEqual({ kind: 'unreadable' })
+  it('rejects an absolute path outside the tree', async () => {
+    expect(await nodeFileReader(tree, join(outside, 'secret.txt'))).toEqual({ kind: 'unreadable' })
   })
 
-  it('reports a missing file as unreadable', () => {
-    expect(nodeFileReader(tree, 'no-such-file.txt')).toEqual({ kind: 'unreadable' })
+  it('reports a missing file as unreadable', async () => {
+    expect(await nodeFileReader(tree, 'no-such-file.txt')).toEqual({ kind: 'unreadable' })
   })
 
-  it('reports a directory as unreadable rather than trying to read it', () => {
-    expect(nodeFileReader(tree, 'adir')).toEqual({ kind: 'unreadable' })
+  it('reports a directory as unreadable rather than trying to read it', async () => {
+    expect(await nodeFileReader(tree, 'adir')).toEqual({ kind: 'unreadable' })
   })
 
-  it('reports an oversized file as TOO-LARGE, distinct from unreadable', () => {
+  it('reports an oversized file as TOO-LARGE, distinct from unreadable', async () => {
     const big = join(tree, 'big.bin')
     writeFileSync(big, Buffer.alloc(MAX_COUNT_BYTES + 1024, 0x41))
     try {
-      expect(nodeFileReader(tree, 'big.bin')).toEqual({ kind: 'too-large' })
+      expect(await nodeFileReader(tree, 'big.bin')).toEqual({ kind: 'too-large' })
     } finally {
       rmSync(big, { force: true })
     }
   })
 
-  it('reads a file just under the cap', () => {
+  it('reads a file just under the cap', async () => {
     const ok = join(tree, 'ok.bin')
     writeFileSync(ok, Buffer.alloc(1024, 0x41))
     try {
-      expect(nodeFileReader(tree, 'ok.bin').kind).toBe('text')
+      expect((await nodeFileReader(tree, 'ok.bin')).kind).toBe('text')
     } finally {
       rmSync(ok, { force: true })
     }

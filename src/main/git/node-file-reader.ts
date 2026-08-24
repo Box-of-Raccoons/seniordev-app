@@ -1,4 +1,4 @@
-import { lstatSync, readFileSync, readlinkSync } from 'node:fs'
+import { lstat, readFile, readlink } from 'node:fs/promises'
 import { resolve, relative, isAbsolute } from 'node:path'
 import type { FileReader } from './review-service'
 
@@ -11,7 +11,7 @@ import type { FileReader } from './review-service'
 // file is still LISTED, flagged uncounted, so it never reads as empty.
 export const MAX_COUNT_BYTES = 8 * 1024 * 1024
 
-export const nodeFileReader: FileReader = (cwd, relPath) => {
+export const nodeFileReader: FileReader = async (cwd, relPath) => {
   // The path comes from `git ls-files`, so it is already tree-relative. Resolve
   // it anyway and confirm it stays inside the tree.
   const root = resolve(cwd)
@@ -23,18 +23,18 @@ export const nodeFileReader: FileReader = (cwd, relPath) => {
     // lstat, NOT stat. The containment check above is lexical, so a symlink
     // passes it while a following read would open the target — which can sit
     // outside the tree entirely, breaking the invariant this check exists for.
-    const st = lstatSync(target)
+    const st = await lstat(target)
 
     if (st.isSymbolicLink()) {
       // git stores a symlink's blob as the TARGET PATH text, so `git diff
       // --no-index --numstat` reports 1 line for one. Returning the link text
       // reproduces that, and never reads whatever it points at.
-      return { kind: 'text', content: readlinkSync(target) }
+      return { kind: 'text', content: await readlink(target) }
     }
     if (!st.isFile()) return { kind: 'unreadable' }
     if (st.size > MAX_COUNT_BYTES) return { kind: 'too-large' }
 
-    return { kind: 'text', content: readFileSync(target, 'utf8') }
+    return { kind: 'text', content: await readFile(target, 'utf8') }
   } catch {
     // Vanished mid-scan, a permission error, or a dangling link. All normal
     // while an agent is actively writing; none are worth failing the review.

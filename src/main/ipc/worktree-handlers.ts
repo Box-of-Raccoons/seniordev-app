@@ -41,11 +41,11 @@ export function registerWorktreeIpc(deps: {
     return deps.persistence.projects.list().some((p) => normRepoPath(p.path) === norm && p.worktreeDefault)
   }
 
-  ipcMain.handle(WORKTREE.info, (_e, folder: string): WorktreeInfo => {
+  ipcMain.handle(WORKTREE.info, async (_e, folder: string): Promise<WorktreeInfo> => {
     const key = normRepoPath(folder)
     const cached = infoCache.get(key)
     if (cached && now() - cached.at < INFO_TTL_MS) return cached.value
-    const { isRepo } = gitRepoInfo(deps.gitRunner, folder)
+    const { isRepo } = await gitRepoInfo(deps.gitRunner, folder)
     const repo = deps.source.config ? findRepoForPath(deps.source.config, folder) : null
     const value: WorktreeInfo = {
       isRepo,
@@ -56,10 +56,10 @@ export function registerWorktreeIpc(deps: {
     return value
   })
 
-  ipcMain.handle(WORKTREE.create, (_e, req: WorktreeCreateRequest): WorktreeCreateResult => {
+  ipcMain.handle(WORKTREE.create, async (_e, req: WorktreeCreateRequest): Promise<WorktreeCreateResult> => {
     const repo = deps.source.config ? findRepoForPath(deps.source.config, req.folder) : null
     const repoKey = repo?.key ?? titleFromPath(req.folder)
-    return createWorktree(deps.gitRunner, {
+    return await createWorktree(deps.gitRunner, {
       configDir: deps.configDir,
       folder: req.folder,
       repoKey,
@@ -67,7 +67,7 @@ export function registerWorktreeIpc(deps: {
     })
   })
 
-  ipcMain.handle(WORKTREE.teardown, (_e, req: WorktreeTeardownRequest): WorktreeTeardownResult => {
+  ipcMain.handle(WORKTREE.teardown, async (_e, req: WorktreeTeardownRequest): Promise<WorktreeTeardownResult> => {
     const conv = deps.persistence.conversations.get(req.conversationId)
     if (!conv) return { archived: false }
     // Archive first (reversible; data kept per spec 4.6). This always succeeds and
@@ -79,7 +79,7 @@ export function registerWorktreeIpc(deps: {
       const project = deps.persistence.projects.get(conv.projectId)
       // Run the removal from the main repo (project path), not the worktree itself.
       const folder = project?.path ?? conv.cwd
-      result.worktree = removeWorktree(deps.gitRunner, { folder, worktreePath: conv.worktreePath })
+      result.worktree = await removeWorktree(deps.gitRunner, { folder, worktreePath: conv.worktreePath })
     }
     deps.getSender()?.send(SIDEBAR.changed)
     return result

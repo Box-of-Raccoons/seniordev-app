@@ -36,12 +36,12 @@ export function registerReviewIpc(deps: {
   // Every tree with pending changes. Trees that are clean are dropped, so the
   // overview lists only what actually needs reviewing; a tree git could not read
   // is KEPT, carrying its error, because silently omitting it would read as clean.
-  ipcMain.handle(REVIEW.list, (): ReviewTreeInfo[] => {
+  ipcMain.handle(REVIEW.list, async (): Promise<ReviewTreeInfo[]> => {
     const groups = groupTargetsByTree(targetsFromConversations(deps.persistence.conversations.list()))
     const out: ReviewTreeInfo[] = []
     for (const g of groups) {
       const rep = g.sessions[0]
-      const s = reviewSummary(
+      const s = await reviewSummary(
         deps.gitRunner,
         {
           conversationId: rep.conversationId,
@@ -68,8 +68,8 @@ export function registerReviewIpc(deps: {
     return out
   })
 
-  ipcMain.handle(REVIEW.diff, (_e, cwd: string, path: string | null): ReviewDiffInfo => {
-    const r = reviewDiff(deps.gitRunner, cwd, path ?? null)
+  ipcMain.handle(REVIEW.diff, async (_e, cwd: string, path: string | null): Promise<ReviewDiffInfo> => {
+    const r = await reviewDiff(deps.gitRunner, cwd, path ?? null)
     return { files: r.files, error: r.error }
   })
 }

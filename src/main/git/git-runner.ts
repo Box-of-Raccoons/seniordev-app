@@ -19,7 +19,14 @@ export interface GitResult {
 // layer takes a GitRunner so tests drive it with a fake and never shell real git.
 // The one real implementation is node-git-runner.ts (the only child_process-for-git
 // module). `cwd` is the -C target; `args` are the git arguments (no leading "git").
-export type GitRunner = (cwd: string, args: string[]) => GitResult
+//
+// ASYNCHRONOUS, deliberately. Electron's main process is single-threaded and is
+// where node-pty lives, so a synchronous git call freezes terminal output for
+// every running agent for its whole duration. Locally each call is a few
+// milliseconds, but the failure case is a slow or network filesystem, where a
+// single call can sit for its full 15-second timeout. Awaiting moves that wait
+// onto libuv and leaves the event loop free.
+export type GitRunner = (cwd: string, args: string[]) => Promise<GitResult>
 
 // The single path segment a branch becomes on disk: '/' flattened to '-' so a
 // prefixed branch (feature/foo) lands in one directory rather than nesting under

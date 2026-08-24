@@ -14,7 +14,7 @@ beforeEach(() => handlers.clear())
 
 function fakeRunner(replies: Record<string, GitResult>): GitRunner & { calls: { cwd: string; args: string[] }[] } {
   const calls: { cwd: string; args: string[] }[] = []
-  const fn = ((cwd: string, args: string[]): GitResult => {
+  const fn = (async (cwd: string, args: string[]): Promise<GitResult> => {
     calls.push({ cwd, args })
     return replies[`${args[0]} ${args[1] ?? ''}`.trim()] ?? replies[args[0]] ?? { code: 0, stdout: '', stderr: '' }
   }) as GitRunner & { calls: { cwd: string; args: string[] }[] }
