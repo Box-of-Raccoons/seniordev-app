@@ -1,4 +1,4 @@
-import { readTranscriptAsync } from '../transcripts'
+import { readTranscriptAsync, buildCodexIndex, type CodexIndex } from '../transcripts'
 import { searchTranscript, type TranscriptMatch } from './transcript-search'
 
 // Supervision slice 5. Walks every known conversation's transcript and searches
@@ -53,12 +53,26 @@ export async function searchConversations(
   opts?: {
     deps?: { claudeProjectsDir?: string; codexSessionsDir?: string }
     read?: (conv: { tool: string; agentSessionId: string | null }) => Promise<string | null> | string | null
+    // Injectable so a test can prove the codex tree is walked once per scan
+    // rather than once per conversation. Same seam shape as `read`.
+    buildIndex?: () => CodexIndex
   }
 ): Promise<SearchOutcome> {
   const empty: SearchOutcome = { hits: [], sessionsScanned: 0, sessionsSkipped: 0, hitsTruncated: false }
   if (!query.trim()) return empty
 
-  const read = opts?.read ?? ((c): Promise<string | null> => readTranscriptAsync(c, opts?.deps))
+  // Walk the codex sessions tree ONCE per scan, not once per conversation.
+  // Locating a codex rollout means a recursive directory walk, and doing that
+  // inside the loop meant up to 300 synchronous walks per search, each one a
+  // freeze. Built lazily so a claude-only scan never pays for it.
+  let codexIndex: CodexIndex | undefined
+  const defaultRead = (c: SearchableConversation | { tool: string; agentSessionId: string | null }): Promise<string | null> => {
+    if (c.tool === 'codex' && !codexIndex) {
+      codexIndex = opts?.buildIndex ? opts.buildIndex() : buildCodexIndex(opts?.deps?.codexSessionsDir)
+    }
+    return readTranscriptAsync(c, { ...opts?.deps, codexIndex })
+  }
+  const read = opts?.read ?? defaultRead
 
   // Newest first: the session you are trying to remember is far more often a
   // recent one, so the scan cap bites on the least likely candidates.

@@ -76,7 +76,7 @@ describe('reviewSummary', () => {
       'ls-files --others --exclude-standard': ok('src/new.ts\n')
     })
     // Untracked contents come from the injected reader now, not from a spawn.
-    const s = reviewSummary(git, TARGET, () => 'a\nb\nc\nd\ne\n')
+    const s = reviewSummary(git, TARGET, () => ({ kind: 'text', content: 'a\nb\nc\nd\ne\n' }))
     expect(s.files).toBe(2)
     expect(s.insertions).toBe(6)
     expect(s.entries.find((e) => e.path === 'src/new.ts')?.untracked).toBe(true)
@@ -89,7 +89,7 @@ describe('reviewSummary', () => {
       'rev-parse --is-inside-work-tree': ok('true\n'),
       'ls-files --others --exclude-standard': ok('a.txt\nb.txt\nc.txt\n')
     })
-    reviewSummary(git, TARGET, () => 'x\n')
+    reviewSummary(git, TARGET, () => ({ kind: 'text', content: 'x\n' }))
     expect(git.calls.some((args) => args.includes('--no-index'))).toBe(false)
   })
 
@@ -98,10 +98,32 @@ describe('reviewSummary', () => {
       'rev-parse --is-inside-work-tree': ok('true\n'),
       'ls-files --others --exclude-standard': ok('gone.txt\n')
     })
-    // null means vanished mid-scan or unreadable. It is still uncommitted work.
-    const s = reviewSummary(git, TARGET, () => null)
+    // Vanished mid-scan or unreadable. It is still uncommitted work.
+    const s = reviewSummary(git, TARGET, () => ({ kind: 'unreadable' }))
     expect(s.entries).toHaveLength(1)
-    expect(s.entries[0]).toMatchObject({ path: 'gone.txt', insertions: 0, untracked: true })
+    expect(s.entries[0]).toMatchObject({ path: 'gone.txt', insertions: 0, untracked: true, uncounted: true })
+  })
+
+  it('FLAGS an oversized file as uncounted rather than reporting it as +0', () => {
+    // A 10MB file rendering as "+0" reads as trivial. The flag is what stops
+    // the UI conflating "not counted" with "empty".
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok('huge.sql\n')
+    })
+    const s = reviewSummary(git, TARGET, () => ({ kind: 'too-large' }))
+    expect(s.entries[0]).toMatchObject({ path: 'huge.sql', insertions: 0, uncounted: true, binary: false })
+  })
+
+  it('does NOT flag a genuinely empty file as uncounted', () => {
+    // Zero with no flag has to keep meaning "really empty", or the flag is noise.
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok('empty.txt\n')
+    })
+    const s = reviewSummary(git, TARGET, () => ({ kind: 'text', content: '' }))
+    expect(s.entries[0].insertions).toBe(0)
+    expect(s.entries[0].uncounted).toBeUndefined()
   })
 
   it('marks a binary untracked file as binary instead of counting lines', () => {
@@ -109,7 +131,7 @@ describe('reviewSummary', () => {
       'rev-parse --is-inside-work-tree': ok('true\n'),
       'ls-files --others --exclude-standard': ok('logo.png\n')
     })
-    const s = reviewSummary(git, TARGET, () => 'PNG\u0000 data')
+    const s = reviewSummary(git, TARGET, () => ({ kind: 'text', content: 'PNG\u0000 data' }))
     expect(s.entries[0].binary).toBe(true)
     expect(s.entries[0].insertions).toBe(0)
   })
@@ -122,7 +144,7 @@ describe('reviewSummary', () => {
     })
     reviewSummary(git, { ...TARGET, cwd: '/wt/feature' }, (cwd, path) => {
       seen.push({ cwd, path })
-      return 'x\n'
+      return { kind: 'text', content: 'x\n' }
     })
     expect(seen).toEqual([
       { cwd: '/wt/feature', path: 'a.txt' },

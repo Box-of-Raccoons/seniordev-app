@@ -139,6 +139,42 @@ describe('ReviewView', () => {
     ])
   })
 
+  it('says "not counted" rather than "+0" for a file whose lines were not counted', async () => {
+    // A 10MB migration rendering as "+0" reads as trivial. This is the third
+    // state: not binary, not empty, just not counted.
+    stubApi({
+      list: [
+        tree({
+          entries: [
+            { path: 'huge.sql', insertions: 0, deletions: 0, binary: false, untracked: true, uncounted: true }
+          ]
+        })
+      ]
+    })
+    const w = mount(ReviewView)
+    await flushPromises()
+    await w.find('.rv-tree').trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('not counted')
+    expect(w.find('.rv-stat').exists()).toBe(false)
+  })
+
+  it('still shows +0 for a genuinely empty file', async () => {
+    stubApi({
+      list: [
+        tree({
+          entries: [{ path: 'empty.txt', insertions: 0, deletions: 0, binary: false, untracked: true }]
+        })
+      ]
+    })
+    const w = mount(ReviewView)
+    await flushPromises()
+    await w.find('.rv-tree').trigger('click')
+    await flushPromises()
+    expect(w.find('.rv-stat').text()).toContain('+0')
+    expect(w.text()).not.toContain('not counted')
+  })
+
   it('marks an untracked entry as new', async () => {
     stubApi({
       list: [tree({ entries: [{ path: 'src/new.ts', insertions: 5, deletions: 0, binary: false, untracked: true }] })]

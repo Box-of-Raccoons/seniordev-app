@@ -301,6 +301,9 @@ export interface ReviewEntryInfo {
   binary: boolean
   // Untracked files have no HEAD side; their counts are whole-file.
   untracked: boolean
+  // Changed, but its lines were not counted (too large, or unreadable). Distinct
+  // from binary and from a genuine zero, so the UI never renders it as "+0".
+  uncounted?: boolean
 }
 
 export interface ReviewSessionInfo {

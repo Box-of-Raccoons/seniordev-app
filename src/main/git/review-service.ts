@@ -23,10 +23,19 @@ function git(runner: GitRunner, cwd: string, args: string[]): ReturnType<GitRunn
   return runner(cwd, [...QUOTEPATH_OFF, ...args])
 }
 
-// Reads one untracked file's contents. Injected rather than imported so the
-// counting stays pure and testable; the real implementation lives in
-// node-file-reader.ts, the only module here that touches fs.
-export type FileReader = (cwd: string, relPath: string) => string | null
+// The outcome of reading one untracked file. Three cases, not two: "too large
+// to count" and "could not read" produce the same absence of a number but mean
+// different things to a reviewer, and collapsing them made a 10MB file render
+// as "+0 -0" — indistinguishable from an empty one.
+export type FileReadResult =
+  | { kind: 'text'; content: string }
+  | { kind: 'too-large' }
+  | { kind: 'unreadable' }
+
+// Reads one untracked file. Injected rather than imported so the counting stays
+// pure and testable; the real implementation lives in node-file-reader.ts, the
+// only module here that touches fs.
+export type FileReader = (cwd: string, relPath: string) => FileReadResult
 
 // What an untracked file contributes to the review. An untracked file is
 // ENTIRELY added lines, so its whole contribution is its line count. That used
@@ -35,9 +44,11 @@ export type FileReader = (cwd: string, relPath: string) => string | null
 // Main is single-threaded and hosts the ptys, so those 283ms were 283ms of
 // frozen terminal output for every running agent.
 export function countUntracked(content: string): { lines: number; binary: boolean } {
-  // A null byte is the same heuristic git itself uses to call a file binary.
-  // It is not perfect, and it does not need to be: the consequence of being
-  // wrong is a line count shown for a file that should have said "binary".
+  // A null byte anywhere means binary. git uses the same signal but only
+  // inspects roughly the first 8k, so a file whose only NUL sits past that is
+  // text to git and binary here. The disagreement is a mislabelled badge, and
+  // erring toward "binary" is the safer direction: it declines to show a line
+  // count rather than showing a wrong one.
   if (/\u0000/.test(content)) return { lines: 0, binary: true }
   if (content === '') return { lines: 0, binary: false }
   // git counts a trailing newline as terminating the last line, not starting a
@@ -56,9 +67,13 @@ export interface ReviewTarget {
 }
 
 export interface ReviewEntry extends NumstatEntry {
-  // Untracked files have no HEAD side, so their diff comes from --no-index and
-  // their counts are whole-file. The flag rides along so the UI can say so.
+  // Untracked files have no HEAD side, so their counts are whole-file. The flag
+  // rides along so the UI can say so.
   untracked: boolean
+  // The file is real and changed, but its lines were not counted (too large, or
+  // unreadable). Distinct from binary, and distinct from a genuine zero: a
+  // count of 0 with no flag means the file really is empty.
+  uncounted?: boolean
 }
 
 export interface ReviewSummary {
@@ -145,7 +160,7 @@ function untrackedPaths(runner: GitRunner, cwd: string): { paths: string[]; trun
 export function reviewSummary(
   runner: GitRunner,
   target: ReviewTarget,
-  readFile: FileReader = () => null
+  readFile: FileReader = () => ({ kind: 'unreadable' })
 ): ReviewSummary {
   const base: ReviewSummary = {
     conversationId: target.conversationId,
@@ -179,14 +194,15 @@ export function reviewSummary(
     // file. An untracked file is entirely added lines, so a read and a newline
     // count give the same answer 284x faster and without blocking main on up
     // to 100 process spawns per tree.
-    const content = readFile(target.cwd, path)
-    if (content === null) {
-      // Unreadable (vanished mid-scan, permissions): list it with no counts
-      // rather than dropping it, since it is still uncommitted work.
-      entries.push({ path, insertions: 0, deletions: 0, binary: false, untracked: true })
+    const read = readFile(target.cwd, path)
+    if (read.kind !== 'text') {
+      // Too large, vanished mid-scan, or unreadable. Listed either way, because
+      // it is still uncommitted work, but FLAGGED as uncounted so the UI does
+      // not render it as "+0" and read as trivial.
+      entries.push({ path, insertions: 0, deletions: 0, binary: false, untracked: true, uncounted: true })
       continue
     }
-    const { lines, binary } = countUntracked(content)
+    const { lines, binary } = countUntracked(read.content)
     entries.push({ path, insertions: lines, deletions: 0, binary, untracked: true })
   }
 
