@@ -83,3 +83,23 @@ describe('menuTemplate — schedules', () => {
     expect(sent).toEqual(['schedules'])
   })
 })
+
+describe('menuTemplate — session search', () => {
+  it('offers Search Sessions with a non-conflicting accelerator', () => {
+    const sent: MenuAction[] = []
+    const file = menuTemplate((a) => sent.push(a))[0].submenu as Item[]
+    const search = file.find((i) => i.label === 'Search Sessions…')!
+    expect(search).toBeDefined()
+    // Not plain CmdOrCtrl+F: that is the browser/terminal find idiom, and File
+    // is matched before any View menu.
+    expect(search.accelerator).toBe('CmdOrCtrl+Shift+F')
+    search.click!()
+    expect(sent).toContain('search')
+  })
+
+  it('keeps Search above the separator, with the other actions', () => {
+    const file = menuTemplate(() => {})[0].submenu as Item[]
+    const idx = file.findIndex((i) => i.label === 'Search Sessions…')
+    expect(idx).toBeLessThan(file.findIndex((i) => i.type === 'separator'))
+  })
+})
