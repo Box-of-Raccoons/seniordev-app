@@ -219,6 +219,31 @@ export interface WorktreeTeardownResult {
 }
 export const WORKTREE = { info: 'worktree:info', create: 'worktree:create', teardown: 'worktree:teardown' } as const
 
+// Supervision epic, slice 2: the project's own gate, run when a session falls
+// quiet. Orthogonal to TabStatus on purpose — the status describes the SESSION,
+// the gate describes the CODE, and folding one into the other would mean a
+// passing suite could hide an agent waiting on you.
+export type GateOutcome = 'pass' | 'fail' | 'error'
+export interface GateRunningEvent {
+  ptyId: string
+  command: string
+}
+export interface GateResultEvent {
+  ptyId: string
+  outcome: GateOutcome
+  // One line fit for a tab. The full output stays in main and is fetched on
+  // demand, so a noisy suite never rides through this event.
+  summary: string
+  durationMs: number
+  command: string
+}
+export const GATE = {
+  running: 'gate:running', // main → renderer
+  result: 'gate:result', // main → renderer
+  output: 'gate:output', // renderer → main (fetch the full text on demand)
+  run: 'gate:run' // renderer → main (run it now, without waiting for a settle)
+} as const
+
 // Supervision epic, slice 1: read-only review of what sessions actually changed.
 // Both calls are `git diff` under the hood; nothing here stages or commits.
 export const REVIEW = { list: 'review:list', diff: 'review:diff' } as const

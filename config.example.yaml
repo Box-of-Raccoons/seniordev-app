@@ -47,3 +47,20 @@
 #     path: C:/Users/you/code/backend
 #     branchPrefix: feature/
 #     forge: github
+#     gate: pnpm test        # see "gates" below
+
+# Gates. When a session in a folder falls quiet (the agent stopped and is not
+# asking you anything), SeniorDev runs that project's own gate and pins pass or
+# fail to the tab. Nothing runs unless you configure a command here, so setting
+# one IS the opt-in — the app never guesses what to execute in your repo.
+#
+# Resolution: the matching repo's own `gate`, then `defaultGate`, then nothing.
+# The command runs through a shell, in the session's folder (its worktree when it
+# has one), in a child process — so a gate that hangs or crashes cannot touch the
+# agent sessions running in the app.
+#
+# A gate that cannot run at all (missing command, timeout) is reported as an
+# ERROR, not a failure: the harness broke, which says nothing about your code.
+#
+# defaultGate: pnpm test     # used for folders not listed under repos:
+# gateTimeoutMs: 300000      # a hung gate is killed here and reported as an error

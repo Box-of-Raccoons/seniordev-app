@@ -31,11 +31,14 @@ import { parseDeepLink, findDeepLinkArg } from './deeplink/parse'
 import { resolveSecondInstance } from './startup/resolve-launch'
 import { findRepoForTicket } from './config/repos'
 import { DeepLinkDelivery, WarmDelivery } from './deeplink/delivery'
-import { DEEPLINK, STARTUP, STATUS, WORKSPACE, SIDEBAR, SCHEDULES, type WorkspaceLayout, type WarmStartup, type ScheduledResume, type ScheduleResumeDropped } from '../shared/ipc'
+import { DEEPLINK, STARTUP, STATUS, GATE, WORKSPACE, SIDEBAR, SCHEDULES, type WorkspaceLayout, type WarmStartup, type ScheduledResume, type ScheduleResumeDropped } from '../shared/ipc'
 import { registerSidebarIpc } from './ipc/sidebar-handlers'
 import { registerScheduleIpc } from './ipc/schedule-handlers'
 import { registerWorktreeIpc } from './ipc/worktree-handlers'
 import { registerReviewIpc } from './ipc/review-handlers'
+import { registerGateIpc } from './ipc/gate-handlers'
+import { createGateService } from './gate/gate-service'
+import { nodeGateRunner } from './gate/node-gate-runner'
 import { nodeGitRunner } from './git/node-git-runner'
 import { createSessionActivity } from './terminal/activity'
 import { createPromptDelivery } from './terminal/prompt-delivery'
@@ -288,7 +291,22 @@ if (!gotLock) {
     // buffer-content stability (these TUIs never go byte-quiet) and arrives as
     // STATUS.active / STATUS.settled.
     const activity = createSessionActivity()
-    const statusHub = createStatusHub({ sendUpdate: (ev) => getSender()?.send(STATUS.update, ev) })
+    // Supervision slice 2: the gate watches the same status stream. It is wired
+    // into sendUpdate rather than given its own listener so it can never see a
+    // state the renderer did not, and it swallows its own failures so a broken
+    // gate cannot break status reporting.
+    const gates = createGateService({
+      getConfig: () => store.config,
+      runner: nodeGateRunner,
+      onResult: (e) => getSender()?.send(GATE.result, e),
+      onRunning: (e) => getSender()?.send(GATE.running, e)
+    })
+    const statusHub = createStatusHub({
+      sendUpdate: (ev) => {
+        getSender()?.send(STATUS.update, ev)
+        void gates.onStatus(ev).catch(() => {})
+      }
+    })
     ipcMain.on(STATUS.active, (_e, id: string) => statusHub.active(id))
     ipcMain.on(STATUS.settled, (_e, id: string, text: string) => statusHub.settled(id, text))
     // S3 persistence: the project + conversation stores and the session-id capture
@@ -327,6 +345,7 @@ if (!gotLock) {
     // (the only child_process-for-git module); configDir is where worktrees live.
     registerWorktreeIpc({ gitRunner: nodeGitRunner, source: store, persistence, configDir: defaultConfigDir(), getSender })
     registerReviewIpc({ gitRunner: nodeGitRunner, persistence })
+    registerGateIpc({ gates })
     // S3 archive (spec 4.5): archive projects idle past archiveAfterDays, exempting
     // any with a live tab. Runs now and once daily; reversible; 0 days disables.
     const runArchive = (): void => {
@@ -347,7 +366,7 @@ if (!gotLock) {
       write: (id, data) => terminals?.write(id, data),
       activity
     })
-    terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand, activity, statusHub, persistence, promptDelivery })
+    terminals = registerTerminalIpc(getSender, nodePtySpawner, { source: store, resolveCommand: systemResolveCommand, activity, statusHub, gates, persistence, promptDelivery })
     yolo = registerYoloIpc(getSender, nodeHeadlessSpawner, { source: store, resolveCommand: systemResolveCommand, statusHub })
 
     // Scheduled prompts. The runner is the only thing here that acts on its own,

@@ -50,7 +50,11 @@ export const RepoSchema = z.object({
   key: z.string().min(1),
   path: z.string().min(1),
   branchPrefix: z.string().default(''),
-  forge: z.string().optional()
+  forge: z.string().optional(),
+  // Supervision slice 2: the project's own gate, run when a session in this repo
+  // falls quiet. Empty (the default) means no gate runs, so configuring one IS
+  // the opt-in — the app never guesses a command to execute in your repo.
+  gate: z.string().default('')
 })
 
 export const ConfigSchema = z.object({
@@ -69,7 +73,14 @@ export const ConfigSchema = z.object({
   // Days of inactivity after which a project is auto-archived (S3, spec 4.5).
   // Runs at startup + daily, never archives a project with a live tab, and is
   // fully reversible. 0 disables archiving. Non-negative integer.
-  archiveAfterDays: z.number().int().nonnegative().default(14)
+  archiveAfterDays: z.number().int().nonnegative().default(14),
+  // Supervision slice 2. `defaultGate` covers folders that are not in `repos:`
+  // (the answer to "where does the gate command live for an unconfigured
+  // folder"); a repo's own `gate` always wins. Empty means no gate anywhere.
+  defaultGate: z.string().default(''),
+  // A gate that hangs must not hang forever. Killed at this point and reported
+  // as an error, which is distinct from a failing suite.
+  gateTimeoutMs: z.number().int().positive().default(300_000)
 })
 
 export type Config = z.infer<typeof ConfigSchema>

@@ -20,6 +20,9 @@ export interface TerminalDeps {
   // Optional so existing tests that exercise only prompt delivery need neither.
   activity?: SessionActivity
   statusHub?: StatusHub
+  // Supervision slice 2: the gate needs each tab's working directory, which only
+  // the spawn knows. Optional, so existing tests wire nothing.
+  gates?: { track(ptyId: string, cwd: string): void; untrack(ptyId: string): void }
   // S3 persistence: auto-create the project + conversation on spawn and capture
   // the resume id. Optional so prompt-delivery tests need not wire it.
   persistence?: SessionPersistence
@@ -97,6 +100,9 @@ export function registerTerminalIpc(
       // Status: an agent tab is scanned against its own tool's approval patterns.
       const toolName = req.tool ?? config.defaultTool
       deps.statusHub?.registerPty(req.id, 'interactive', config.cliTools[toolName]?.approvalPatterns ?? [])
+      // The gate runs where the session ran: its worktree when it has one,
+      // otherwise the launch folder. launch.cwd is already that resolution.
+      deps.gates?.track(req.id, launch.cwd)
       // S3: persist the project + conversation and capture the resume id. claude
       // pre-assigns (id == conversationId, known now); codex is discovered from the
       // rollout dir starting at spawn. Skipped for a caller with no conversationId.
@@ -154,6 +160,7 @@ export function registerTerminalIpc(
     delivery.cancel(id)
     activity.clear(id)
     deps.statusHub?.dispose(id)
+    deps.gates?.untrack(id)
     deps.persistence?.onTabExit(id) // unpin its project from the live set (S3 archive)
     manager.kill(id)
   })
