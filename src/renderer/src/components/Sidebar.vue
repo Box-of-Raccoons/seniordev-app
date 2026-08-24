@@ -23,7 +23,9 @@ import {
   CONVERSATION_DND_TYPE,
   type CapLevel
 } from '../composables/sidebar-logic'
-import type { ProjectInfo, ConversationInfo, TabStatus } from '../../../shared/ipc'
+import type { ProjectInfo, ConversationInfo, TabStatus, ConversationCostInfo } from '../../../shared/ipc'
+import { costLabel, costTitle } from '../cost-format'
+import { blockedSessions, blockedSummary } from '../composables/blocked-inbox'
 
 // S4 Projects sidebar (spec section 8). A sibling of RightPanel under App, reading
 // the shared `ws` (A3): projects sorted by recency, each expanding to its capped
@@ -64,6 +66,20 @@ async function refresh(): Promise<void> {
   } catch {
     // A read failure must never blank the sidebar mid-session; keep the last data.
   }
+  // Supervision slice 3a. Fetched separately and failing independently: pricing
+  // reads every agent transcript, and a slow or broken read there must not take
+  // the project list down with it.
+  try {
+    const list = await window.api.listCosts()
+    costs.value = Object.fromEntries(list.map((c) => [c.conversationId, c]))
+  } catch {
+    // Leave the previous figures rather than blanking them.
+  }
+}
+
+const costs = ref<Record<string, ConversationCostInfo>>({})
+function costFor(conversationId: string): ConversationCostInfo | null {
+  return costs.value[conversationId] ?? null
 }
 // The default shell for an instant Terminal launch, and the detected agent tools
 // (for the New Session submenu). Resolved once on mount (S6).
@@ -87,6 +103,10 @@ onMounted(() => {
     .catch(() => {})
 })
 onBeforeUnmount(() => offChange?.())
+
+// Supervision slice 4: every session that cannot proceed without you, across
+// every pane. Derived from the same status map the tab strip reads.
+const blocked = computed(() => blockedSessions(props.ws.panes.allTabs.value, props.ws.statuses))
 
 const activeProjects = computed(() => activeProjectsByRecency(projects.value))
 const archived = computed(() => archivedProjects(projects.value))
@@ -355,6 +375,25 @@ function onGripKey(e: KeyboardEvent): void {
     </div>
 
     <div class="sb-scroll">
+      <!-- Supervision slice 4. Per-tab status already exists on the tab strip;
+           what was missing is the aggregate. With two tabs you scan the strip,
+           with eight you hunt. Only sessions that CANNOT proceed appear here —
+           an idle session finished and is not blocked. -->
+      <section v-if="blocked.length" class="inbox" aria-label="Sessions waiting on you">
+        <h3 class="inbox-head">{{ blockedSummary(blocked) }}</h3>
+        <button
+          v-for="s in blocked"
+          :key="s.ptyId"
+          class="inbox-row"
+          @click="ws.panes.focusTab(s.paneId, s.ptyId)"
+        >
+          <span class="glyph-cell"><StatusGlyph :status="s.status" /></span>
+          <span class="label">{{ s.title }}</span>
+          <!-- The word, not just the glyph colour. -->
+          <span class="inbox-why">{{ s.status === 'needsYou' ? 'waiting' : 'failed' }}</span>
+        </button>
+      </section>
+
       <button class="new-project" @click="newProject">
         <span class="new-project__plus" aria-hidden="true">+</span> New project
       </button>
@@ -392,6 +431,12 @@ function onGripKey(e: KeyboardEvent): void {
               <span class="tool">{{ conv.tool }}</span>
               <span v-if="isInert(conv)" class="tag">no resume</span>
               <span v-if="scheduleNote(conv)" class="tag tag--sched" :title="scheduleNote(conv)!">scheduled</span>
+              <!-- Supervision slice 3a. A figure on the row, not a tile:
+                   DESIGN.md bans hero-metric tiles, and the number's job is
+                   comparing sessions, not being a dashboard. -->
+              <span v-if="costFor(conv.id)" class="cost" :title="costTitle(costFor(conv.id)!)">
+                {{ costLabel(costFor(conv.id)!) }}
+              </span>
             </button>
             <button
               class="conv-x"
@@ -569,6 +614,27 @@ function onGripKey(e: KeyboardEvent): void {
    hint so the two are distinguishable at a glance. */
 .conv .tool { font-family: var(--font-mono, Consolas, monospace); font-size: 10px; color: var(--ink-muted); opacity: 0.75; flex: 0 0 auto; }
 .conv .tag { font-family: var(--font-mono, Consolas, monospace); font-size: 10.5px; color: var(--ink-muted); flex: 0 0 auto; }
+/* Supervision slice 4: the blocked-session inbox. A short list above the
+   projects, present only when something is actually waiting. */
+.inbox { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--hairline); }
+.inbox-head {
+  margin: 0 0 4px; padding: 0 2px;
+  font-size: 11px; font-weight: 600; color: var(--amber);
+}
+.inbox-row {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: transparent; border: 0; color: var(--ink); font: inherit;
+  text-align: left; padding: 4px 2px; cursor: pointer; border-radius: var(--radius-sm);
+}
+.inbox-row:hover { background: var(--surface); }
+.inbox-row:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.inbox-row .label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-why { font-family: var(--font-mono, Consolas, monospace); font-size: 10.5px; color: var(--ink-muted); flex: 0 0 auto; }
+
+/* Notional cost. A quiet figure on the row - never a tile, never coloured as state. */
+/* No opacity: ink-muted already clears 4.5:1 on all three planes, and dimming
+   it further drops this under the AA floor on an open (surface-2) row. */
+.conv .cost { font-family: var(--font-mono, Consolas, monospace); font-size: 10.5px; color: var(--ink-muted); flex: 0 0 auto; }
 
 .showmore {
   margin: 2px 0 2px 26px; padding: 3px 6px; background: transparent; border: 0;

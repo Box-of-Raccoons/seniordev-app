@@ -32,15 +32,30 @@ describe('menuTemplate', () => {
     panes[1].click!()
     expect(sent).toEqual(expect.arrayContaining(['move-tab-left', 'move-tab-right']))
   })
+  // Identified by label/role rather than by index: File now grows in the middle
+  // (Review Changes sits with the other actions, above the separator), and a
+  // positional assertion would fail every time a legitimate item is added there.
   it('File: New Session (CmdOrCtrl+N) fires new-session; Exit is the quit role labeled Exit', () => {
     const file = tpl[0].submenu!
-    expect(file[0].label).toBe('New Session')
-    expect(file[0].accelerator).toBe('CmdOrCtrl+N')
-    file[0].click!()
+    const newSession = file.find((i) => i.label === 'New Session')!
+    expect(newSession.accelerator).toBe('CmdOrCtrl+N')
+    newSession.click!()
     expect(sent).toContain('new-session')
-    expect(file[1].type).toBe('separator')
-    expect(file[2].role).toBe('quit')
-    expect(file[2].label).toBe('Exit')
+    expect(file.some((i) => i.type === 'separator')).toBe(true)
+    const quit = file.find((i) => i.role === 'quit')!
+    expect(quit.label).toBe('Exit')
+  })
+
+  it('File: Review Changes fires review and sits above the separator', () => {
+    const file = tpl[0].submenu!
+    const review = file.find((i) => i.label === 'Review Changes')!
+    // Not plain CmdOrCtrl+R: that is the dev View menu's reload role, and File
+    // is matched first, so a plain R would take reload away in dev.
+    expect(review.accelerator).toBe('CmdOrCtrl+Shift+R')
+    review.click!()
+    expect(sent).toContain('review')
+    // An action, so it belongs with the actions rather than below the quit rule.
+    expect(file.indexOf(review)).toBeLessThan(file.findIndex((i) => i.type === 'separator'))
   })
   it('Config items fire app-config and prompt-config', () => {
     const cfg = tpl[3].submenu!
@@ -66,5 +81,25 @@ describe('menuTemplate — schedules', () => {
     expect(cfg.indexOf(item!)).toBe(cfg.length - 1)
     item!.click?.(undefined as never, undefined, undefined as never)
     expect(sent).toEqual(['schedules'])
+  })
+})
+
+describe('menuTemplate — session search', () => {
+  it('offers Search Sessions with a non-conflicting accelerator', () => {
+    const sent: MenuAction[] = []
+    const file = menuTemplate((a) => sent.push(a))[0].submenu as Item[]
+    const search = file.find((i) => i.label === 'Search Sessions…')!
+    expect(search).toBeDefined()
+    // Not plain CmdOrCtrl+F: that is the browser/terminal find idiom, and File
+    // is matched before any View menu.
+    expect(search.accelerator).toBe('CmdOrCtrl+Shift+F')
+    search.click!()
+    expect(sent).toContain('search')
+  })
+
+  it('keeps Search above the separator, with the other actions', () => {
+    const file = menuTemplate(() => {})[0].submenu as Item[]
+    const idx = file.findIndex((i) => i.label === 'Search Sessions…')
+    expect(idx).toBeLessThan(file.findIndex((i) => i.type === 'separator'))
   })
 })

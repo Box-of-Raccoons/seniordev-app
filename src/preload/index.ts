@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, PROJECTS, CONVERSATIONS, SIDEBAR, WORKTREE, UPDATE, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
+import { IPC, TERM, PROMPTS, SHELL, REPOS, DIALOG, RECENT, CLIPBOARD, SHELLS, TOOLS, WORKSPACE, STARTUP, YOLO, MENU, APP, CONFIG, PROMPT_FILES, DEEPLINK, STATUS, PROJECTS, CONVERSATIONS, SIDEBAR, WORKTREE, REVIEW, GATE, COST, SEARCH, UPDATE, type ReviewTreeInfo, type ReviewDiffInfo, type GateRunningEvent, type GateResultEvent, type ConversationCostInfo, type SearchResultInfo, type PromptSummary, type DeepLink, type RepoResolution, type RepoInfo, type ShellsInfo, type WorkspaceSettings } from '../shared/ipc'
 import type { SpawnTerminalRequest, SpawnShellRequest, SpawnResult, TerminalDataEvent, TerminalExitEvent, WorkspaceLayout } from '../shared/ipc'
 import type { ProjectInfo, ConversationInfo, SidebarState } from '../shared/ipc'
 import type { WorktreeInfo, WorktreeCreateRequest, WorktreeCreateResult, WorktreeTeardownRequest, WorktreeTeardownResult } from '../shared/ipc'
@@ -51,6 +51,28 @@ const api = {
   worktreeInfo: (folder: string): Promise<WorktreeInfo> => ipcRenderer.invoke(WORKTREE.info, folder),
   createWorktree: (req: WorktreeCreateRequest): Promise<WorktreeCreateResult> => ipcRenderer.invoke(WORKTREE.create, req),
   teardownConversation: (req: WorktreeTeardownRequest): Promise<WorktreeTeardownResult> => ipcRenderer.invoke(WORKTREE.teardown, req),
+  // Supervision slice 1: read-only review of uncommitted work, keyed by working
+  // tree. Neither call mutates anything.
+  listReview: (): Promise<ReviewTreeInfo[]> => ipcRenderer.invoke(REVIEW.list),
+  reviewDiff: (cwd: string, path: string | null): Promise<ReviewDiffInfo> => ipcRenderer.invoke(REVIEW.diff, cwd, path),
+  // Supervision slice 2: the project's own gate. Results are pushed; the full
+  // output is pulled on demand so a noisy suite never rides through an event.
+  onGateRunning: (cb: (e: GateRunningEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: GateRunningEvent): void => cb(payload)
+    ipcRenderer.on(GATE.running, listener)
+    return () => ipcRenderer.removeListener(GATE.running, listener)
+  },
+  onGateResult: (cb: (e: GateResultEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: GateResultEvent): void => cb(payload)
+    ipcRenderer.on(GATE.result, listener)
+    return () => ipcRenderer.removeListener(GATE.result, listener)
+  },
+  gateOutput: (ptyId: string): Promise<string | null> => ipcRenderer.invoke(GATE.output, ptyId),
+  runGate: (ptyId: string): Promise<void> => ipcRenderer.invoke(GATE.run, ptyId),
+  // Supervision slice 3a: notional per-session cost, read from agent transcripts.
+  listCosts: (): Promise<ConversationCostInfo[]> => ipcRenderer.invoke(COST.list),
+  // Supervision slice 5: search every session's transcript, closed ones included.
+  searchTranscripts: (query: string): Promise<SearchResultInfo> => ipcRenderer.invoke(SEARCH.run, query),
   writeTerminal: (id: string, data: string): void => ipcRenderer.send(TERM.write, id, data),
   resizeTerminal: (id: string, cols: number, rows: number): void => ipcRenderer.send(TERM.resize, id, cols, rows),
   killTerminal: (id: string): void => ipcRenderer.send(TERM.kill, id),

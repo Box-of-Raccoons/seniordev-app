@@ -47,3 +47,42 @@
 #     path: C:/Users/you/code/backend
 #     branchPrefix: feature/
 #     forge: github
+#     gate: pnpm test        # see "gates" below
+
+# Gates. When a session in a folder falls quiet (the agent stopped and is not
+# asking you anything), SeniorDev runs that project's own gate and pins pass or
+# fail to the tab. Nothing runs unless you configure a command here, so setting
+# one IS the opt-in: the app never guesses what to execute in your repo.
+#
+# Resolution: the matching repo's own `gate`, then `defaultGate`, then nothing.
+# The command runs through a shell, in the session's folder (its worktree when it
+# has one), in a child process, so a gate that hangs or crashes cannot touch the
+# agent sessions running in the app.
+#
+# A gate that cannot run at all (missing command, timeout) is reported as an
+# ERROR, not a failure: the harness broke, which says nothing about your code.
+#
+# defaultGate: pnpm test     # used for folders not listed under repos:
+# gateTimeoutMs: 300000      # a hung gate is killed here and reported as an error
+
+# Per-session cost. SeniorDev reads each session's own agent transcript and
+# reports what it used, as tokens and as a notional dollar figure.
+#
+# The dollar figure is NOTIONAL: if you work on a subscription, it is the
+# API-equivalent price of the same tokens, not a bill. It is useful for
+# comparing one session against another and meaningless as an invoice.
+#
+# Rates below are USD per MILLION tokens and merge over a bundled table, so you
+# only list what you want to change. Cache tokens are priced off the input rate
+# automatically (reads 0.1x, 5-minute writes 1.25x, 1-hour writes 2x).
+#
+# A model with no rate here and none bundled reports its TOKENS and no cost,
+# rather than a guess. A confidently wrong price is worse than none.
+#
+# modelRates:
+#   claude-opus-5:
+#     input: 5
+#     output: 25
+#   some-other-agent-model:   # price a model the bundled table has never seen
+#     input: 2
+#     output: 8

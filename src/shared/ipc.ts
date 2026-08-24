@@ -219,6 +219,130 @@ export interface WorktreeTeardownResult {
 }
 export const WORKTREE = { info: 'worktree:info', create: 'worktree:create', teardown: 'worktree:teardown' } as const
 
+// Supervision epic, slice 5: search across every session's transcript,
+// including closed and archived ones — "which session did I fix that in" is
+// almost always about a session that is no longer open.
+export interface SearchMatchInfo {
+  role: 'user' | 'agent'
+  excerpt: string
+  offset: number
+  turn: number
+}
+export interface SearchHitInfo {
+  conversationId: string
+  title: string
+  tool: string
+  projectId: string
+  cwd: string
+  agentSessionId: string | null
+  matches: SearchMatchInfo[]
+}
+export interface SearchResultInfo {
+  hits: SearchHitInfo[]
+  sessionsScanned: number
+  // Non-zero means the scan cap was hit and the results are incomplete.
+  sessionsSkipped: number
+  hitsTruncated: boolean
+}
+export const SEARCH = { run: 'search:run' } as const
+
+// Supervision epic, slice 3a: what a session cost, read from its own agent
+// transcript. NOTIONAL — work here runs on a subscription, so this is the
+// API-equivalent price of the same tokens. Useful for comparing sessions
+// against each other, meaningless as a bill, and the UI must say so.
+export interface ConversationCostInfo {
+  conversationId: string
+  mainTokens: number
+  // null when a model in the session has no known rate; tokens stay valid.
+  mainCost: number | null
+  // Subagent spend, kept separate — for an orchestrator workflow this is the
+  // number worth acting on.
+  sidechainTokens: number
+  sidechainCost: number | null
+  unpricedModels: string[]
+  messages: number
+  models: string[]
+}
+export const COST = { list: 'cost:list' } as const
+
+// Supervision epic, slice 2: the project's own gate, run when a session falls
+// quiet. Orthogonal to TabStatus on purpose — the status describes the SESSION,
+// the gate describes the CODE, and folding one into the other would mean a
+// passing suite could hide an agent waiting on you.
+export type GateOutcome = 'pass' | 'fail' | 'error'
+export interface GateRunningEvent {
+  ptyId: string
+  command: string
+}
+export interface GateResultEvent {
+  ptyId: string
+  outcome: GateOutcome
+  // One line fit for a tab. The full output stays in main and is fetched on
+  // demand, so a noisy suite never rides through this event.
+  summary: string
+  durationMs: number
+  command: string
+}
+export const GATE = {
+  running: 'gate:running', // main → renderer
+  result: 'gate:result', // main → renderer
+  output: 'gate:output', // renderer → main (fetch the full text on demand)
+  run: 'gate:run' // renderer → main (run it now, without waiting for a settle)
+} as const
+
+// Supervision epic, slice 1: read-only review of what sessions actually changed.
+// Both calls are `git diff` under the hood; nothing here stages or commits.
+export const REVIEW = { list: 'review:list', diff: 'review:diff' } as const
+
+export interface ReviewEntryInfo {
+  path: string
+  insertions: number
+  deletions: number
+  binary: boolean
+  // Untracked files have no HEAD side; their counts are whole-file.
+  untracked: boolean
+  // Changed, but its lines were not counted (too large, or unreadable). Distinct
+  // from binary and from a genuine zero, so the UI never renders it as "+0".
+  uncounted?: boolean
+}
+
+export interface ReviewSessionInfo {
+  conversationId: string
+  title: string
+  tool: string
+}
+
+// One working tree with pending changes. Keyed by tree, not by session, because
+// uncommitted work belongs to a folder: two tabs on one folder share this diff.
+export interface ReviewTreeInfo {
+  cwd: string
+  branch: string | null
+  sessions: ReviewSessionInfo[]
+  files: number
+  insertions: number
+  deletions: number
+  entries: ReviewEntryInfo[]
+  // How many untracked files were dropped past the scan cap; 0 when complete.
+  untrackedTruncated: number
+  // Set when git could not answer at all (folder deleted, not a repo). The UI
+  // shows this instead of an empty review that would read as "nothing changed".
+  error: string | null
+}
+
+export interface ReviewDiffInfo {
+  // Parsed unified diff; shape mirrors shared/diff-parse DiffFile.
+  files: {
+    path: string
+    oldPath: string | null
+    status: 'added' | 'deleted' | 'modified' | 'renamed'
+    binary: boolean
+    insertions: number
+    deletions: number
+    hunks: { header: string; lines: { kind: 'add' | 'del' | 'context'; text: string; oldLine: number | null; newLine: number | null }[] }[]
+  }[]
+  error: string | null
+}
+
 export interface StartupSession {
   mode: 'interactive' | 'yolo'
   promptName?: string
@@ -424,6 +548,8 @@ export const SUBAGENTS = {
 
 export type MenuAction =
   | 'new-session'
+  | 'review'
+  | 'search'
   | 'schedules'
   | 'app-config'
   | 'prompt-config'

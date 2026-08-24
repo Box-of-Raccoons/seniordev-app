@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, computed, watch } from 'vue'
 import RightPanel from './components/RightPanel.vue'
+import SearchOverlay from './components/SearchOverlay.vue'
 import Sidebar from './components/Sidebar.vue'
 import SubagentPanel from './components/SubagentPanel.vue'
 import AboutModal from './components/AboutModal.vue'
@@ -13,13 +14,16 @@ import { useSplash } from './composables/useSplash'
 import { useWorkspace } from './composables/useWorkspace'
 import { useSubagents } from './composables/useSubagents'
 import { useScheduleBadges } from './composables/useScheduleBadges'
-import type { MenuAction, DeepLink } from '../../shared/ipc'
+import type { MenuAction, DeepLink, SearchHitInfo } from '../../shared/ipc'
+import { resumeTabSpec } from './composables/sidebar-logic'
 
 // A3: the shared workspace state lives here (App is the common ancestor of the
 // pane area and the S4 sidebar) and is passed to both. RightPanel still drives it;
 // the sidebar (added in S4 Step 5) reads the same panes + statuses.
 const ws = useWorkspace()
 const rightPanel = ref<InstanceType<typeof RightPanel> | null>(null)
+// Supervision slice 5: the transcript-search overlay (Cmd/Ctrl+Shift+F).
+const searchOpen = ref(false)
 
 // S8: live subagent-activity store, owned here (App outlives a placement toggle,
 // so the tiles survive moving the panel between the right rail and the bottom
@@ -71,12 +75,43 @@ function onMenu(action: MenuAction): void {
     requestNewSession()
     return
   }
+  if (action === 'review') {
+    rightPanel.value?.openReview()
+    return
+  }
+  if (action === 'search') {
+    searchOpen.value = true
+    return
+  }
   if (action === 'move-tab-left' || action === 'move-tab-right') {
     rightPanel.value?.moveActiveTab(action === 'move-tab-left' ? -1 : 1)
     return
   }
   // One modal at a time: an action while any modal is open keeps the open one.
   if (modal.value === null && !confirmReset.value) modal.value = action
+}
+
+// Supervision slice 5: open a session found by search. A live tab is focused
+// where it already is; a closed one resumes into the leftmost pane, matching the
+// sidebar's rule that focus never surprise-opens where you are not looking.
+function openSearchHit(hit: SearchHitInfo): void {
+  searchOpen.value = false
+  const live = ws.panes.findByConversationId(hit.conversationId)
+  if (live) {
+    ws.panes.focusTab(live.paneId, live.ptyId)
+    return
+  }
+  if (!hit.agentSessionId) return
+  ws.panes.addTab(
+    resumeTabSpec({
+      id: hit.conversationId,
+      title: hit.title,
+      tool: hit.tool,
+      cwd: hit.cwd,
+      agentSessionId: hit.agentSessionId
+    }),
+    ws.panes.leftmostPaneId.value
+  )
 }
 
 function requestNewSession(): void {
@@ -90,7 +125,13 @@ function requestNewSession(): void {
 // declining is free, since the update installs on the next ordinary quit anyway.
 const confirmInstall = ref(false)
 const liveSessions = computed(
-  () => ws.panes.allTabs.value.filter((e) => e.tab.kind !== 'composer' && !e.tab.exited).length
+  // Only tabs with a real pty behind them: a composer has not launched yet, and
+  // a review tab never spawns one. Counting either would overstate what an
+  // update restart actually kills, which is the number this confirm exists to show.
+  () =>
+    ws.panes.allTabs.value.filter(
+      (e) => e.tab.kind !== 'composer' && e.tab.kind !== 'review' && !e.tab.exited
+    ).length
 )
 const installMessage = computed(() => {
   const n = liveSessions.value
@@ -203,6 +244,8 @@ onBeforeUnmount(() => {
   <div class="shell">
     <Sidebar :ws="ws" :schedule-badges="scheduleBadges" :style="sidebarStyle" />
     <RightPanel ref="rightPanel" :ws="ws" :subagents="subagents" :schedule-badges="scheduleBadges" />
+    <!-- Supervision slice 5: search across every session, closed ones included. -->
+    <SearchOverlay :open="searchOpen" @close="searchOpen = false" @pick="openSearchHit" />
     <SubagentPanel
       v-if="ws.subagentPanel.placement === 'right'"
       :subagents="subagents"

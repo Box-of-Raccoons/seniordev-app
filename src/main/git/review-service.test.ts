@@ -1,0 +1,376 @@
+import { describe, it, expect } from 'vitest'
+import {
+  reviewSummary,
+  reviewDiff,
+  groupTargetsByTree,
+  countUntracked,
+  UNTRACKED_CAP,
+  type ReviewTarget
+} from './review-service'
+import type { GitRunner, GitResult } from './git-runner'
+
+const ok = (stdout: string): GitResult => ({ code: 0, stdout, stderr: '' })
+const fail = (stderr: string, code = 128): GitResult => ({ code, stdout: '', stderr })
+
+// Fake git keyed on the joined argv, so a test states exactly which git question
+// it is answering. Anything unstubbed comes back as a clean empty success, which
+// keeps each test to the calls it actually cares about.
+//
+// Leading `-c key=value` config pairs are stripped before keying and recording:
+// every review call carries `-c core.quotepath=off`, and that is a property of
+// how we invoke git, not part of the question being asked. One test below
+// asserts the flag is present; the rest should not have to know about it.
+function stripConfigFlags(args: string[]): string[] {
+  const out = [...args]
+  while (out[0] === '-c') out.splice(0, 2)
+  return out
+}
+function fakeGit(map: Record<string, GitResult>): GitRunner & { calls: string[][]; rawCalls: string[][] } {
+  const calls: string[][] = []
+  const rawCalls: string[][] = []
+  const runner = (async (_cwd: string, args: string[]): Promise<GitResult> => {
+    rawCalls.push(args)
+    const question = stripConfigFlags(args)
+    calls.push(question)
+    return map[question.join(' ')] ?? ok('')
+  }) as GitRunner & { calls: string[][]; rawCalls: string[][] }
+  runner.calls = calls
+  runner.rawCalls = rawCalls
+  return runner
+}
+
+const TARGET: ReviewTarget = {
+  conversationId: 'c1',
+  title: 'Fix the thing',
+  cwd: '/repo',
+  branch: 'feature/thing',
+  tool: 'claude'
+}
+
+describe('reviewSummary', () => {
+  it('reports a clean tree as no changes', async () => {
+    const git = fakeGit({ 'rev-parse --is-inside-work-tree': ok('true\n') })
+    const s = await reviewSummary(git, TARGET)
+    expect(s.error).toBeNull()
+    expect(s.files).toBe(0)
+    expect(s.insertions).toBe(0)
+    expect(s.deletions).toBe(0)
+    expect(s.entries).toEqual([])
+  })
+
+  it('sums tracked changes from numstat', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'diff HEAD --numstat': ok('3\t1\tsrc/a.ts\n0\t7\tsrc/b.ts\n')
+    })
+    const s = await reviewSummary(git, TARGET)
+    expect(s.files).toBe(2)
+    expect(s.insertions).toBe(3)
+    expect(s.deletions).toBe(8)
+  })
+
+  it('includes untracked files, which is where an agent leaves new work', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'diff HEAD --numstat': ok('1\t0\tsrc/a.ts\n'),
+      'ls-files --others --exclude-standard': ok('src/new.ts\n')
+    })
+    // Untracked contents come from the injected reader now, not from a spawn.
+    const s = await reviewSummary(git, TARGET, async () => ({ kind: 'text', content: 'a\nb\nc\nd\ne\n' }))
+    expect(s.files).toBe(2)
+    expect(s.insertions).toBe(6)
+    expect(s.entries.find((e) => e.path === 'src/new.ts')?.untracked).toBe(true)
+  })
+
+  it('NEVER spawns git per untracked file', async () => {
+    // The whole point of the change: 100 untracked files used to mean 100
+    // process spawns on the main thread, measured at 284ms.
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok('a.txt\nb.txt\nc.txt\n')
+    })
+    await reviewSummary(git, TARGET, async () => ({ kind: 'text', content: 'x\n' }))
+    expect(git.calls.some((args) => args.includes('--no-index'))).toBe(false)
+  })
+
+  it('lists an unreadable untracked file with no counts rather than dropping it', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok('gone.txt\n')
+    })
+    // Vanished mid-scan or unreadable. It is still uncommitted work.
+    const s = await reviewSummary(git, TARGET, async () => ({ kind: 'unreadable' }))
+    expect(s.entries).toHaveLength(1)
+    expect(s.entries[0]).toMatchObject({ path: 'gone.txt', insertions: 0, untracked: true, uncounted: true })
+  })
+
+  it('FLAGS an oversized file as uncounted rather than reporting it as +0', async () => {
+    // A 10MB file rendering as "+0" reads as trivial. The flag is what stops
+    // the UI conflating "not counted" with "empty".
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok('huge.sql\n')
+    })
+    const s = await reviewSummary(git, TARGET, async () => ({ kind: 'too-large' }))
+    expect(s.entries[0]).toMatchObject({ path: 'huge.sql', insertions: 0, uncounted: true, binary: false })
+  })
+
+  it('does NOT flag a genuinely empty file as uncounted', async () => {
+    // Zero with no flag has to keep meaning "really empty", or the flag is noise.
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok('empty.txt\n')
+    })
+    const s = await reviewSummary(git, TARGET, async () => ({ kind: 'text', content: '' }))
+    expect(s.entries[0].insertions).toBe(0)
+    expect(s.entries[0].uncounted).toBeUndefined()
+  })
+
+  it('marks a binary untracked file as binary instead of counting lines', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok('logo.png\n')
+    })
+    const s = await reviewSummary(git, TARGET, async () => ({ kind: 'text', content: 'PNG\u0000 data' }))
+    expect(s.entries[0].binary).toBe(true)
+    expect(s.entries[0].insertions).toBe(0)
+  })
+
+  it('reads each untracked file from the tree it belongs to', async () => {
+    const seen: { cwd: string; path: string }[] = []
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok('a.txt\nb.txt\n')
+    })
+    await reviewSummary(git, { ...TARGET, cwd: '/wt/feature' }, async (cwd, path) => {
+      seen.push({ cwd, path })
+      return { kind: 'text', content: 'x\n' }
+    })
+    expect(seen).toEqual([
+      { cwd: '/wt/feature', path: 'a.txt' },
+      { cwd: '/wt/feature', path: 'b.txt' }
+    ])
+  })
+
+  it('marks tracked entries as not untracked', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'diff HEAD --numstat': ok('1\t0\tsrc/a.ts\n')
+    })
+    expect((await reviewSummary(git, TARGET)).entries[0].untracked).toBe(false)
+  })
+
+  it('caps untracked files and says how many it dropped', async () => {
+    const many = Array.from({ length: UNTRACKED_CAP + 5 }, (_, i) => `f${i}.ts`).join('\n')
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'ls-files --others --exclude-standard': ok(many + '\n')
+    })
+    const s = await reviewSummary(git, TARGET)
+    expect(s.entries).toHaveLength(UNTRACKED_CAP)
+    expect(s.untrackedTruncated).toBe(5)
+  })
+
+  it('reports a non-repo as an error rather than as no changes', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': fail('fatal: not a git repository')
+    })
+    const s = await reviewSummary(git, TARGET)
+    expect(s.error).toMatch(/not a git repository/i)
+    expect(s.files).toBe(0)
+  })
+
+  it('resolves the live branch, preferring it over the stored one', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'rev-parse --abbrev-ref HEAD': ok('actually-here\n')
+    })
+    expect((await reviewSummary(git, TARGET)).branch).toBe('actually-here')
+  })
+
+  it('falls back to the stored branch when git cannot name one', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'rev-parse --abbrev-ref HEAD': fail('fatal: bad revision')
+    })
+    expect((await reviewSummary(git, TARGET)).branch).toBe('feature/thing')
+  })
+
+  it('reports a detached HEAD as detached rather than as the branch "HEAD"', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'rev-parse --abbrev-ref HEAD': ok('HEAD\n')
+    })
+    expect((await reviewSummary(git, TARGET)).branch).toBe('detached')
+  })
+
+  it('carries the conversation identity through untouched', async () => {
+    const git = fakeGit({ 'rev-parse --is-inside-work-tree': ok('true\n') })
+    const s = await reviewSummary(git, TARGET)
+    expect(s.conversationId).toBe('c1')
+    expect(s.title).toBe('Fix the thing')
+    expect(s.cwd).toBe('/repo')
+  })
+})
+
+// An untracked file is entirely added lines, so counting them is the whole job.
+// The numbers have to match what `git diff --no-index --numstat` reported, or
+// the review's totals shift the day this replaced it.
+describe('countUntracked', () => {
+  it('counts a trailing newline as terminating the last line, as git does', async () => {
+    expect(countUntracked('a\nb\n')).toEqual({ lines: 2, binary: false })
+  })
+
+  it('counts a final line with no trailing newline', async () => {
+    expect(countUntracked('a\nb')).toEqual({ lines: 2, binary: false })
+  })
+
+  it('counts a single line', async () => {
+    expect(countUntracked('only\n')).toEqual({ lines: 1, binary: false })
+    expect(countUntracked('only')).toEqual({ lines: 1, binary: false })
+  })
+
+  it('reports an empty file as zero lines, not one', async () => {
+    expect(countUntracked('')).toEqual({ lines: 0, binary: false })
+  })
+
+  it('counts blank lines, since git does', async () => {
+    expect(countUntracked('a\n\n\nb\n')).toEqual({ lines: 4, binary: false })
+  })
+
+  it('flags a null byte as binary and stops counting', async () => {
+    const withNul = 'PNG\u0000 data\nmore\n'
+    expect(countUntracked(withNul)).toEqual({ lines: 0, binary: true })
+  })
+
+  it('does not mistake ordinary text for binary', async () => {
+    expect(countUntracked('const x = 1\n').binary).toBe(false)
+  })
+})
+
+describe('groupTargetsByTree', () => {
+  const t = (id: string, cwd: string, branch: string | null = null): ReviewTarget => ({
+    conversationId: id,
+    title: `t-${id}`,
+    cwd,
+    branch,
+    tool: 'claude'
+  })
+
+  it('collapses two sessions on one folder into a single tree', async () => {
+    const groups = groupTargetsByTree([t('a', '/repo'), t('b', '/repo')])
+    expect(groups).toHaveLength(1)
+    expect(groups[0].sessions.map((s) => s.conversationId)).toEqual(['a', 'b'])
+  })
+
+  it('keeps a worktree session separate, because its cwd differs', async () => {
+    const groups = groupTargetsByTree([t('a', '/repo'), t('b', '/worktrees/repo-feature')])
+    expect(groups.map((g) => g.cwd)).toEqual(['/repo', '/worktrees/repo-feature'])
+  })
+
+  it('takes the first non-null branch across a tree', async () => {
+    const groups = groupTargetsByTree([t('a', '/repo', null), t('b', '/repo', 'feature/x')])
+    expect(groups[0].branch).toBe('feature/x')
+  })
+
+  it('drops targets with no folder rather than grouping them under empty string', async () => {
+    expect(groupTargetsByTree([t('a', '')])).toEqual([])
+  })
+
+  it('preserves first-seen order', async () => {
+    const groups = groupTargetsByTree([t('a', '/z'), t('b', '/a'), t('c', '/z')])
+    expect(groups.map((g) => g.cwd)).toEqual(['/z', '/a'])
+  })
+})
+
+describe('reviewDiff', () => {
+  it('parses the whole working diff when given no path', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'diff HEAD --': ok(`diff --git a/x.ts b/x.ts
+--- a/x.ts
++++ b/x.ts
+@@ -1,1 +1,1 @@
+-a
++b
+`)
+    })
+    const r = await reviewDiff(git, '/repo', null)
+    expect(r.error).toBeNull()
+    expect(r.files).toHaveLength(1)
+    expect(r.files[0].path).toBe('x.ts')
+  })
+
+  it('scopes to one path when given one', async () => {
+    const git = fakeGit({ 'rev-parse --is-inside-work-tree': ok('true\n') })
+    await reviewDiff(git, '/repo', 'src/a.ts')
+    expect(git.calls).toContainEqual(['diff', 'HEAD', '--', 'src/a.ts'])
+  })
+
+  it('reads an untracked path through --no-index, since HEAD has nothing to diff', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'diff HEAD -- src/new.ts': ok(''),
+      'diff --no-index -- /dev/null src/new.ts': {
+        code: 1,
+        stdout: `diff --git a/dev/null b/src/new.ts
+--- /dev/null
++++ b/src/new.ts
+@@ -0,0 +1,1 @@
++fresh
+`,
+        stderr: ''
+      }
+    })
+    const r = await reviewDiff(git, '/repo', 'src/new.ts')
+    expect(r.files).toHaveLength(1)
+    expect(r.files[0].status).toBe('added')
+    expect(r.files[0].insertions).toBe(1)
+  })
+
+  it('reports a non-repo as an error', async () => {
+    const git = fakeGit({ 'rev-parse --is-inside-work-tree': fail('fatal: not a git repository') })
+    expect((await reviewDiff(git, '/nope', null)).error).toMatch(/not a git repository/i)
+  })
+
+  it('surfaces a git failure rather than pretending the diff was empty', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'diff HEAD --': fail('fatal: bad object HEAD', 128)
+    })
+    const r = await reviewDiff(git, '/repo', null)
+    expect(r.error).toMatch(/bad object/i)
+    expect(r.files).toEqual([])
+  })
+})
+
+// Path handling that broke on real repos.
+describe('review-service — path handling', () => {
+  it('turns off git path quoting on EVERY call', async () => {
+    // With the default core.quotepath=true, a non-ASCII filename comes back
+    // C-quoted ("utf8\303\261.txt"); handing that back to `git diff -- <path>`
+    // matches nothing, so a file with real changes showed an empty diff.
+    const git = fakeGit({ 'rev-parse --is-inside-work-tree': ok('true\n') })
+    await reviewSummary(git, TARGET)
+    expect(git.rawCalls.length).toBeGreaterThan(0)
+    for (const args of git.rawCalls) {
+      expect(args.slice(0, 2)).toEqual(['-c', 'core.quotepath=off'])
+    }
+  })
+
+  it('turns it off for the diff call too', async () => {
+    const git = fakeGit({ 'rev-parse --is-inside-work-tree': ok('true\n') })
+    await reviewDiff(git, '/repo', 'src/a.ts')
+    for (const args of git.rawCalls) {
+      expect(args.slice(0, 2)).toEqual(['-c', 'core.quotepath=off'])
+    }
+  })
+
+  it('keeps a non-ASCII filename intact end to end', async () => {
+    const git = fakeGit({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'diff HEAD --numstat': ok('1\t0\tutf8ñ.txt\n')
+    })
+    expect((await reviewSummary(git, TARGET)).entries[0].path).toBe('utf8ñ.txt')
+  })
+})
