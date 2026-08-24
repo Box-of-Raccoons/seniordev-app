@@ -52,11 +52,11 @@
 # Gates. When a session in a folder falls quiet (the agent stopped and is not
 # asking you anything), SeniorDev runs that project's own gate and pins pass or
 # fail to the tab. Nothing runs unless you configure a command here, so setting
-# one IS the opt-in — the app never guesses what to execute in your repo.
+# one IS the opt-in: the app never guesses what to execute in your repo.
 #
 # Resolution: the matching repo's own `gate`, then `defaultGate`, then nothing.
 # The command runs through a shell, in the session's folder (its worktree when it
-# has one), in a child process — so a gate that hangs or crashes cannot touch the
+# has one), in a child process, so a gate that hangs or crashes cannot touch the
 # agent sessions running in the app.
 #
 # A gate that cannot run at all (missing command, timeout) is reported as an
@@ -77,7 +77,7 @@
 # automatically (reads 0.1x, 5-minute writes 1.25x, 1-hour writes 2x).
 #
 # A model with no rate here and none bundled reports its TOKENS and no cost,
-# rather than a guess — a confidently wrong price is worse than none.
+# rather than a guess. A confidently wrong price is worse than none.
 #
 # modelRates:
 #   claude-opus-5:
