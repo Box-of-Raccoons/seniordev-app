@@ -505,3 +505,58 @@ describe('Sidebar — notional cost', () => {
     expect(w.find('.cost').exists()).toBe(false)
   })
 })
+
+// Supervision slice 4. Per-tab status already lives on the tab strip; the
+// inbox is the aggregate — with two tabs you scan, with eight you hunt.
+describe('Sidebar — blocked-session inbox', () => {
+  async function mountWithTabs(specs: { ptyId?: string; title: string; status?: string }[]) {
+    setApi([project({ id: 'p1' })], [])
+    const ws = useWorkspace() as UseWorkspace
+    for (const s of specs) {
+      const t = ws.panes.addTab({ title: s.title, kind: 'terminal' })
+      if (s.status) ws.statuses[t.ptyId] = s.status as never
+    }
+    const w = mount(Sidebar, { props: { ws } })
+    await flushPromises()
+    return { w, ws }
+  }
+
+  it('shows nothing when no session is waiting', async () => {
+    const { w } = await mountWithTabs([{ title: 'Busy', status: 'working' }])
+    expect(w.find('.inbox').exists()).toBe(false)
+  })
+
+  it('does NOT list an idle session — quiet and finished is not blocked', async () => {
+    const { w } = await mountWithTabs([{ title: 'Done', status: 'idle' }])
+    expect(w.find('.inbox').exists()).toBe(false)
+  })
+
+  it('lists a session waiting at a prompt', async () => {
+    const { w } = await mountWithTabs([{ title: 'Needs an answer', status: 'needsYou' }])
+    expect(w.findAll('.inbox-row')).toHaveLength(1)
+    expect(w.find('.inbox-row').text()).toContain('Needs an answer')
+  })
+
+  it('states the count in words rather than relying on a coloured badge', async () => {
+    const { w } = await mountWithTabs([
+      { title: 'A', status: 'needsYou' },
+      { title: 'B', status: 'needsYou' },
+      { title: 'C', status: 'failed' }
+    ])
+    expect(w.find('.inbox-head').text()).toBe('2 waiting on you, 1 failed')
+  })
+
+  it('labels each row with the reason in text, not colour alone', async () => {
+    const { w } = await mountWithTabs([{ title: 'A', status: 'failed' }])
+    expect(w.find('.inbox-why').text()).toBe('failed')
+  })
+
+  it('focuses the session when its row is clicked', async () => {
+    const { w, ws } = await mountWithTabs([{ title: 'A', status: 'needsYou' }])
+    const target = ws.panes.allTabs.value[0]
+    ws.panes.addTab({ title: 'Other', kind: 'terminal' }) // move focus away
+    await w.vm.$nextTick()
+    await w.find('.inbox-row').trigger('click')
+    expect(ws.panes.isActiveInFocusedPane(target.tab.ptyId)).toBe(true)
+  })
+})
